@@ -57,6 +57,7 @@ function(compile_compute_shader name)
 endfunction()
 
 compile_compute_shader(FormatNormalize)
+compile_compute_shader(FlowToMotionVec)
 
 add_library(sidecar_common STATIC)
 target_include_directories(sidecar_common PUBLIC src/common)
@@ -68,11 +69,25 @@ target_sources(sidecar_common PRIVATE
   src/common/core/LatencyStats.cpp
   src/common/gpu/DeviceBridge.cpp
   src/common/gpu/FormatNormalize.cpp
+  src/common/flow/NvofaFlow.cpp
+  src/common/flow/FlowToMotionVec.cpp
   src/common/capture/WgcSource.cpp
   src/common/present/DCompOverlay.cpp
   src/common/present/WindowTracker.cpp
   src/common/present/Hud.cpp
   src/common/neural/PassthroughPass.cpp)
+
+# The NVIDIA Optical Flow SDK is a manual download and is never vendored (I11).
+# Without it the project still builds; NvofaFlow reports Available() false and
+# the pipeline runs on a zero motion field.
+set(NVOF_SDK_DIR "" CACHE PATH "NVIDIA Optical Flow SDK root")
+if(NVOF_SDK_DIR)
+  target_include_directories(sidecar_common PUBLIC ${NVOF_SDK_DIR}/NvOFInterface)
+  target_compile_definitions(sidecar_common PUBLIC SIDECAR_HAVE_NVOF=1)
+else()
+  message(WARNING "NVOF_SDK_DIR not set; optical flow will report unavailable.")
+  target_compile_definitions(sidecar_common PUBLIC SIDECAR_HAVE_NVOF=0)
+endif()
 
 # Generated shader headers, listed as sources so the custom commands run.
 target_sources(sidecar_common PRIVATE ${SHADER_HEADERS})
