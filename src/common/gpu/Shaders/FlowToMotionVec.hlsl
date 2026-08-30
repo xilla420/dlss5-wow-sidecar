@@ -5,7 +5,7 @@
 // If one changes, the other must change with it; the unit tests guard the C++
 // side and this shader is written to match it line for line.
 
-ByteAddressBuffer   g_flow : register(t0);   // int16 pairs, S10.5
+Texture2D<int2>     g_flow : register(t0);   // R16G16_SINT, S10.5 fixed point
 RWTexture2D<float2> g_dst  : register(u0);   // RG16F, NDC
 
 cbuffer Params : register(b0) {
@@ -22,13 +22,8 @@ void CSMain(uint3 id : SV_DispatchThreadID) {
   if (id.x >= g_fullSize.x || id.y >= g_fullSize.y) return;
 
   const uint2 cell = min(id.xy / g_gridFactor, g_gridSize - 1);
-  const uint index = cell.y * g_gridSize.x + cell.x;
+  const int2 raw = g_flow.Load(int3(cell, 0));
 
-  // Two int16 per vector, so four bytes per cell.
-  const uint packed = g_flow.Load(index * 4);
-  const int rawX = (int)(packed << 16) >> 16;   // sign-extend the low half
-  const int rawY = (int)packed >> 16;           // sign-extend the high half
-
-  const float2 pixels = -float2(rawX, rawY) / kS10_5Scale;
+  const float2 pixels = -float2(raw) / kS10_5Scale;
   g_dst[id.xy] = pixels / float2(g_fullSize);
 }

@@ -13,34 +13,17 @@ namespace sidecar {
 namespace {
 
 uint32_t CellsAcross(uint32_t extent, uint32_t gridSize) {
-  return (extent + gridSize - 1) / gridSize;
+  return ((extent + gridSize - 1) & ~(gridSize - 1)) / gridSize;
 }
 
-// Four bytes per cell: two int16_t in S10.5.
-constexpr uint32_t kBytesPerCell = 4;
+}  // namespace
 
-ComPtr<ID3D12Resource> CreateFlowBuffer(ID3D12Device* device, uint32_t cells) {
-  D3D12_HEAP_PROPERTIES heap{};
-  heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+#if SIDECAR_HAVE_NVOF
 
-  D3D12_RESOURCE_DESC rd{};
-  rd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-  rd.Width = static_cast<UINT64>(cells) * kBytesPerCell;
-  rd.Height = 1;
-  rd.DepthOrArraySize = 1;
-  rd.MipLevels = 1;
-  rd.Format = DXGI_FORMAT_UNKNOWN;
-  rd.SampleDesc.Count = 1;
-  rd.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-  rd.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+namespace {
 
-  ComPtr<ID3D12Resource> buffer;
-  if (FAILED(device->CreateCommittedResource(
-          &heap, D3D12_HEAP_FLAG_NONE, &rd, D3D12_RESOURCE_STATE_COMMON,
-          nullptr, IID_PPV_ARGS(&buffer)))) {
-    return nullptr;
-  }
-  return buffer;
+NV_OF_D3D12_API_FUNCTION_LIST* Api(void* p) {
+  return static_cast<NV_OF_D3D12_API_FUNCTION_LIST*>(p);
 }
 
 }  // namespace
@@ -49,7 +32,8 @@ std::unique_ptr<NvofaFlow> NvofaFlow::Create(ID3D12Device* device,
                                              ID3D12CommandQueue* queue,
                                              uint32_t width, uint32_t height,
                                              uint32_t gridSize) {
-  if (!device || !queue || width == 0 || height == 0) return nullptr;
+  (void)queue;   // NVOFA owns its own queue internally.
+  if (!device || width == 0 || height == 0) return nullptr;
   if (gridSize != 1 && gridSize != 2 && gridSize != 4) return nullptr;
 
   std::unique_ptr<NvofaFlow> f(new NvofaFlow());
@@ -59,23 +43,49 @@ std::unique_ptr<NvofaFlow> NvofaFlow::Create(ID3D12Device* device,
   f->gridWidth_ = CellsAcross(width, gridSize);
   f->gridHeight_ = CellsAcross(height, gridSize);
 
-  f->flowBuffer_ = CreateFlowBuffer(device, f->gridWidth_ * f->gridHeight_);
-  if (!f->flowBuffer_) return nullptr;
-  if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&f->fence_)))) {
+  if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&f->inputFence_))) ||
+      FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&f->outputFence_)))) {
     return nullptr;
   }
 
-#if SIDECAR_HAVE_NVOF
-  // nvofapi64.dll ships with the NVIDIA display driver. Its absence, or a
-  // failure to create a session, is not fatal: Available() reports false and
-  // the pipeline runs with a zero motion field (spec section 11).
-  NV_OF_D3D12_API_FUNCTION_LIST functions{};
-  if (NvOFAPICreateInstanceD3D12(NV_OF_API_VERSION, &functions) != NV_OF_SUCCESS) {
-    return f;   // session_ stays null
+  // The flow grid is a texture, not a buffer: one R16G16_SINT texel per cell.
+  D3D12_HEAP_PROPERTIES heap{};
+  heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+  D3D12_RESOURCE_DESC rd{};
+  rd.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+  rd.Width = f->gridWidth_;
+  rd.Height = f->gridHeight_;
+  rd.DepthOrArraySize = 1;
+  rd.MipLevels = 1;
+  rd.Format = DXGI_FORMAT_R16G16_SINT;   // NV_OF_BUFFER_FORMAT_SHORT2
+  rd.SampleDesc.Count = 1;
+  if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &rd,
+                                             D3D12_RESOURCE_STATE_COMMON, nullptr,
+                                             IID_PPV_ARGS(&f->flowGrid_)))) {
+    return nullptr;
   }
 
+  // nvofapi64.dll ships with the driver. Resolving it at runtime rather than
+  // linking it keeps this binary loadable on a machine without it, and keeps
+  // the import table free of a dependency the invariant check would see.
+  HMODULE library = LoadLibraryW(L"nvofapi64.dll");
+  if (!library) return f;   // session_ stays null; Available() is false
+  f->library_ = library;
+
+  using CreateInstanceFn = NV_OF_STATUS(NVOFAPI*)(uint32_t, NV_OF_D3D12_API_FUNCTION_LIST*);
+  auto createInstance = reinterpret_cast<CreateInstanceFn>(
+      reinterpret_cast<void*>(GetProcAddress(library, "NvOFAPICreateInstanceD3D12")));
+  if (!createInstance) return f;
+
+  auto* api = new NV_OF_D3D12_API_FUNCTION_LIST{};
+  if (createInstance(NV_OF_API_VERSION, api) != NV_OF_SUCCESS) {
+    delete api;
+    return f;
+  }
+  f->api_ = api;
+
   NvOFHandle session = nullptr;
-  if (functions.nvCreateOpticalFlowD3D12(device, queue, &session) != NV_OF_SUCCESS) {
+  if (api->nvCreateOpticalFlowD3D12(device, &session) != NV_OF_SUCCESS || !session) {
     return f;
   }
 
@@ -95,70 +105,137 @@ std::unique_ptr<NvofaFlow> NvofaFlow::Create(ID3D12Device* device,
   init.enableExternalHints = NV_OF_FALSE;
   init.enableOutputCost = NV_OF_FALSE;
   init.enableRoi = NV_OF_FALSE;
+  init.enableGlobalFlow = NV_OF_FALSE;
+  init.predDirection = NV_OF_PRED_DIRECTION_FORWARD;
+  init.disparityRange = NV_OF_STEREO_DISPARITY_RANGE_UNDEFINED;
+  init.hintGridSize = NV_OF_HINT_VECTOR_GRID_SIZE_UNDEFINED;
 
   // The grid size must match what FlowToMotionVec expects; a mismatch produces
   // vectors that are silently the wrong scale.
   init.outGridSize = static_cast<NV_OF_OUTPUT_VECTOR_GRID_SIZE>(gridSize);
-  init.hintGridSize = NV_OF_HINT_VECTOR_GRID_SIZE_UNDEFINED;
 
-  if (functions.nvOFInit(session, &init) != NV_OF_SUCCESS) {
-    functions.nvOFDestroy(session);
+  if (api->nvOFInit(session, &init) != NV_OF_SUCCESS) {
+    api->nvOFDestroy(session);
     return f;
   }
   f->session_ = session;
-#else
-  (void)queue;
-#endif
   return f;
 }
 
-NvofaFlow::~NvofaFlow() {
-#if SIDECAR_HAVE_NVOF
-  if (session_) {
-    NV_OF_D3D12_API_FUNCTION_LIST functions{};
-    if (NvOFAPICreateInstanceD3D12(NV_OF_API_VERSION, &functions) == NV_OF_SUCCESS) {
-      functions.nvOFDestroy(static_cast<NvOFHandle>(session_));
-    }
-    session_ = nullptr;
+void* NvofaFlow::HandleFor(ID3D12Resource* resource) {
+  if (!resource || !session_) return nullptr;
+  const auto found = registered_.find(resource);
+  if (found != registered_.end()) return found->second;
+
+  NvOFGPUBufferHandle handle = nullptr;
+  NV_OF_REGISTER_RESOURCE_PARAMS_D3D12 params{};
+  params.resource = resource;
+  params.hOFGpuBuffer = &handle;
+  // Registration itself needs no cross-queue ordering; per-frame ordering is
+  // carried by the fence points passed to Execute.
+  params.inputFencePoint.fence = inputFence_.Get();
+  params.inputFencePoint.value = 0;
+  params.outputFencePoint.fence = outputFence_.Get();
+  params.outputFencePoint.value = 0;
+
+  if (Api(api_)->nvOFRegisterResourceD3D12(static_cast<NvOFHandle>(session_), &params) !=
+          NV_OF_SUCCESS ||
+      !handle) {
+    return nullptr;
   }
-#endif
+  registered_.emplace(resource, handle);
+  return handle;
 }
 
 bool NvofaFlow::Execute(ID3D12Resource* current, ID3D12Resource* previous,
-                        FlowOutput& out) {
+                        uint64_t inputReadyValue, FlowOutput& out) {
   if (!current || !previous || !session_) return false;
 
-#if SIDECAR_HAVE_NVOF
-  NV_OF_D3D12_API_FUNCTION_LIST functions{};
-  if (NvOFAPICreateInstanceD3D12(NV_OF_API_VERSION, &functions) != NV_OF_SUCCESS) {
-    return false;
-  }
+  void* currentHandle = HandleFor(current);
+  void* previousHandle = HandleFor(previous);
+  void* gridHandle = HandleFor(flowGrid_.Get());
+  if (!currentHandle || !previousHandle || !gridHandle) return false;
 
-  const uint64_t signalValue = ++fenceValue_;
+  NV_OF_FENCE_POINT wait{};
+  wait.fence = inputFence_.Get();
+  wait.value = inputReadyValue;
+
+  NV_OF_FENCE_POINT signal{};
+  signal.fence = outputFence_.Get();
+  signal.value = ++outputFenceValue_;
 
   NV_OF_EXECUTE_INPUT_PARAMS_D3D12 input{};
-  input.inputFrame.pResource = current;
-  input.referenceFrame.pResource = previous;
+  input.inputFrame = static_cast<NvOFGPUBufferHandle>(currentHandle);
+  input.referenceFrame = static_cast<NvOFGPUBufferHandle>(previousHandle);
+  // Successive frames of one continuous scene, so temporal hints help.
+  input.disableTemporalHints = NV_OF_FALSE;
+  input.numFencePoints = 1;
+  input.fencePoint = &wait;
 
   NV_OF_EXECUTE_OUTPUT_PARAMS_D3D12 output{};
-  output.outputBuffer.pResource = flowBuffer_.Get();
-  output.outputBuffer.outputFencePoint.fence = fence_.Get();
-  output.outputBuffer.outputFencePoint.value = signalValue;
+  output.outputBuffer = static_cast<NvOFGPUBufferHandle>(gridHandle);
+  output.fencePoint = &signal;
 
-  if (functions.nvOFExecuteD3D12(static_cast<NvOFHandle>(session_), &input, &output) !=
+  if (Api(api_)->nvOFExecuteD3D12(static_cast<NvOFHandle>(session_), &input, &output) !=
       NV_OF_SUCCESS) {
     return false;
   }
 
-  out.grid = flowBuffer_.Get();
+  out.grid = flowGrid_.Get();
   out.gridWidth = gridWidth_;
   out.gridHeight = gridHeight_;
   out.gridSize = gridSize_;
+  out.readyFenceValue = signal.value;
   return true;
-#else
-  (void)out;
-  return false;
-#endif
 }
+
+NvofaFlow::~NvofaFlow() {
+  if (api_ && session_) {
+    for (auto& [resource, handle] : registered_) {
+      (void)resource;
+      NV_OF_UNREGISTER_RESOURCE_PARAMS_D3D12 params{};
+      params.hOFGpuBuffer = static_cast<NvOFGPUBufferHandle>(handle);
+      Api(api_)->nvOFUnregisterResourceD3D12(&params);
+    }
+    Api(api_)->nvOFDestroy(static_cast<NvOFHandle>(session_));
+  }
+  registered_.clear();
+  session_ = nullptr;
+  delete Api(api_);
+  api_ = nullptr;
+  if (library_) FreeLibrary(static_cast<HMODULE>(library_));
+  library_ = nullptr;
+}
+
+#else   // !SIDECAR_HAVE_NVOF
+
+std::unique_ptr<NvofaFlow> NvofaFlow::Create(ID3D12Device* device,
+                                             ID3D12CommandQueue* queue,
+                                             uint32_t width, uint32_t height,
+                                             uint32_t gridSize) {
+  (void)queue;
+  if (!device || width == 0 || height == 0) return nullptr;
+  if (gridSize != 1 && gridSize != 2 && gridSize != 4) return nullptr;
+
+  // Built without the SDK: a valid object whose Available() is false, so the
+  // pipeline runs on a zero motion field rather than refusing to start.
+  std::unique_ptr<NvofaFlow> f(new NvofaFlow());
+  f->width_ = width;
+  f->height_ = height;
+  f->gridSize_ = gridSize;
+  f->gridWidth_ = CellsAcross(width, gridSize);
+  f->gridHeight_ = CellsAcross(height, gridSize);
+  return f;
+}
+
+void* NvofaFlow::HandleFor(ID3D12Resource*) { return nullptr; }
+
+bool NvofaFlow::Execute(ID3D12Resource*, ID3D12Resource*, uint64_t, FlowOutput&) {
+  return false;
+}
+
+NvofaFlow::~NvofaFlow() = default;
+
+#endif  // SIDECAR_HAVE_NVOF
 
 }  // namespace sidecar

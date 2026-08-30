@@ -121,17 +121,18 @@ ComPtr<ID3D12Resource> UploadPatternFrame(DeviceBridge& bridge, uint32_t w,
   return tex;
 }
 
-// Reads the flow grid back as raw int16_t pairs, two per cell.
+// Reads the flow grid back as int16_t pairs, two per cell. The grid is a
+// R16G16_SINT texture, so the copy goes through a placed footprint.
 std::vector<int16_t> ReadFlowGrid(DeviceBridge& bridge, const FlowOutput& flow) {
   auto* dev = bridge.D3d12();
-  const size_t cells = static_cast<size_t>(flow.gridWidth) * flow.gridHeight;
-  const UINT64 bytes = static_cast<UINT64>(cells) * 4;
+  const UINT rowPitch = (flow.gridWidth * 4 + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1) &
+                        ~(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1);
 
   D3D12_HEAP_PROPERTIES heap{};
   heap.Type = D3D12_HEAP_TYPE_READBACK;
   D3D12_RESOURCE_DESC bd{};
   bd.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-  bd.Width = bytes;
+  bd.Width = static_cast<UINT64>(rowPitch) * flow.gridHeight;
   bd.Height = 1; bd.DepthOrArraySize = 1; bd.MipLevels = 1;
   bd.Format = DXGI_FORMAT_UNKNOWN;
   bd.SampleDesc.Count = 1;
@@ -148,14 +149,45 @@ std::vector<int16_t> ReadFlowGrid(DeviceBridge& bridge, const FlowOutput& flow) 
                                                 IID_PPV_ARGS(&alloc))));
   REQUIRE(SUCCEEDED(dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
                                            alloc.Get(), nullptr, IID_PPV_ARGS(&cl))));
-  cl->CopyBufferRegion(readback.Get(), 0, flow.grid, 0, bytes);
-  RunAndWait(bridge, cl.Get());
+
+  D3D12_TEXTURE_COPY_LOCATION dst{};
+  dst.pResource = readback.Get();
+  dst.Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+  dst.PlacedFootprint.Footprint.Format = DXGI_FORMAT_R16G16_SINT;
+  dst.PlacedFootprint.Footprint.Width = flow.gridWidth;
+  dst.PlacedFootprint.Footprint.Height = flow.gridHeight;
+  dst.PlacedFootprint.Footprint.Depth = 1;
+  dst.PlacedFootprint.Footprint.RowPitch = rowPitch;
+
+  D3D12_TEXTURE_COPY_LOCATION src{};
+  src.pResource = flow.grid;
+  src.Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+  src.SubresourceIndex = 0;
+
+  cl->CopyTextureRegion(&dst, 0, 0, 0, &src, nullptr);
+  REQUIRE(SUCCEEDED(cl->Close()));
+
+  // NVOFA runs on its own queue, so wait for it before reading the grid.
+  ID3D12CommandList* lists[] = {cl.Get()};
+  bridge.Queue()->ExecuteCommandLists(1, lists);
+
+  ComPtr<ID3D12Fence> done;
+  REQUIRE(SUCCEEDED(dev->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&done))));
+  REQUIRE(SUCCEEDED(bridge.Queue()->Signal(done.Get(), 1)));
+  HANDLE evt = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  REQUIRE(SUCCEEDED(done->SetEventOnCompletion(1, evt)));
+  WaitForSingleObject(evt, INFINITE);
+  CloseHandle(evt);
 
   void* mapped = nullptr;
-  D3D12_RANGE all{0, static_cast<SIZE_T>(bytes)};
+  D3D12_RANGE all{0, static_cast<SIZE_T>(bd.Width)};
   REQUIRE(SUCCEEDED(readback->Map(0, &all, &mapped)));
-  std::vector<int16_t> out(cells * 2);
-  std::memcpy(out.data(), mapped, static_cast<size_t>(bytes));
+  std::vector<int16_t> out(static_cast<size_t>(flow.gridWidth) * flow.gridHeight * 2);
+  for (uint32_t y = 0; y < flow.gridHeight; ++y) {
+    std::memcpy(out.data() + static_cast<size_t>(y) * flow.gridWidth * 2,
+                static_cast<const uint8_t*>(mapped) + static_cast<size_t>(y) * rowPitch,
+                static_cast<size_t>(flow.gridWidth) * 4);
+  }
   D3D12_RANGE none{0, 0};
   readback->Unmap(0, &none);
   return out;
@@ -198,9 +230,20 @@ TEST_CASE("flow recovers a known horizontal translation", "[device]") {
   auto previous = UploadPatternFrame(*bridge, kW, kH, 0);
   auto current = UploadPatternFrame(*bridge, kW, kH, 1);
 
+  // Both uploads already completed on the bridge queue, so signal the input
+  // fence NVOFA waits on before it starts.
+  REQUIRE(SUCCEEDED(bridge->Queue()->Signal(flow->InputFence(), 1)));
+
   FlowOutput out{};
-  REQUIRE(flow->Execute(current.Get(), previous.Get(), out));
+  REQUIRE(flow->Execute(current.Get(), previous.Get(), 1, out));
   REQUIRE(out.grid != nullptr);
+
+  // Block until NVOFA reports the grid written.
+  HANDLE flowDone = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  REQUIRE(SUCCEEDED(flow->OutputFence()->SetEventOnCompletion(out.readyFenceValue, flowDone)));
+  REQUIRE(WaitForSingleObject(flowDone, 5000) == WAIT_OBJECT_0);
+  CloseHandle(flowDone);
+
   REQUIRE(out.gridSize == 4);
   REQUIRE(out.gridWidth == (kW + 3) / 4);
   REQUIRE(out.gridHeight == (kH + 3) / 4);

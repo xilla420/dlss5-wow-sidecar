@@ -16,8 +16,12 @@ class Luminance {
   static std::unique_ptr<Luminance> Create(ID3D12Device* device,
                                            uint32_t width, uint32_t height);
 
+  // Callers that hand the texture to another queue -- NVOFA runs on its own --
+  // must create it in COMMON, since D3D12 requires COMMON for cross-queue
+  // access and will not promote a texture into UNORDERED_ACCESS implicitly.
   static Microsoft::WRL::ComPtr<ID3D12Resource> CreateR8Target(
-      ID3D12Device* device, uint32_t width, uint32_t height);
+      ID3D12Device* device, uint32_t width, uint32_t height,
+      D3D12_RESOURCE_STATES initialState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 
   void Record(ID3D12GraphicsCommandList* cl,
               ID3D12Resource* srcBgra8,

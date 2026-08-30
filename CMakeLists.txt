@@ -89,7 +89,8 @@ target_sources(sidecar_common PRIVATE
 # the pipeline runs on a zero motion field.
 set(NVOF_SDK_DIR "" CACHE PATH "NVIDIA Optical Flow SDK root")
 if(NVOF_SDK_DIR)
-  target_include_directories(sidecar_common PUBLIC ${NVOF_SDK_DIR}/NvOFInterface)
+  # Quoted: the SDK is often unpacked under a path containing a space.
+  target_include_directories(sidecar_common PUBLIC "${NVOF_SDK_DIR}/NvOFInterface")
   target_compile_definitions(sidecar_common PUBLIC SIDECAR_HAVE_NVOF=1)
 else()
   message(WARNING "NVOF_SDK_DIR not set; optical flow will report unavailable.")

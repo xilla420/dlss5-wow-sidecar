@@ -98,14 +98,12 @@ void FlowToMotionVec::Record(ID3D12GraphicsCommandList* cl,
 
   auto cpu = heap_->GetCPUDescriptorHandleForHeapStart();
 
-  // The flow grid is a raw buffer of int16 pairs, so it is bound as a
-  // ByteAddressBuffer rather than a typed view.
+  // NVOFA writes the grid as a texture of R16G16_SINT texels, one per cell.
   D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
-  srv.Format = DXGI_FORMAT_R32_TYPELESS;
-  srv.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+  srv.Format = DXGI_FORMAT_R16G16_SINT;
+  srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
   srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-  srv.Buffer.NumElements = flow.gridWidth * flow.gridHeight;   // one uint per cell
-  srv.Buffer.Flags = D3D12_BUFFER_SRV_FLAG_RAW;
+  srv.Texture2D.MipLevels = 1;
   device_->CreateShaderResourceView(flow.grid, &srv, cpu);
 
   cpu.ptr += descriptorSize_;
