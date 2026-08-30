@@ -5,6 +5,7 @@ add_executable(sidecar_tests
   test_latency_stats.cpp
   test_device_bridge.cpp
   test_wgc_source.cpp
+  test_dcomp_overlay.cpp
   ../src/testpattern/Pattern.cpp)
 target_link_libraries(sidecar_tests PRIVATE sidecar_common Catch2::Catch2WithMain)
 
