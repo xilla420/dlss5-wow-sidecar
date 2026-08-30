@@ -15,6 +15,7 @@ add_executable(sidecar_tests
   test_motion_vector_math.cpp
   test_config.cpp
   test_probes.cpp
+  test_panic_switch.cpp
   ../src/manager/Probes.cpp
   ../src/runtime/Pipeline.cpp
   ../src/testpattern/Pattern.cpp)

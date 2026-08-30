@@ -11,6 +11,7 @@
 
 #include "core/GpuProfile.h"
 #include "core/LatencyStats.h"
+#include "core/PanicSwitch.h"
 #include "flow/FlowToMotionVec.h"
 #include "flow/NvofaFlow.h"
 #include "gpu/FormatNormalize.h"
@@ -50,6 +51,13 @@ class Pipeline {
   const Hud* GetHud() const { return hud_.get(); }
   std::string LastError() const;
 
+  // I13. Hides the overlay before anything else and asks the render loop to
+  // stop. Safe to call from the hotkey callback.
+  void Panic() noexcept;
+
+  // Rebuilds every device-derived object after DXGI reports the adapter gone.
+  bool Rebuild();
+
  private:
   Pipeline() = default;
   void RenderLoop();
@@ -78,6 +86,8 @@ class Pipeline {
   bool havePreviousFrame_ = false;
 
   PipelineConfig config_;
+  GpuInfo gpu_;
+  std::unique_ptr<PanicSwitch> panic_;
   std::thread renderThread_;
   std::atomic<bool> running_{false};
   std::atomic<bool> stopRequested_{false};

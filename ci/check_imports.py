@@ -50,6 +50,17 @@ def parse_imports(pe_path):
     return out
 
 
+def check_no_elevation_manifest(pe_path):
+    """I12: never request elevation. Legitimate software behaves legibly.
+
+    The embedded manifest is a plain XML resource, so a byte scan of the image
+    is sufficient and avoids a resource-directory walk that varies by linker.
+    """
+    with open(pe_path, "rb") as handle:
+        blob = handle.read()
+    return b"requireAdministrator" not in blob and b"highestAvailable" not in blob
+
+
 def main(argv):
     if len(argv) < 2:
         print("usage: check_imports.py <binary> [<binary>...]", file=sys.stderr)
@@ -62,6 +73,9 @@ def main(argv):
             print(f"FAIL {path}: forbidden imports (spec I1/I4/I10):", file=sys.stderr)
             for o in offenders:
                 print(f"  {o}", file=sys.stderr)
+        elif not check_no_elevation_manifest(path):
+            failed = True
+            print(f"FAIL {path}: manifest requests elevation (spec I12)", file=sys.stderr)
         else:
             print(f"ok   {path}: no forbidden imports")
     return 1 if failed else 0
