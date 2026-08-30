@@ -37,6 +37,7 @@ std::unique_ptr<NvofaFlow> NvofaFlow::Create(ID3D12Device* device,
   if (gridSize != 1 && gridSize != 2 && gridSize != 4) return nullptr;
 
   std::unique_ptr<NvofaFlow> f(new NvofaFlow());
+  f->device_ = device;
   f->width_ = width;
   f->height_ = height;
   f->gridSize_ = gridSize;
@@ -189,8 +190,33 @@ bool NvofaFlow::Execute(ID3D12Resource* current, ID3D12Resource* previous,
   return true;
 }
 
-NvofaFlow::~NvofaFlow() {
-  if (api_ && session_) {
+void NvofaFlow::WaitForIdle(uint32_t timeoutMs) {
+  if (!outputFence_ || outputFenceValue_ == 0) return;
+  // A removed device never signals again, so the wait is always bounded.
+  if (device_ && device_->GetDeviceRemovedReason() != S_OK) return;
+  if (outputFence_->GetCompletedValue() >= outputFenceValue_) return;
+
+  HANDLE evt = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  if (!evt) return;
+  if (SUCCEEDED(outputFence_->SetEventOnCompletion(outputFenceValue_, evt))) {
+    WaitForSingleObject(evt, timeoutMs);
+  }
+  CloseHandle(evt);
+}
+
+void NvofaFlow::Shutdown() {
+  if (!session_ && !api_) return;
+
+  // Never destroy a session the accelerator is still working through.
+  WaitForIdle();
+
+  // Do not call back into the driver once the device is gone. The session and
+  // every registered resource died with it, and unregistering against a
+  // removed device corrupts state that only surfaces later -- it was crashing
+  // the release of the very luminance textures that had been registered.
+  const bool deviceAlive = device_ && device_->GetDeviceRemovedReason() == S_OK;
+
+  if (api_ && session_ && deviceAlive) {
     for (auto& [resource, handle] : registered_) {
       (void)resource;
       NV_OF_UNREGISTER_RESOURCE_PARAMS_D3D12 params{};
@@ -203,9 +229,16 @@ NvofaFlow::~NvofaFlow() {
   session_ = nullptr;
   delete Api(api_);
   api_ = nullptr;
-  if (library_) FreeLibrary(static_cast<HMODULE>(library_));
+
+  // nvofapi64.dll is deliberately never unloaded. It is a driver component,
+  // and D3D12 resources registered with it keep touching its state as they are
+  // released -- unloading here segfaulted the next release of a registered
+  // luminance texture. The SDK's own sample keeps the module for the life of
+  // the process too. Leaking one driver DLL handle costs nothing.
   library_ = nullptr;
 }
+
+NvofaFlow::~NvofaFlow() { Shutdown(); }
 
 #else   // !SIDECAR_HAVE_NVOF
 
@@ -233,6 +266,8 @@ void* NvofaFlow::HandleFor(ID3D12Resource*) { return nullptr; }
 bool NvofaFlow::Execute(ID3D12Resource*, ID3D12Resource*, uint64_t, FlowOutput&) {
   return false;
 }
+
+void NvofaFlow::WaitForIdle(uint32_t) {}
 
 NvofaFlow::~NvofaFlow() = default;
 

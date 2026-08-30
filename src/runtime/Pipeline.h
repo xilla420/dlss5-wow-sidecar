@@ -53,48 +53,82 @@ class Pipeline {
 
   const LatencyStats& Stats() const { return stats_; }
   HWND OverlayHwnd() const;
-  const Hud* GetHud() const { return hud_.get(); }
+  const Hud* GetHud() const { return dev_.hud.get(); }
   std::string LastError() const;
 
   // I13. Hides the overlay before anything else and asks the render loop to
   // stop. Safe to call from the hotkey callback.
   void Panic() noexcept;
 
-  // Rebuilds every device-derived object after DXGI reports the adapter gone.
-  bool Rebuild();
+  // True once the render loop has seen the device go away. The render thread
+  // cannot rebuild by itself: rebuilding creates the overlay window, and a
+  // window belongs to the thread that creates it, so it has to be the thread
+  // that pumps. Poll this from the owner's message loop.
+  bool NeedsRebuild() const { return rebuildRequested_.load(std::memory_order_acquire); }
+
+  // Rebuilds everything and restarts capture. Call only from the thread that
+  // called Start(), which is the thread that owns the windows.
+  bool RebuildAndRestart();
+
+  ID3D12Device* DeviceForTest() const;
 
  private:
   Pipeline() = default;
   void RenderLoop();
   void FailAndHide(const char* reason);
 
-  std::unique_ptr<DeviceBridge> bridge_;
-  std::unique_ptr<WgcSource> source_;
-  std::unique_ptr<DCompOverlay> overlay_;
-  // Declared after overlay_ so it is torn down first: its callback holds a raw
-  // pointer to the overlay.
-  std::unique_ptr<WindowTracker> tracker_;
-  std::unique_ptr<Hud> hud_;
-  std::unique_ptr<INeuralPass> pass_;
-  std::string gpuName_;
-  Microsoft::WRL::ComPtr<ID3D12Resource> workTarget_;
-  Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc_;
-  Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmdList_;
-  // A second list, because optical flow sits between the two: its inputs must
-  // be submitted and fenced before it starts, and its output consumed after.
-  Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc2_;
-  Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmdList2_;
-  uint64_t inputFenceValue_ = 0;
+  // Recreates every device-derived object. Does not start anything; Start()
+  // does that, so the two paths cannot drift apart.
+  bool Rebuild();
 
-  std::unique_ptr<FormatNormalize> normalize_;
-  std::unique_ptr<Luminance> luminance_;
-  std::unique_ptr<NvofaFlow> flow_;
-  std::unique_ptr<FlowToMotionVec> flowToMv_;
-  Microsoft::WRL::ComPtr<ID3D12Resource> normalized_;
-  Microsoft::WRL::ComPtr<ID3D12Resource> motionTarget_;
-  Microsoft::WRL::ComPtr<ID3D12Resource> previousLuma_;
-  Microsoft::WRL::ComPtr<ID3D12Resource> currentLuma_;
-  bool havePreviousFrame_ = false;
+  // Blocks until the GPU has finished with everything this pipeline owns.
+  void DrainGpu();
+
+  // Everything derived from the D3D device lives in one movable struct.
+  //
+  // Rebuild() after device loss has to replace all of it, and the earlier
+  // version transferred members by hand -- which silently missed the luminance
+  // pass, both luma targets and the second command list when those were added
+  // later, leaving the rebuilt pipeline holding objects from a dead device.
+  // Moving one struct cannot miss a member, and a new member added for M3
+  // is carried across for free.
+  //
+  // Declaration order is load-bearing, because members are destroyed in
+  // reverse: the tracker's callback points at the overlay, the source points
+  // at the bridge, and the NVIDIA optical flow driver is fussy about the order
+  // its registered textures come apart relative to its session. This order is
+  // the one that was verified working on hardware -- do not rearrange it
+  // without re-running the [device] suite.
+  struct DeviceState {
+    std::unique_ptr<DeviceBridge> bridge;
+    std::unique_ptr<WgcSource> source;
+    std::unique_ptr<DCompOverlay> overlay;
+    std::unique_ptr<WindowTracker> tracker;
+    std::unique_ptr<Hud> hud;
+    std::unique_ptr<INeuralPass> pass;
+    std::string gpuName;
+
+    Microsoft::WRL::ComPtr<ID3D12Resource> workTarget;
+    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmdList;
+    // A second list, because optical flow sits between the two: its inputs
+    // must be submitted and fenced before it starts, and its output consumed
+    // after.
+    Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc2;
+    Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmdList2;
+    uint64_t inputFenceValue = 0;
+
+    std::unique_ptr<FormatNormalize> normalize;
+    std::unique_ptr<Luminance> luminance;
+    std::unique_ptr<NvofaFlow> flow;
+    std::unique_ptr<FlowToMotionVec> flowToMv;
+    Microsoft::WRL::ComPtr<ID3D12Resource> normalized;
+    Microsoft::WRL::ComPtr<ID3D12Resource> motionTarget;
+    Microsoft::WRL::ComPtr<ID3D12Resource> previousLuma;
+    Microsoft::WRL::ComPtr<ID3D12Resource> currentLuma;
+    bool havePreviousFrame = false;
+  };
+  DeviceState dev_;
 
   PipelineConfig config_;
   GpuInfo gpu_;
@@ -102,6 +136,9 @@ class Pipeline {
   std::thread renderThread_;
   std::atomic<bool> running_{false};
   std::atomic<bool> stopRequested_{false};
+  std::atomic<bool> rebuildRequested_{false};
+  // The thread that called Start(), and therefore owns the windows.
+  DWORD ownerThreadId_ = 0;
   LatencyStats stats_;
 
   mutable std::mutex errorMutex_;

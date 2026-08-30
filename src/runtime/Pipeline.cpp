@@ -52,60 +52,60 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
   std::unique_ptr<Pipeline> p(new Pipeline());
   p->config_ = config;
   p->gpu_ = gpu;
-  p->pass_ = std::move(pass);
+  p->dev_.pass = std::move(pass);
 
-  p->bridge_ = DeviceBridge::Create(gpu.luid, w, h);
-  if (!p->bridge_) return nullptr;
+  p->dev_.bridge = DeviceBridge::Create(gpu.luid, w, h);
+  if (!p->dev_.bridge) return nullptr;
 
-  p->overlay_ = DCompOverlay::Create(*p->bridge_, w, h);
-  if (!p->overlay_) return nullptr;
+  p->dev_.overlay = DCompOverlay::Create(*p->dev_.bridge, w, h);
+  if (!p->dev_.overlay) return nullptr;
 
   POINT origin{client.left, client.top};
   ClientToScreen(config.target, &origin);
   RECT bounds{origin.x, origin.y, origin.x + static_cast<LONG>(w),
               origin.y + static_cast<LONG>(h)};
-  p->overlay_->SetBounds(bounds);
+  p->dev_.overlay->SetBounds(bounds);
 
-  p->hud_ = Hud::Create();          // a missing HUD is not fatal
+  p->dev_.hud = Hud::Create();          // a missing HUD is not fatal
   // Narrow the adapter description to ASCII for the HUD's GDI text path.
-  p->gpuName_.reserve(gpu.name.size());
+  p->dev_.gpuName.reserve(gpu.name.size());
   for (const wchar_t c : gpu.name) {
-    p->gpuName_.push_back(c < 128 ? static_cast<char>(c) : '?');
+    p->dev_.gpuName.push_back(c < 128 ? static_cast<char>(c) : '?');
   }
 
-  auto* dev = p->bridge_->D3d12();
-  p->workTarget_ = CreateWorkTarget(dev, w, h);
-  if (!p->workTarget_) return nullptr;
+  auto* dev = p->dev_.bridge->D3d12();
+  p->dev_.workTarget = CreateWorkTarget(dev, w, h);
+  if (!p->dev_.workTarget) return nullptr;
   if (FAILED(dev->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                         IID_PPV_ARGS(&p->alloc_)))) return nullptr;
-  if (FAILED(dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, p->alloc_.Get(),
-                                    nullptr, IID_PPV_ARGS(&p->cmdList_)))) return nullptr;
-  p->cmdList_->Close();
+                                         IID_PPV_ARGS(&p->dev_.alloc)))) return nullptr;
+  if (FAILED(dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, p->dev_.alloc.Get(),
+                                    nullptr, IID_PPV_ARGS(&p->dev_.cmdList)))) return nullptr;
+  p->dev_.cmdList->Close();
   if (FAILED(dev->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
-                                         IID_PPV_ARGS(&p->alloc2_)))) return nullptr;
-  if (FAILED(dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, p->alloc2_.Get(),
-                                    nullptr, IID_PPV_ARGS(&p->cmdList2_)))) return nullptr;
-  p->cmdList2_->Close();
+                                         IID_PPV_ARGS(&p->dev_.alloc2)))) return nullptr;
+  if (FAILED(dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, p->dev_.alloc2.Get(),
+                                    nullptr, IID_PPV_ARGS(&p->dev_.cmdList2)))) return nullptr;
+  p->dev_.cmdList2->Close();
 
   // Optical flow and its consumers. Every one of these is optional: a failure
   // here costs motion vectors, not the frame, so the pipeline still runs with
   // a static-scene assumption (spec section 11).
-  p->normalize_ = FormatNormalize::Create(dev, w, h);
-  p->normalized_ = FormatNormalize::CreateRgba16fTarget(dev, w, h);
-  p->luminance_ = Luminance::Create(dev, w, h);
-  p->previousLuma_ = Luminance::CreateR8Target(dev, w, h, D3D12_RESOURCE_STATE_COMMON);
-  p->currentLuma_ = Luminance::CreateR8Target(dev, w, h, D3D12_RESOURCE_STATE_COMMON);
-  p->flow_ = NvofaFlow::Create(dev, p->bridge_->Queue(), w, h, config.flowGridSize);
-  p->flowToMv_ = FlowToMotionVec::Create(dev, w, h);
-  p->motionTarget_ = FlowToMotionVec::CreateMotionTarget(dev, w, h);
+  p->dev_.normalize = FormatNormalize::Create(dev, w, h);
+  p->dev_.normalized = FormatNormalize::CreateRgba16fTarget(dev, w, h);
+  p->dev_.luminance = Luminance::Create(dev, w, h);
+  p->dev_.previousLuma = Luminance::CreateR8Target(dev, w, h, D3D12_RESOURCE_STATE_COMMON);
+  p->dev_.currentLuma = Luminance::CreateR8Target(dev, w, h, D3D12_RESOURCE_STATE_COMMON);
+  p->dev_.flow = NvofaFlow::Create(dev, p->dev_.bridge->Queue(), w, h, config.flowGridSize);
+  p->dev_.flowToMv = FlowToMotionVec::Create(dev, w, h);
+  p->dev_.motionTarget = FlowToMotionVec::CreateMotionTarget(dev, w, h);
 
   Pipeline* raw = p.get();
-  p->source_ = WgcSource::CreateForWindow(config.target, *p->bridge_,
-                                          [raw] { raw->stats_.RecordDrop(); });
-  if (!p->source_) return nullptr;
+  p->dev_.source = WgcSource::CreateForWindow(config.target, *p->dev_.bridge,
+                                              [raw] { raw->stats_.RecordDrop(); });
+  if (!p->dev_.source) return nullptr;
 
-  DCompOverlay* overlay = p->overlay_.get();
-  p->tracker_ = WindowTracker::Create(config.target, [overlay](const RECT& r) {
+  DCompOverlay* overlay = p->dev_.overlay.get();
+  p->dev_.tracker = WindowTracker::Create(config.target, [overlay](const RECT& r) {
     overlay->SetBounds(r);
   });
   // A missing tracker is not fatal: the overlay simply will not follow moves.
@@ -115,7 +115,7 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
 
 Pipeline::~Pipeline() { Stop(); }
 
-HWND Pipeline::OverlayHwnd() const { return overlay_ ? overlay_->Hwnd() : nullptr; }
+HWND Pipeline::OverlayHwnd() const { return dev_.overlay ? dev_.overlay->Hwnd() : nullptr; }
 
 std::string Pipeline::LastError() const {
   std::lock_guard<std::mutex> lock(errorMutex_);
@@ -125,7 +125,7 @@ std::string Pipeline::LastError() const {
 void Pipeline::FailAndHide(const char* reason) {
   // Spec failure rule: hide first, then record. Never leave an opaque overlay
   // over a live game.
-  if (overlay_) overlay_->Hide();
+  if (dev_.overlay) dev_.overlay->Hide();
   std::lock_guard<std::mutex> lock(errorMutex_);
   lastError_ = reason;
 }
@@ -133,8 +133,8 @@ void Pipeline::FailAndHide(const char* reason) {
 void Pipeline::Panic() noexcept {
   // Overlay first, always. The player must be able to see the game again
   // immediately, before any slower teardown happens.
-  if (overlay_) overlay_->Hide();
-  if (hud_) hud_->Hide();
+  if (dev_.overlay) dev_.overlay->Hide();
+  if (dev_.hud) dev_.hud->Hide();
   stopRequested_.store(true, std::memory_order_release);
 }
 
@@ -142,50 +142,76 @@ bool Pipeline::Rebuild() {
   // Device loss invalidates both devices, the shared ring, the swapchain and
   // every pipeline state, so the only correct response is to build all of it
   // again from the adapter up.
-  if (overlay_) overlay_->Hide();
-  source_.reset();
-  tracker_.reset();
-  overlay_.reset();
-  normalize_.reset();
-  flow_.reset();
-  flowToMv_.reset();
-  normalized_.Reset();
-  motionTarget_.Reset();
-  previousLuma_.Reset();
-  currentLuma_.Reset();
-  workTarget_.Reset();
-  cmdList_.Reset();
-  alloc_.Reset();
-  bridge_.reset();
+  if (dev_.overlay) dev_.overlay->Hide();
 
-  auto rebuilt = Pipeline::Create(gpu_, config_, std::move(pass_));
+  // The GPU must be finished with everything before any of it is released.
+  // The accelerator session is deliberately NOT torn down early here: it comes
+  // apart inside ~NvofaFlow, after the textures it registered are gone, which
+  // is the only ordering the driver survives.
+  DrainGpu();
+
+  // Keep the neural pass: it is chosen from config and is not device-derived.
+  auto pass = std::move(dev_.pass);
+
+  // Move out and let the temporary die, rather than assigning an empty state
+  // over the top. Move-assignment releases the old members in *declaration*
+  // order, which would free the bridge first, while the capture source and
+  // overlay still point into it. Destruction runs in reverse, which is the
+  // order the dependencies actually require.
+  {
+    DeviceState dying = std::move(dev_);
+  }
+
+  auto rebuilt = Pipeline::Create(gpu_, config_, std::move(pass));
   if (!rebuilt) return false;
 
-  // Everything device-derived comes across. Stats and the panic switch stay,
-  // so a reset does not erase the latency history the operator is reading.
-  // The HUD moves too: Hud::Create points a file-scope pointer at the newest
-  // instance, so leaving the old one in place would stop it painting.
-  bridge_ = std::move(rebuilt->bridge_);
-  overlay_ = std::move(rebuilt->overlay_);
-  source_ = std::move(rebuilt->source_);
-  tracker_ = std::move(rebuilt->tracker_);
-  hud_ = std::move(rebuilt->hud_);
-  pass_ = std::move(rebuilt->pass_);
-  normalize_ = std::move(rebuilt->normalize_);
-  flow_ = std::move(rebuilt->flow_);
-  flowToMv_ = std::move(rebuilt->flowToMv_);
-  normalized_ = rebuilt->normalized_;
-  motionTarget_ = rebuilt->motionTarget_;
-  workTarget_ = rebuilt->workTarget_;
-  alloc_ = rebuilt->alloc_;
-  cmdList_ = rebuilt->cmdList_;
-  gpuName_ = rebuilt->gpuName_;
-  havePreviousFrame_ = false;
-
-  source_->Start();
-  if (config_.showOverlay) overlay_->Show();
-  if (hud_ && config_.showHud) hud_->Show();
+  // One move, so a member added later cannot be forgotten here. Stats and the
+  // panic switch deliberately stay behind: a reset must not erase the latency
+  // history the operator is reading.
+  //
+  // The HUD comes across with everything else, which matters because
+  // Hud::Create points a file-scope pointer at the newest instance; leaving
+  // the old one in place would stop it painting.
+  dev_ = std::move(rebuilt->dev_);
   return true;
+}
+
+bool Pipeline::RebuildAndRestart() {
+  // Must run on the thread that owns the windows: Rebuild creates a new
+  // overlay, and a window belongs to its creating thread.
+  Stop();
+
+  // Retry, because a real driver reset takes time to finish and
+  // D3D12CreateDevice can refuse the adapter until it has. This is defensive
+  // and deliberately unverified: the only way to simulate removal in-process
+  // is ID3D12Device5::RemoveDevice, which poisons the adapter permanently, so
+  // no amount of retrying recovers from it and it cannot exercise this path.
+  //
+  // Blocking the owner's message loop for up to a second is acceptable here:
+  // the overlay is already hidden, and the game is a separate process that
+  // carries on regardless.
+  constexpr int kAttempts = 5;
+  constexpr auto kDelay = std::chrono::milliseconds(200);
+  bool rebuilt = false;
+  for (int attempt = 0; attempt < kAttempts && !rebuilt; ++attempt) {
+    if (attempt > 0) std::this_thread::sleep_for(kDelay);
+    rebuilt = Rebuild();
+  }
+  if (!rebuilt) {
+    FailAndHide("graphics device was reset and could not be rebuilt");
+    return false;
+  }
+  rebuildRequested_.store(false, std::memory_order_release);
+  {
+    std::lock_guard<std::mutex> lock(errorMutex_);
+    lastError_.clear();
+  }
+  Start();
+  return true;
+}
+
+ID3D12Device* Pipeline::DeviceForTest() const {
+  return dev_.bridge ? dev_.bridge->D3d12() : nullptr;
 }
 
 void Pipeline::Start() {
@@ -193,11 +219,14 @@ void Pipeline::Start() {
   // itself when a frame fails, and a second Start() must not leave the first
   // thread unjoined.
   if (renderThread_.joinable()) return;
+  // Recorded here because Start() is called from the thread that created the
+  // windows; the render loop needs it to wake that thread on device loss.
+  ownerThreadId_ = GetCurrentThreadId();
   stopRequested_.store(false, std::memory_order_release);
   running_.store(true, std::memory_order_release);
-  source_->Start();
-  if (config_.showOverlay) overlay_->Show();
-  if (hud_ && config_.showHud) hud_->Show();
+  dev_.source->Start();
+  if (config_.showOverlay) dev_.overlay->Show();
+  if (dev_.hud && config_.showHud) dev_.hud->Show();
   renderThread_ = std::thread([this] { RenderLoop(); });
 }
 
@@ -207,10 +236,34 @@ void Pipeline::Stop() {
   // process when it is destroyed.
   stopRequested_.store(true, std::memory_order_release);
   if (renderThread_.joinable()) renderThread_.join();
-  if (source_) source_->Stop();
-  if (overlay_) overlay_->Hide();
-  if (hud_) hud_->Hide();
+  if (dev_.source) dev_.source->Stop();
+  DrainGpu();
+  if (dev_.overlay) dev_.overlay->Hide();
+  if (dev_.hud) dev_.hud->Hide();
   running_.store(false, std::memory_order_release);
+}
+
+void Pipeline::DrainGpu() {
+  // Destroying a resource the GPU is still reading is undefined, and with
+  // optical flow in the mix it reliably crashed: NVOFA runs on its own queue,
+  // so work can still be in flight after the render thread has stopped.
+  if (dev_.flow) dev_.flow->WaitForIdle();
+  if (!dev_.bridge) return;
+
+  auto* device = dev_.bridge->D3d12();
+  if (device->GetDeviceRemovedReason() != S_OK) return;   // never signals again
+
+  ComPtr<ID3D12Fence> drain;
+  if (FAILED(device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&drain)))) return;
+  if (FAILED(dev_.bridge->Queue()->Signal(drain.Get(), 1))) return;
+  if (drain->GetCompletedValue() >= 1) return;
+
+  HANDLE evt = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+  if (!evt) return;
+  if (SUCCEEDED(drain->SetEventOnCompletion(1, evt))) {
+    WaitForSingleObject(evt, 2000);
+  }
+  CloseHandle(evt);
 }
 
 void Pipeline::RenderLoop() {
@@ -224,22 +277,24 @@ void Pipeline::RenderLoop() {
     if (panic_) panic_->Pump();
     if (panic_ && panic_->Triggered()) break;
 
-    const HRESULT reason = bridge_->D3d12()->GetDeviceRemovedReason();
+    const HRESULT reason = dev_.bridge->D3d12()->GetDeviceRemovedReason();
     if (IsDeviceLost(reason)) {
-      FailAndHide("graphics device was reset; rebuilding");
-      if (!Rebuild()) {
-        FailAndHide("graphics device was reset and could not be rebuilt");
-        break;
-      }
-      continue;
+      // Hide first, then hand the rebuild to the owner thread. Rebuilding here
+      // would create the overlay window on this thread, which never pumps, so
+      // the new window could never be shown or moved.
+      FailAndHide("graphics device was reset; waiting for a rebuild");
+      rebuildRequested_.store(true, std::memory_order_release);
+      // Wake the owner's GetMessage so it notices without polling on a timer.
+      if (ownerThreadId_ != 0) PostThreadMessageW(ownerThreadId_, WM_NULL, 0, 0);
+      break;
     }
 
-    if (source_->IsClosed()) {
+    if (dev_.source->IsClosed()) {
       FailAndHide("capture item closed: the target window went away");
       break;
     }
 
-    auto frame = bridge_->AcquireLatest();
+    auto frame = dev_.bridge->AcquireLatest();
     if (!frame) {
       Sleep(1);
       continue;
@@ -249,116 +304,116 @@ void Pipeline::RenderLoop() {
 
     // Phase one: everything NVOFA depends on. It runs on its own queue, so its
     // inputs have to be submitted and fenced before it is asked to start.
-    alloc_->Reset();
-    cmdList_->Reset(alloc_.Get(), nullptr);
+    dev_.alloc->Reset();
+    dev_.cmdList->Reset(dev_.alloc.Get(), nullptr);
 
     // Widen the captured frame into typed RGBA16F. Nothing consumes it until
     // the neural pass lands in M3, but running it now keeps the format seam
     // exercised rather than discovered later.
-    if (normalize_ && normalized_) {
-      normalize_->Record(cmdList_.Get(), frame->texture, normalized_.Get());
+    if (dev_.normalize && dev_.normalized) {
+      dev_.normalize->Record(dev_.cmdList.Get(), frame->texture, dev_.normalized.Get());
     }
 
     // NVOFA consumes GRAYSCALE8, so reduce the captured frame to luminance
     // before it goes anywhere near the flow accelerator. The texture rests in
     // COMMON because another queue reads it, and D3D12 requires COMMON for
     // cross-queue access.
-    const bool haveLuma = luminance_ && currentLuma_ && previousLuma_;
+    const bool haveLuma = dev_.luminance && dev_.currentLuma && dev_.previousLuma;
     if (haveLuma) {
       D3D12_RESOURCE_BARRIER toWriteLuma{};
       toWriteLuma.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-      toWriteLuma.Transition.pResource = currentLuma_.Get();
+      toWriteLuma.Transition.pResource = dev_.currentLuma.Get();
       toWriteLuma.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
       toWriteLuma.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
       toWriteLuma.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
-      cmdList_->ResourceBarrier(1, &toWriteLuma);
+      dev_.cmdList->ResourceBarrier(1, &toWriteLuma);
 
-      luminance_->Record(cmdList_.Get(), frame->texture, currentLuma_.Get());
+      dev_.luminance->Record(dev_.cmdList.Get(), frame->texture, dev_.currentLuma.Get());
 
       D3D12_RESOURCE_BARRIER toCommon = toWriteLuma;
       toCommon.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
       toCommon.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
-      cmdList_->ResourceBarrier(1, &toCommon);
+      dev_.cmdList->ResourceBarrier(1, &toCommon);
     }
 
-    cmdList_->Close();
-    bridge_->Queue()->Wait(bridge_->SharedFence(), frame->fenceValue);
-    ID3D12CommandList* first[] = {cmdList_.Get()};
-    bridge_->Queue()->ExecuteCommandLists(1, first);
+    dev_.cmdList->Close();
+    dev_.bridge->Queue()->Wait(dev_.bridge->SharedFence(), frame->fenceValue);
+    ID3D12CommandList* first[] = {dev_.cmdList.Get()};
+    dev_.bridge->Queue()->ExecuteCommandLists(1, first);
 
     // A missing motion field is not a frame failure: the pass receives null and
     // treats the scene as static for this frame.
     ID3D12Resource* motion = nullptr;
     FlowOutput flowOut{};
     bool haveFlow = false;
-    if (flow_ && flow_->Available() && haveLuma && havePreviousFrame_) {
+    if (dev_.flow && dev_.flow->Available() && haveLuma && dev_.havePreviousFrame) {
       // Tell NVOFA which fence value means "the luminance is written".
-      bridge_->Queue()->Signal(flow_->InputFence(), ++inputFenceValue_);
-      haveFlow = flow_->Execute(currentLuma_.Get(), previousLuma_.Get(),
-                                inputFenceValue_, flowOut);
+      dev_.bridge->Queue()->Signal(dev_.flow->InputFence(), ++dev_.inputFenceValue);
+      haveFlow = dev_.flow->Execute(dev_.currentLuma.Get(), dev_.previousLuma.Get(),
+                                dev_.inputFenceValue, flowOut);
     }
 
     // Phase two: consume the flow grid and present. The GPU waits on NVOFA's
     // output fence, so the render thread never blocks.
-    alloc2_->Reset();
-    cmdList2_->Reset(alloc2_.Get(), nullptr);
+    dev_.alloc2->Reset();
+    dev_.cmdList2->Reset(dev_.alloc2.Get(), nullptr);
 
-    if (haveFlow && flowToMv_ && motionTarget_) {
-      bridge_->Queue()->Wait(flow_->OutputFence(), flowOut.readyFenceValue);
-      flowToMv_->Record(cmdList2_.Get(), flowOut, motionTarget_.Get());
-      motion = motionTarget_.Get();
+    if (haveFlow && dev_.flowToMv && dev_.motionTarget) {
+      dev_.bridge->Queue()->Wait(dev_.flow->OutputFence(), flowOut.readyFenceValue);
+      dev_.flowToMv->Record(dev_.cmdList2.Get(), flowOut, dev_.motionTarget.Get());
+      motion = dev_.motionTarget.Get();
     }
 
-    // The pass writes workTarget_ and the overlay's present reads it straight
+    // The pass writes dev_.workTarget and the overlay's present reads it straight
     // back, so bracket the pass: COPY_SOURCE at rest, COPY_DEST while written.
     D3D12_RESOURCE_BARRIER toWrite{};
     toWrite.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    toWrite.Transition.pResource = workTarget_.Get();
+    toWrite.Transition.pResource = dev_.workTarget.Get();
     toWrite.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     toWrite.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
     toWrite.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
-    cmdList2_->ResourceBarrier(1, &toWrite);
+    dev_.cmdList2->ResourceBarrier(1, &toWrite);
 
-    const bool ok = pass_->Evaluate(cmdList2_.Get(), frame->texture,
-                                    motion, nullptr, workTarget_.Get());
+    const bool ok = dev_.pass->Evaluate(dev_.cmdList2.Get(), frame->texture,
+                                    motion, nullptr, dev_.workTarget.Get());
 
     D3D12_RESOURCE_BARRIER toRead = toWrite;
     toRead.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     toRead.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
-    cmdList2_->ResourceBarrier(1, &toRead);
+    dev_.cmdList2->ResourceBarrier(1, &toRead);
 
-    cmdList2_->Close();
+    dev_.cmdList2->Close();
     if (!ok) {
       FailAndHide("neural pass rejected the frame");
       break;
     }
 
-    ID3D12CommandList* lists[] = {cmdList2_.Get()};
-    bridge_->Queue()->ExecuteCommandLists(1, lists);
+    ID3D12CommandList* lists[] = {dev_.cmdList2.Get()};
+    dev_.bridge->Queue()->ExecuteCommandLists(1, lists);
 
-    overlay_->Present(workTarget_.Get(), frame->fenceValue);
+    dev_.overlay->Present(dev_.workTarget.Get(), frame->fenceValue);
 
     // This frame's luminance becomes next frame's reference. Swapping rather
     // than copying keeps both textures alive and costs nothing.
     if (haveLuma) {
-      currentLuma_.Swap(previousLuma_);
-      havePreviousFrame_ = true;
+      dev_.currentLuma.Swap(dev_.previousLuma);
+      dev_.havePreviousFrame = true;
     }
 
     const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin);
     stats_.Record(elapsed.count());
 
     // Refresh roughly twice a second rather than every frame.
-    if (hud_ && ++sinceHudUpdate >= 30) {
+    if (dev_.hud && ++sinceHudUpdate >= 30) {
       sinceHudUpdate = 0;
       HudModel model;
       model.p50Ms = stats_.P50();
       model.p99Ms = stats_.P99();
       model.frames = stats_.Count();
       model.drops = stats_.Dropped();
-      model.passName = pass_->Name();
-      model.gpuName = gpuName_.c_str();
-      hud_->Update(model);
+      model.passName = dev_.pass->Name();
+      model.gpuName = dev_.gpuName.c_str();
+      dev_.hud->Update(model);
     }
   }
   // UnregisterHotKey must run on the thread that registered it.

@@ -8,6 +8,7 @@ add_executable(sidecar_tests
   test_dcomp_overlay.cpp
   test_passthrough_pass.cpp
   test_pipeline_m0.cpp
+  test_pipeline_rebuild.cpp
   test_window_tracker.cpp
   test_hud.cpp
   test_format_normalize.cpp
