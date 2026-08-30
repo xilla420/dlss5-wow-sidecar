@@ -7,7 +7,8 @@ using Microsoft::WRL::ComPtr;
 namespace sidecar {
 
 ComPtr<ID3D12Resource> Luminance::CreateR8Target(ID3D12Device* device,
-                                                 uint32_t width, uint32_t height) {
+                                                 uint32_t width, uint32_t height,
+                                                 D3D12_RESOURCE_STATES initialState) {
   D3D12_HEAP_PROPERTIES heap{};
   heap.Type = D3D12_HEAP_TYPE_DEFAULT;
 
@@ -22,9 +23,8 @@ ComPtr<ID3D12Resource> Luminance::CreateR8Target(ID3D12Device* device,
   rd.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
   ComPtr<ID3D12Resource> tex;
-  if (FAILED(device->CreateCommittedResource(
-          &heap, D3D12_HEAP_FLAG_NONE, &rd,
-          D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr, IID_PPV_ARGS(&tex)))) {
+  if (FAILED(device->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &rd,
+                                             initialState, nullptr, IID_PPV_ARGS(&tex)))) {
     return nullptr;
   }
   return tex;

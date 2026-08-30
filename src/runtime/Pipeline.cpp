@@ -81,6 +81,11 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
   if (FAILED(dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, p->alloc_.Get(),
                                     nullptr, IID_PPV_ARGS(&p->cmdList_)))) return nullptr;
   p->cmdList_->Close();
+  if (FAILED(dev->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT,
+                                         IID_PPV_ARGS(&p->alloc2_)))) return nullptr;
+  if (FAILED(dev->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, p->alloc2_.Get(),
+                                    nullptr, IID_PPV_ARGS(&p->cmdList2_)))) return nullptr;
+  p->cmdList2_->Close();
 
   // Optical flow and its consumers. Every one of these is optional: a failure
   // here costs motion vectors, not the frame, so the pipeline still runs with
@@ -88,8 +93,8 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
   p->normalize_ = FormatNormalize::Create(dev, w, h);
   p->normalized_ = FormatNormalize::CreateRgba16fTarget(dev, w, h);
   p->luminance_ = Luminance::Create(dev, w, h);
-  p->previousLuma_ = Luminance::CreateR8Target(dev, w, h);
-  p->currentLuma_ = Luminance::CreateR8Target(dev, w, h);
+  p->previousLuma_ = Luminance::CreateR8Target(dev, w, h, D3D12_RESOURCE_STATE_COMMON);
+  p->currentLuma_ = Luminance::CreateR8Target(dev, w, h, D3D12_RESOURCE_STATE_COMMON);
   p->flow_ = NvofaFlow::Create(dev, p->bridge_->Queue(), w, h, 4);
   p->flowToMv_ = FlowToMotionVec::Create(dev, w, h);
   p->motionTarget_ = FlowToMotionVec::CreateMotionTarget(dev, w, h);
@@ -242,6 +247,8 @@ void Pipeline::RenderLoop() {
 
     const auto begin = Clock::now();
 
+    // Phase one: everything NVOFA depends on. It runs on its own queue, so its
+    // inputs have to be submitted and fenced before it is asked to start.
     alloc_->Reset();
     cmdList_->Reset(alloc_.Get(), nullptr);
 
@@ -253,21 +260,53 @@ void Pipeline::RenderLoop() {
     }
 
     // NVOFA consumes GRAYSCALE8, so reduce the captured frame to luminance
-    // before it goes anywhere near the flow accelerator.
+    // before it goes anywhere near the flow accelerator. The texture rests in
+    // COMMON because another queue reads it, and D3D12 requires COMMON for
+    // cross-queue access.
     const bool haveLuma = luminance_ && currentLuma_ && previousLuma_;
     if (haveLuma) {
+      D3D12_RESOURCE_BARRIER toWriteLuma{};
+      toWriteLuma.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+      toWriteLuma.Transition.pResource = currentLuma_.Get();
+      toWriteLuma.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+      toWriteLuma.Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+      toWriteLuma.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+      cmdList_->ResourceBarrier(1, &toWriteLuma);
+
       luminance_->Record(cmdList_.Get(), frame->texture, currentLuma_.Get());
+
+      D3D12_RESOURCE_BARRIER toCommon = toWriteLuma;
+      toCommon.Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+      toCommon.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+      cmdList_->ResourceBarrier(1, &toCommon);
     }
+
+    cmdList_->Close();
+    bridge_->Queue()->Wait(bridge_->SharedFence(), frame->fenceValue);
+    ID3D12CommandList* first[] = {cmdList_.Get()};
+    bridge_->Queue()->ExecuteCommandLists(1, first);
 
     // A missing motion field is not a frame failure: the pass receives null and
     // treats the scene as static for this frame.
     ID3D12Resource* motion = nullptr;
+    FlowOutput flowOut{};
+    bool haveFlow = false;
     if (flow_ && flow_->Available() && haveLuma && havePreviousFrame_) {
-      FlowOutput out{};
-      if (flow_->Execute(currentLuma_.Get(), previousLuma_.Get(), out)) {
-        flowToMv_->Record(cmdList_.Get(), out, motionTarget_.Get());
-        motion = motionTarget_.Get();
-      }
+      // Tell NVOFA which fence value means "the luminance is written".
+      bridge_->Queue()->Signal(flow_->InputFence(), ++inputFenceValue_);
+      haveFlow = flow_->Execute(currentLuma_.Get(), previousLuma_.Get(),
+                                inputFenceValue_, flowOut);
+    }
+
+    // Phase two: consume the flow grid and present. The GPU waits on NVOFA's
+    // output fence, so the render thread never blocks.
+    alloc2_->Reset();
+    cmdList2_->Reset(alloc2_.Get(), nullptr);
+
+    if (haveFlow && flowToMv_ && motionTarget_) {
+      bridge_->Queue()->Wait(flow_->OutputFence(), flowOut.readyFenceValue);
+      flowToMv_->Record(cmdList2_.Get(), flowOut, motionTarget_.Get());
+      motion = motionTarget_.Get();
     }
 
     // The pass writes workTarget_ and the overlay's present reads it straight
@@ -278,24 +317,23 @@ void Pipeline::RenderLoop() {
     toWrite.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     toWrite.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
     toWrite.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
-    cmdList_->ResourceBarrier(1, &toWrite);
+    cmdList2_->ResourceBarrier(1, &toWrite);
 
-    const bool ok = pass_->Evaluate(cmdList_.Get(), frame->texture,
+    const bool ok = pass_->Evaluate(cmdList2_.Get(), frame->texture,
                                     motion, nullptr, workTarget_.Get());
 
     D3D12_RESOURCE_BARRIER toRead = toWrite;
     toRead.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
     toRead.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
-    cmdList_->ResourceBarrier(1, &toRead);
+    cmdList2_->ResourceBarrier(1, &toRead);
 
-    cmdList_->Close();
+    cmdList2_->Close();
     if (!ok) {
       FailAndHide("neural pass rejected the frame");
       break;
     }
 
-    bridge_->Queue()->Wait(bridge_->SharedFence(), frame->fenceValue);
-    ID3D12CommandList* lists[] = {cmdList_.Get()};
+    ID3D12CommandList* lists[] = {cmdList2_.Get()};
     bridge_->Queue()->ExecuteCommandLists(1, lists);
 
     overlay_->Present(workTarget_.Get(), frame->fenceValue);

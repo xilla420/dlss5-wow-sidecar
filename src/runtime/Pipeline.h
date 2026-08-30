@@ -76,6 +76,11 @@ class Pipeline {
   Microsoft::WRL::ComPtr<ID3D12Resource> workTarget_;
   Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc_;
   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmdList_;
+  // A second list, because optical flow sits between the two: its inputs must
+  // be submitted and fenced before it starts, and its output consumed after.
+  Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc2_;
+  Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmdList2_;
+  uint64_t inputFenceValue_ = 0;
 
   std::unique_ptr<FormatNormalize> normalize_;
   std::unique_ptr<Luminance> luminance_;
