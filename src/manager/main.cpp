@@ -19,6 +19,7 @@
 #include <imgui_impl_win32.h>
 
 #include "core/Config.h"
+#include "core/Log.h"
 #include "manager/Probes.h"
 #include "manager/Theme.h"
 
@@ -223,6 +224,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
   const fs::path sidecarDir = ExecutableDirectory();
   const fs::path configPath = sidecarDir / "sidecar.toml";
 
+  // Its own file: the runtime owns sidecar.log, and two processes writing one
+  // file would interleave into nonsense.
+  GlobalLog().OpenFile(sidecarDir / "sidecar-manager.log");
+  GlobalLog().Info("manager starting");
+
   // No config file means nobody has been shown the notice yet.
   std::error_code ec;
   bool noticeAcknowledged = fs::exists(configPath, ec) && !ec;
@@ -271,6 +277,15 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     ImGui::SameLine();
     if (ImGui::Button("Re-run probes", ImVec2(150.0f, 0.0f))) {
       results = RunAllProbes(sidecarDir, fs::path(wowDirUtf8.c_str()));
+      int failures = 0;
+      for (const auto& r : results) {
+        if (r.state == ProbeState::Fail) ++failures;
+      }
+      if (failures > 0) {
+        GlobalLog().Error(std::to_string(failures) + " probe(s) failing");
+      } else {
+        GlobalLog().Info("all probes green");
+      }
     }
 
     ImGui::Dummy(ImVec2(0.0f, 6.0f));
@@ -289,6 +304,28 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       ImGui::SameLine();
       ImGui::TextColored(StateColor(ProbeState::Fail, colors),
                          "Resolve the failing checks above first.");
+    }
+
+    // What most recently went wrong, so the operator is never left guessing
+    // and has something concrete to paste into a bug report.
+    const std::string lastError = GlobalLog().LastError();
+    if (!lastError.empty()) {
+      ImGui::Dummy(ImVec2(0.0f, 6.0f));
+      ImGui::TextColored(StateColor(ProbeState::Fail, colors), "Last error");
+      ImGui::TextWrapped("%s", lastError.c_str());
+    }
+
+    if (ImGui::CollapsingHeader("Log")) {
+      ImGui::BeginChild("logscroll", ImVec2(0.0f, 160.0f), ImGuiChildFlags_Border);
+      for (const auto& line : GlobalLog().Recent()) {
+        ImGui::TextUnformatted(line.c_str());
+      }
+      ImGui::EndChild();
+      const uint64_t dropped = GlobalLog().Dropped();
+      if (dropped > 0) {
+        ImGui::TextDisabled("%llu earlier line(s) dropped",
+                            static_cast<unsigned long long>(dropped));
+      }
     }
 
     if (!noticeAcknowledged) ImGui::EndDisabled();
