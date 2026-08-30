@@ -20,7 +20,10 @@ FetchContent_Declare(catch2
 FetchContent_Declare(tomlplusplus
   GIT_REPOSITORY https://github.com/marzer/tomlplusplus.git
   GIT_TAG v3.4.0)
-FetchContent_MakeAvailable(catch2 tomlplusplus)
+FetchContent_Declare(imgui
+  GIT_REPOSITORY https://github.com/ocornut/imgui.git
+  GIT_TAG v1.91.5)
+FetchContent_MakeAvailable(catch2 tomlplusplus imgui)
 
 # Our project-wide _UNICODE (above) would otherwise select Catch2's wmain entry
 # point, which MSVC cannot auto-detect from inside a static library. This is
@@ -107,6 +110,21 @@ add_executable(wowsidecar WIN32
 target_include_directories(wowsidecar PRIVATE src)
 target_link_libraries(wowsidecar PRIVATE sidecar_common shell32)
 add_invariant_check(wowsidecar)
+
+add_executable(wowsidecar-manager WIN32
+  src/manager/main.cpp
+  src/manager/Probes.cpp
+  src/manager/Theme.cpp
+  ${imgui_SOURCE_DIR}/imgui.cpp
+  ${imgui_SOURCE_DIR}/imgui_draw.cpp
+  ${imgui_SOURCE_DIR}/imgui_tables.cpp
+  ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
+  ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp)
+target_include_directories(wowsidecar-manager PRIVATE
+  src ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+target_link_libraries(wowsidecar-manager PRIVATE sidecar_common shell32)
+add_invariant_check(wowsidecar-manager)
 
 add_executable(testpattern WIN32
   src/testpattern/main.cpp
