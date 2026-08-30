@@ -1,0 +1,12 @@
+build/
+out/
+.vs/
+.cache/
+third_party/
+*.user
+
+# Never commit third-party or unredistributable binaries (spec C5, I11)
+*.dll
+*.addon64
+*.addon32
+*.exe
