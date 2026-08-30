@@ -11,6 +11,7 @@ add_executable(sidecar_tests
   test_window_tracker.cpp
   test_hud.cpp
   test_format_normalize.cpp
+  test_luminance.cpp
   test_nvofa_flow.cpp
   test_motion_vector_math.cpp
   test_config.cpp

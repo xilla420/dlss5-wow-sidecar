@@ -87,6 +87,9 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
   // a static-scene assumption (spec section 11).
   p->normalize_ = FormatNormalize::Create(dev, w, h);
   p->normalized_ = FormatNormalize::CreateRgba16fTarget(dev, w, h);
+  p->luminance_ = Luminance::Create(dev, w, h);
+  p->previousLuma_ = Luminance::CreateR8Target(dev, w, h);
+  p->currentLuma_ = Luminance::CreateR8Target(dev, w, h);
   p->flow_ = NvofaFlow::Create(dev, p->bridge_->Queue(), w, h, 4);
   p->flowToMv_ = FlowToMotionVec::Create(dev, w, h);
   p->motionTarget_ = FlowToMotionVec::CreateMotionTarget(dev, w, h);
@@ -249,15 +252,17 @@ void Pipeline::RenderLoop() {
       normalize_->Record(cmdList_.Get(), frame->texture, normalized_.Get());
     }
 
+    // NVOFA consumes GRAYSCALE8, so reduce the captured frame to luminance
+    // before it goes anywhere near the flow accelerator.
+    const bool haveLuma = luminance_ && currentLuma_ && previousLuma_;
+    if (haveLuma) {
+      luminance_->Record(cmdList_.Get(), frame->texture, currentLuma_.Get());
+    }
+
     // A missing motion field is not a frame failure: the pass receives null and
     // treats the scene as static for this frame.
-    //
-    // NVOFA takes GRAYSCALE8 input, so this needs a BGRA8-to-R8 luminance
-    // stage feeding currentLuma_/previousLuma_. That stage is not built yet, so
-    // havePreviousFrame_ never becomes true and flow stays dormant even with
-    // the Optical Flow SDK compiled in.
     ID3D12Resource* motion = nullptr;
-    if (flow_ && flow_->Available() && havePreviousFrame_) {
+    if (flow_ && flow_->Available() && haveLuma && havePreviousFrame_) {
       FlowOutput out{};
       if (flow_->Execute(currentLuma_.Get(), previousLuma_.Get(), out)) {
         flowToMv_->Record(cmdList_.Get(), out, motionTarget_.Get());
@@ -294,6 +299,13 @@ void Pipeline::RenderLoop() {
     bridge_->Queue()->ExecuteCommandLists(1, lists);
 
     overlay_->Present(workTarget_.Get(), frame->fenceValue);
+
+    // This frame's luminance becomes next frame's reference. Swapping rather
+    // than copying keeps both textures alive and costs nothing.
+    if (haveLuma) {
+      currentLuma_.Swap(previousLuma_);
+      havePreviousFrame_ = true;
+    }
 
     const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin);
     stats_.Record(elapsed.count());
