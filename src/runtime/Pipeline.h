@@ -12,6 +12,7 @@
 #include "core/GpuProfile.h"
 #include "core/LatencyStats.h"
 #include "neural/INeuralPass.h"
+#include "present/Hud.h"
 #include "present/WindowTracker.h"
 
 namespace sidecar {
@@ -43,6 +44,7 @@ class Pipeline {
 
   const LatencyStats& Stats() const { return stats_; }
   HWND OverlayHwnd() const;
+  const Hud* GetHud() const { return hud_.get(); }
   std::string LastError() const;
 
  private:
@@ -56,7 +58,9 @@ class Pipeline {
   // Declared after overlay_ so it is torn down first: its callback holds a raw
   // pointer to the overlay.
   std::unique_ptr<WindowTracker> tracker_;
+  std::unique_ptr<Hud> hud_;
   std::unique_ptr<INeuralPass> pass_;
+  std::string gpuName_;
   Microsoft::WRL::ComPtr<ID3D12Resource> workTarget_;
   Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc_;
   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmdList_;

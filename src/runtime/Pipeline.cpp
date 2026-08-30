@@ -65,6 +65,13 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
               origin.y + static_cast<LONG>(h)};
   p->overlay_->SetBounds(bounds);
 
+  p->hud_ = Hud::Create();          // a missing HUD is not fatal
+  // Narrow the adapter description to ASCII for the HUD's GDI text path.
+  p->gpuName_.reserve(gpu.name.size());
+  for (const wchar_t c : gpu.name) {
+    p->gpuName_.push_back(c < 128 ? static_cast<char>(c) : '?');
+  }
+
   auto* dev = p->bridge_->D3d12();
   p->workTarget_ = CreateWorkTarget(dev, w, h);
   if (!p->workTarget_) return nullptr;
@@ -114,6 +121,7 @@ void Pipeline::Start() {
   running_.store(true, std::memory_order_release);
   source_->Start();
   if (config_.showOverlay) overlay_->Show();
+  if (hud_) hud_->Show();
   renderThread_ = std::thread([this] { RenderLoop(); });
 }
 
@@ -125,10 +133,12 @@ void Pipeline::Stop() {
   if (renderThread_.joinable()) renderThread_.join();
   if (source_) source_->Stop();
   if (overlay_) overlay_->Hide();
+  if (hud_) hud_->Hide();
   running_.store(false, std::memory_order_release);
 }
 
 void Pipeline::RenderLoop() {
+  uint64_t sinceHudUpdate = 0;
   while (!stopRequested_.load(std::memory_order_acquire)) {
     if (source_->IsClosed()) {
       FailAndHide("capture item closed: the target window went away");
@@ -178,6 +188,19 @@ void Pipeline::RenderLoop() {
 
     const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin);
     stats_.Record(elapsed.count());
+
+    // Refresh roughly twice a second rather than every frame.
+    if (hud_ && ++sinceHudUpdate >= 30) {
+      sinceHudUpdate = 0;
+      HudModel model;
+      model.p50Ms = stats_.P50();
+      model.p99Ms = stats_.P99();
+      model.frames = stats_.Count();
+      model.drops = stats_.Dropped();
+      model.passName = pass_->Name();
+      model.gpuName = gpuName_.c_str();
+      hud_->Update(model);
+    }
   }
   running_.store(false, std::memory_order_release);
 }
