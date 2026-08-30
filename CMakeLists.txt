@@ -67,6 +67,7 @@ target_sources(sidecar_common PRIVATE
   src/common/.keep.cpp
   src/common/core/GpuProfile.cpp
   src/common/core/LatencyStats.cpp
+  src/common/core/Config.cpp
   src/common/gpu/DeviceBridge.cpp
   src/common/gpu/FormatNormalize.cpp
   src/common/flow/NvofaFlow.cpp
