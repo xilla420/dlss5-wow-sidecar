@@ -51,6 +51,7 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
 
   std::unique_ptr<Pipeline> p(new Pipeline());
   p->config_ = config;
+  p->gpu_ = gpu;
   p->pass_ = std::move(pass);
 
   p->bridge_ = DeviceBridge::Create(gpu.luid, w, h);
@@ -121,6 +122,64 @@ void Pipeline::FailAndHide(const char* reason) {
   lastError_ = reason;
 }
 
+void Pipeline::Panic() noexcept {
+  // Overlay first, always. The player must be able to see the game again
+  // immediately, before any slower teardown happens.
+  if (overlay_) overlay_->Hide();
+  if (hud_) hud_->Hide();
+  stopRequested_.store(true, std::memory_order_release);
+}
+
+bool Pipeline::Rebuild() {
+  // Device loss invalidates both devices, the shared ring, the swapchain and
+  // every pipeline state, so the only correct response is to build all of it
+  // again from the adapter up.
+  if (overlay_) overlay_->Hide();
+  source_.reset();
+  tracker_.reset();
+  overlay_.reset();
+  normalize_.reset();
+  flow_.reset();
+  flowToMv_.reset();
+  normalized_.Reset();
+  motionTarget_.Reset();
+  previousLuma_.Reset();
+  currentLuma_.Reset();
+  workTarget_.Reset();
+  cmdList_.Reset();
+  alloc_.Reset();
+  bridge_.reset();
+
+  auto rebuilt = Pipeline::Create(gpu_, config_, std::move(pass_));
+  if (!rebuilt) return false;
+
+  // Everything device-derived comes across. Stats and the panic switch stay,
+  // so a reset does not erase the latency history the operator is reading.
+  // The HUD moves too: Hud::Create points a file-scope pointer at the newest
+  // instance, so leaving the old one in place would stop it painting.
+  bridge_ = std::move(rebuilt->bridge_);
+  overlay_ = std::move(rebuilt->overlay_);
+  source_ = std::move(rebuilt->source_);
+  tracker_ = std::move(rebuilt->tracker_);
+  hud_ = std::move(rebuilt->hud_);
+  pass_ = std::move(rebuilt->pass_);
+  normalize_ = std::move(rebuilt->normalize_);
+  flow_ = std::move(rebuilt->flow_);
+  flowToMv_ = std::move(rebuilt->flowToMv_);
+  normalized_ = rebuilt->normalized_;
+  motionTarget_ = rebuilt->motionTarget_;
+  workTarget_ = rebuilt->workTarget_;
+  alloc_ = rebuilt->alloc_;
+  cmdList_ = rebuilt->cmdList_;
+  gpuName_ = rebuilt->gpuName_;
+  havePreviousFrame_ = false;
+
+  source_->Start();
+  if (config_.showOverlay) overlay_->Show();
+  if (hud_) hud_->Show();
+  return true;
+}
+
 void Pipeline::Start() {
   // Gate on the thread, not on running_: the render loop clears running_ by
   // itself when a frame fails, and a second Start() must not leave the first
@@ -147,8 +206,26 @@ void Pipeline::Stop() {
 }
 
 void Pipeline::RenderLoop() {
+  // RegisterHotKey binds the hotkey to the registering thread's message queue
+  // and Pump drains that same queue, so both have to happen here rather than
+  // on whichever thread called Start().
+  panic_ = PanicSwitch::Create([this] { Panic(); });
+
   uint64_t sinceHudUpdate = 0;
   while (!stopRequested_.load(std::memory_order_acquire)) {
+    if (panic_) panic_->Pump();
+    if (panic_ && panic_->Triggered()) break;
+
+    const HRESULT reason = bridge_->D3d12()->GetDeviceRemovedReason();
+    if (IsDeviceLost(reason)) {
+      FailAndHide("graphics device was reset; rebuilding");
+      if (!Rebuild()) {
+        FailAndHide("graphics device was reset and could not be rebuilt");
+        break;
+      }
+      continue;
+    }
+
     if (source_->IsClosed()) {
       FailAndHide("capture item closed: the target window went away");
       break;
@@ -234,6 +311,8 @@ void Pipeline::RenderLoop() {
       hud_->Update(model);
     }
   }
+  // UnregisterHotKey must run on the thread that registered it.
+  panic_.reset();
   running_.store(false, std::memory_order_release);
 }
 

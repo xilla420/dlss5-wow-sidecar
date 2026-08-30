@@ -28,6 +28,20 @@ def test_flags_networking_per_i10():
     found = forbidden_imports({"WS2_32.dll!socket", "WINHTTP.dll!WinHttpOpen"})
     assert sorted(found) == ["WINHTTP.dll!WinHttpOpen", "WS2_32.dll!socket"]
 
+def test_elevation_check_rejects_admin_manifest(tmp_path):
+    from check_imports import check_no_elevation_manifest
+    fake = tmp_path / "fake.exe"
+    fake.write_bytes(b"MZ...<requestedExecutionLevel level='requireAdministrator'/>")
+    assert check_no_elevation_manifest(str(fake)) is False
+
+
+def test_elevation_check_accepts_plain_manifest(tmp_path):
+    from check_imports import check_no_elevation_manifest
+    fake = tmp_path / "fake.exe"
+    fake.write_bytes(b"MZ...<requestedExecutionLevel level='asInvoker'/>")
+    assert check_no_elevation_manifest(str(fake)) is True
+
+
 def test_allows_legitimate_imports():
     assert forbidden_imports({
         "USER32.dll!SetWinEventHook",
