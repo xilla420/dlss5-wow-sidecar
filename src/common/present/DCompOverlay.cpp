@@ -109,7 +109,16 @@ void DCompOverlay::Show() {
 }
 
 void DCompOverlay::Hide() noexcept {
-  if (hwnd_) ShowWindow(hwnd_, SW_HIDE);
+  // Called from the render thread on the failure path, while the window is
+  // owned by the thread that created the overlay. ShowWindow would block here
+  // until that thread pumped, holding the render thread hostage exactly when
+  // the spec demands the overlay come down immediately. SWP_ASYNCWINDOWPOS
+  // posts the request instead of waiting for it.
+  if (hwnd_) {
+    SetWindowPos(hwnd_, nullptr, 0, 0, 0, 0,
+                 SWP_HIDEWINDOW | SWP_NOACTIVATE | SWP_NOMOVE | SWP_NOSIZE |
+                     SWP_NOZORDER | SWP_ASYNCWINDOWPOS);
+  }
   visible_ = false;
 }
 

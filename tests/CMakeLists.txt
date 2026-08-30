@@ -7,7 +7,10 @@ add_executable(sidecar_tests
   test_wgc_source.cpp
   test_dcomp_overlay.cpp
   test_passthrough_pass.cpp
+  test_pipeline_m0.cpp
+  ../src/runtime/Pipeline.cpp
   ../src/testpattern/Pattern.cpp)
+target_include_directories(sidecar_tests PRIVATE ../src)
 target_link_libraries(sidecar_tests PRIVATE sidecar_common Catch2::Catch2WithMain)
 
 # The capture test launches testpattern.exe, which CreateProcess resolves from
