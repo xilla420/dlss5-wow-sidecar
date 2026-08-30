@@ -107,6 +107,16 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   while (GetMessageW(&msg, nullptr, 0, 0)) {
     TranslateMessage(&msg);
     DispatchMessageW(&msg);
+
+    // The render thread cannot rebuild after device loss: it would create the
+    // overlay window on a thread that never pumps. It posts a WM_NULL to wake
+    // this loop instead, and the rebuild happens here, where the windows live.
+    if (pipeline->NeedsRebuild() && !pipeline->RebuildAndRestart()) {
+      MessageBoxW(nullptr,
+                  L"The graphics device was reset and could not be rebuilt.",
+                  L"DLSS 5 Sidecar", MB_ICONERROR);
+      break;
+    }
   }
   pipeline->Stop();
   return 0;

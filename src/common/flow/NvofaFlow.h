@@ -45,6 +45,16 @@ class NvofaFlow {
   bool Execute(ID3D12Resource* current, ID3D12Resource* previous,
                uint64_t inputReadyValue, FlowOutput& out);
 
+  // Blocks until every flow execution submitted so far has completed. Nothing
+  // that NVOFA touched may be destroyed while it is still working on it.
+  void WaitForIdle(uint32_t timeoutMs = 2000);
+
+  // Drops the accelerator session and its registrations. Idempotent, and safe
+  // to call before the owning objects are torn down -- which is the point:
+  // the driver wants its session released while the resources it registered
+  // are still alive, not part-way through their destruction.
+  void Shutdown();
+
   // Signalled by the caller once the luminance textures are written.
   ID3D12Fence* InputFence() const { return inputFence_.Get(); }
   // Signalled by NVOFA once the flow grid is written.
@@ -63,7 +73,13 @@ class NvofaFlow {
   void* session_ = nullptr;   // NvOFHandle; opaque so the SDK stays out of the header
   void* api_ = nullptr;       // NV_OF_D3D12_API_FUNCTION_LIST*
   void* library_ = nullptr;   // HMODULE for nvofapi64.dll
+  // Kept so teardown can ask whether the device is still there before calling
+  // back into the driver.
+  Microsoft::WRL::ComPtr<ID3D12Device> device_;
 
+  // Handles only, deliberately not references. Holding the registered
+  // resources alive here changes the order they come apart relative to the
+  // driver session, and doing so crashed teardown.
   std::unordered_map<ID3D12Resource*, void*> registered_;
 
   Microsoft::WRL::ComPtr<ID3D12Resource> flowGrid_;

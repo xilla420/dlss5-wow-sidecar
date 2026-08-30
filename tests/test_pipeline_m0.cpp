@@ -111,6 +111,10 @@ TEST_CASE("pipeline hides the overlay when the target window closes", "[device]"
     hidden = !IsWindowVisible(overlay);
     if (!hidden) PumpFor(25ms);
   }
+  // If this fails, the two useful questions are whether the render loop ever
+  // noticed (lastError set) and whether it is still spinning (Running).
+  INFO("lastError='" << pipeline->LastError() << "' running=" << pipeline->Running()
+       << " frames=" << pipeline->Stats().Count());
   REQUIRE(hidden);   // spec failure rule: fail to a visible game, never to black
 
   pipeline->Stop();
