@@ -29,6 +29,35 @@ target_compile_definitions(Catch2WithMain PRIVATE DO_NOT_USE_WMAIN)
 
 include(cmake/Invariants.cmake)
 
+# Shaders are compiled to headers at build time so nothing is compiled at
+# runtime and no .cso files need shipping.
+find_program(DXC_EXECUTABLE dxc
+  HINTS "$ENV{WindowsSdkVerBinPath}x64"
+        "$ENV{WindowsSdkDir}bin/x64"
+        "$ENV{ProgramFiles\(x86\)}/Windows Kits/10/bin/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/x64"
+        "$ENV{ProgramFiles}/Windows Kits/10/bin/${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}/x64")
+if(NOT DXC_EXECUTABLE)
+  message(FATAL_ERROR "dxc not found. Install the Windows SDK.")
+endif()
+
+set(SHADER_OUT_DIR ${CMAKE_BINARY_DIR}/generated/gpu/Shaders)
+file(MAKE_DIRECTORY ${SHADER_OUT_DIR})
+
+function(compile_compute_shader name)
+  add_custom_command(
+    OUTPUT ${SHADER_OUT_DIR}/${name}.cs.h
+    COMMAND ${DXC_EXECUTABLE} -T cs_6_0 -E CSMain
+            -Fh ${SHADER_OUT_DIR}/${name}.cs.h
+            -Vn g_${name}CS
+            ${CMAKE_SOURCE_DIR}/src/common/gpu/Shaders/${name}.hlsl
+    DEPENDS ${CMAKE_SOURCE_DIR}/src/common/gpu/Shaders/${name}.hlsl
+    COMMENT "Compiling compute shader ${name}"
+    VERBATIM)
+  set(SHADER_HEADERS ${SHADER_HEADERS} ${SHADER_OUT_DIR}/${name}.cs.h PARENT_SCOPE)
+endfunction()
+
+compile_compute_shader(FormatNormalize)
+
 add_library(sidecar_common STATIC)
 target_include_directories(sidecar_common PUBLIC src/common)
 target_link_libraries(sidecar_common PUBLIC
@@ -38,11 +67,19 @@ target_sources(sidecar_common PRIVATE
   src/common/core/GpuProfile.cpp
   src/common/core/LatencyStats.cpp
   src/common/gpu/DeviceBridge.cpp
+  src/common/gpu/FormatNormalize.cpp
   src/common/capture/WgcSource.cpp
   src/common/present/DCompOverlay.cpp
   src/common/present/WindowTracker.cpp
   src/common/present/Hud.cpp
   src/common/neural/PassthroughPass.cpp)
+
+# Generated shader headers, listed as sources so the custom commands run.
+target_sources(sidecar_common PRIVATE ${SHADER_HEADERS})
+target_include_directories(sidecar_common PUBLIC ${CMAKE_BINARY_DIR}/generated)
+# d3dcompiler is deliberately not linked: shaders are compiled by dxc at build
+# time and D3D12SerializeRootSignature lives in d3d12.dll, so linking it would
+# add a DLL dependency this binary never calls.
 
 # C++/WinRT needs the Windows Runtime headers and coroutine support.
 target_compile_options(sidecar_common PUBLIC /await:strict)
