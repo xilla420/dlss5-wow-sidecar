@@ -2,11 +2,17 @@
 #include <shellapi.h>   // CommandLineToArgvW; WIN32_LEAN_AND_MEAN drops it
 #include <cstdio>
 
+#include <filesystem>
+#include <string>
+#include <vector>
+
+#include "core/Config.h"
 #include "core/GpuProfile.h"
-#include "neural/PassthroughPass.h"
+#include "neural/NeuralPassFactory.h"
 #include "present/WindowTracker.h"
 #include "runtime/Pipeline.h"
 
+namespace fs = std::filesystem;
 using namespace sidecar;
 
 namespace {
@@ -15,6 +21,21 @@ struct Target {
   HWND hwnd = nullptr;
   const wchar_t* problem = nullptr;
 };
+
+fs::path ExecutableDirectory() {
+  wchar_t buffer[MAX_PATH]{};
+  GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+  return fs::path(buffer).parent_path();
+}
+
+// Config problems are warnings by design, so they must not interrupt startup
+// with a dialog. There is no logging module yet, so they go to the debugger.
+void ReportWarnings(const std::vector<std::string>& warnings) {
+  for (const auto& warning : warnings) {
+    const std::string line = "[sidecar] config: " + warning + "\n";
+    OutputDebugStringA(line.c_str());
+  }
+}
 
 Target ResolveTarget(int argc, wchar_t** argv) {
   // An explicit class name still works, so the runtime can be driven against
@@ -58,9 +79,24 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     return 1;
   }
 
+  // An absent config file is normal: every value has a working default, and a
+  // malformed one warns rather than stopping the overlay (Task 15's contract).
+  std::vector<std::string> warnings;
+  Config config;
+  if (auto loaded = LoadConfig(ExecutableDirectory() / "sidecar.toml", warnings)) {
+    config = *loaded;
+  }
+
   PipelineConfig cfg;
   cfg.target = target.hwnd;
-  auto pipeline = Pipeline::Create(*gpu, cfg, PassthroughPass::Create());
+  cfg.showOverlay = config.showOverlay;
+  cfg.showHud = config.showHud;
+  cfg.flowGridSize = config.flowGridSize;
+
+  auto pass = MakeNeuralPass(config.neuralPass, warnings);
+  ReportWarnings(warnings);
+
+  auto pipeline = Pipeline::Create(*gpu, cfg, std::move(pass));
   if (!pipeline) {
     MessageBoxW(nullptr, L"Failed to create the pipeline.", L"DLSS 5 Sidecar", MB_ICONERROR);
     return 1;
