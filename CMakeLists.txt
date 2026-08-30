@@ -39,5 +39,11 @@ add_executable(wowsidecar WIN32 src/runtime/main.cpp)
 target_link_libraries(wowsidecar PRIVATE sidecar_common)
 add_invariant_check(wowsidecar)
 
+add_executable(testpattern WIN32
+  src/testpattern/main.cpp
+  src/testpattern/Pattern.cpp)
+target_link_libraries(testpattern PRIVATE d3d11 dxgi)
+add_invariant_check(testpattern)
+
 enable_testing()
 add_subdirectory(tests)
