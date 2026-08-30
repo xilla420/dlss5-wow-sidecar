@@ -35,7 +35,8 @@ target_link_libraries(sidecar_common PUBLIC
   d3d11 d3d12 dxgi dxguid dcomp windowsapp tomlplusplus::tomlplusplus)
 target_sources(sidecar_common PRIVATE
   src/common/.keep.cpp
-  src/common/core/GpuProfile.cpp)
+  src/common/core/GpuProfile.cpp
+  src/common/core/LatencyStats.cpp)
 
 add_executable(wowsidecar WIN32 src/runtime/main.cpp)
 target_link_libraries(wowsidecar PRIVATE sidecar_common)
