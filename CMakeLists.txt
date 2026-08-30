@@ -37,7 +37,12 @@ target_sources(sidecar_common PRIVATE
   src/common/.keep.cpp
   src/common/core/GpuProfile.cpp
   src/common/core/LatencyStats.cpp
-  src/common/gpu/DeviceBridge.cpp)
+  src/common/gpu/DeviceBridge.cpp
+  src/common/capture/WgcSource.cpp)
+
+# C++/WinRT needs the Windows Runtime headers and coroutine support.
+target_compile_options(sidecar_common PUBLIC /await:strict)
+target_link_libraries(sidecar_common PUBLIC windowsapp)
 
 add_executable(wowsidecar WIN32 src/runtime/main.cpp)
 target_link_libraries(wowsidecar PRIVATE sidecar_common)
