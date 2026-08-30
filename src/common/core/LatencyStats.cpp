@@ -11,12 +11,12 @@ void LatencyStats::Record(double ms) {
   if (count_ < kCapacity) ++count_;
 }
 
-void LatencyStats::RecordDrop() { ++dropped_; }
+void LatencyStats::RecordDrop() { dropped_.fetch_add(1, std::memory_order_relaxed); }
 
 void LatencyStats::Reset() {
   next_ = 0;
   count_ = 0;
-  dropped_ = 0;
+  dropped_.store(0, std::memory_order_relaxed);
 }
 
 double LatencyStats::Percentile(double fraction) const {

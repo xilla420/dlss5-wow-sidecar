@@ -46,8 +46,11 @@ target_sources(sidecar_common PRIVATE
 target_compile_options(sidecar_common PUBLIC /await:strict)
 target_link_libraries(sidecar_common PUBLIC windowsapp)
 
-add_executable(wowsidecar WIN32 src/runtime/main.cpp)
-target_link_libraries(wowsidecar PRIVATE sidecar_common)
+add_executable(wowsidecar WIN32
+  src/runtime/main.cpp
+  src/runtime/Pipeline.cpp)
+target_include_directories(wowsidecar PRIVATE src)
+target_link_libraries(wowsidecar PRIVATE sidecar_common shell32)
 add_invariant_check(wowsidecar)
 
 add_executable(testpattern WIN32

@@ -1,5 +1,6 @@
 #pragma once
 #include <array>
+#include <atomic>
 #include <cstdint>
 
 namespace sidecar {
@@ -15,7 +16,7 @@ class LatencyStats {
 
   double P50() const;
   double P99() const;
-  uint64_t Dropped() const { return dropped_; }
+  uint64_t Dropped() const { return dropped_.load(std::memory_order_relaxed); }
   uint64_t Count() const { return count_; }
 
  private:
@@ -24,7 +25,10 @@ class LatencyStats {
   std::array<double, kCapacity> samples_{};
   size_t next_ = 0;
   uint64_t count_ = 0;     // number of live samples, capped at kCapacity
-  uint64_t dropped_ = 0;
+
+  // Samples are written only by the render thread, but drops are reported by
+  // the capture thread, so this one counter crosses threads.
+  std::atomic<uint64_t> dropped_{0};
 };
 
 }  // namespace sidecar
