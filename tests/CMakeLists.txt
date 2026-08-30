@@ -8,6 +8,7 @@ add_executable(sidecar_tests
   test_dcomp_overlay.cpp
   test_passthrough_pass.cpp
   test_pipeline_m0.cpp
+  test_window_tracker.cpp
   ../src/runtime/Pipeline.cpp
   ../src/testpattern/Pattern.cpp)
 target_include_directories(sidecar_tests PRIVATE ../src)

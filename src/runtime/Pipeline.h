@@ -12,6 +12,7 @@
 #include "core/GpuProfile.h"
 #include "core/LatencyStats.h"
 #include "neural/INeuralPass.h"
+#include "present/WindowTracker.h"
 
 namespace sidecar {
 
@@ -52,6 +53,9 @@ class Pipeline {
   std::unique_ptr<DeviceBridge> bridge_;
   std::unique_ptr<WgcSource> source_;
   std::unique_ptr<DCompOverlay> overlay_;
+  // Declared after overlay_ so it is torn down first: its callback holds a raw
+  // pointer to the overlay.
+  std::unique_ptr<WindowTracker> tracker_;
   std::unique_ptr<INeuralPass> pass_;
   Microsoft::WRL::ComPtr<ID3D12Resource> workTarget_;
   Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc_;
