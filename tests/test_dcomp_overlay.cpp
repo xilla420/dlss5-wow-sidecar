@@ -45,16 +45,25 @@ TEST_CASE("clicks pass through the overlay to the window beneath", "[device]") {
   wc.hInstance = GetModuleHandleW(nullptr);
   wc.lpszClassName = L"SidecarClickTarget";
   RegisterClassExW(&wc);
-  HWND beneath = CreateWindowExW(0, wc.lpszClassName, L"beneath",
+  // Topmost, so a fullscreen topmost application that happens to be running --
+  // the game itself, for instance -- cannot sit between the overlay and this
+  // window and steal the hit test.
+  HWND beneath = CreateWindowExW(WS_EX_TOPMOST, wc.lpszClassName, L"beneath",
                                  WS_POPUP | WS_VISIBLE, 200, 200, 400, 300,
                                  nullptr, nullptr, wc.hInstance, nullptr);
   REQUIRE(beneath != nullptr);
+  SetWindowPos(beneath, HWND_TOPMOST, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
   auto overlay = DCompOverlay::Create(*bridge, 400, 300);
   REQUIRE(overlay != nullptr);
   RECT bounds{200, 200, 600, 500};
   overlay->SetBounds(bounds);
   overlay->Show();
+  // The overlay must end up above the window beneath, or the test proves
+  // nothing about hit-testing through it.
+  SetWindowPos(overlay->Hwnd(), HWND_TOPMOST, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
   std::this_thread::sleep_for(150ms);
 
   // A point squarely inside both windows must resolve to the one beneath.

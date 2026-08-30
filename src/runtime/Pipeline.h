@@ -15,6 +15,7 @@
 #include "flow/FlowToMotionVec.h"
 #include "flow/NvofaFlow.h"
 #include "gpu/FormatNormalize.h"
+#include "gpu/Luminance.h"
 #include "neural/INeuralPass.h"
 #include "present/Hud.h"
 #include "present/WindowTracker.h"
@@ -77,6 +78,7 @@ class Pipeline {
   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmdList_;
 
   std::unique_ptr<FormatNormalize> normalize_;
+  std::unique_ptr<Luminance> luminance_;
   std::unique_ptr<NvofaFlow> flow_;
   std::unique_ptr<FlowToMotionVec> flowToMv_;
   Microsoft::WRL::ComPtr<ID3D12Resource> normalized_;
