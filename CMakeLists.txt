@@ -40,6 +40,7 @@ target_sources(sidecar_common PRIVATE
   src/common/gpu/DeviceBridge.cpp
   src/common/capture/WgcSource.cpp
   src/common/present/DCompOverlay.cpp
+  src/common/present/WindowTracker.cpp
   src/common/neural/PassthroughPass.cpp)
 
 # C++/WinRT needs the Windows Runtime headers and coroutine support.

@@ -79,6 +79,12 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
                                           [raw] { raw->stats_.RecordDrop(); });
   if (!p->source_) return nullptr;
 
+  DCompOverlay* overlay = p->overlay_.get();
+  p->tracker_ = WindowTracker::Create(config.target, [overlay](const RECT& r) {
+    overlay->SetBounds(r);
+  });
+  // A missing tracker is not fatal: the overlay simply will not follow moves.
+
   return p;
 }
 
