@@ -81,6 +81,15 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
                                     nullptr, IID_PPV_ARGS(&p->cmdList_)))) return nullptr;
   p->cmdList_->Close();
 
+  // Optical flow and its consumers. Every one of these is optional: a failure
+  // here costs motion vectors, not the frame, so the pipeline still runs with
+  // a static-scene assumption (spec section 11).
+  p->normalize_ = FormatNormalize::Create(dev, w, h);
+  p->normalized_ = FormatNormalize::CreateRgba16fTarget(dev, w, h);
+  p->flow_ = NvofaFlow::Create(dev, p->bridge_->Queue(), w, h, 4);
+  p->flowToMv_ = FlowToMotionVec::Create(dev, w, h);
+  p->motionTarget_ = FlowToMotionVec::CreateMotionTarget(dev, w, h);
+
   Pipeline* raw = p.get();
   p->source_ = WgcSource::CreateForWindow(config.target, *p->bridge_,
                                           [raw] { raw->stats_.RecordDrop(); });
@@ -156,6 +165,29 @@ void Pipeline::RenderLoop() {
     alloc_->Reset();
     cmdList_->Reset(alloc_.Get(), nullptr);
 
+    // Widen the captured frame into typed RGBA16F. Nothing consumes it until
+    // the neural pass lands in M3, but running it now keeps the format seam
+    // exercised rather than discovered later.
+    if (normalize_ && normalized_) {
+      normalize_->Record(cmdList_.Get(), frame->texture, normalized_.Get());
+    }
+
+    // A missing motion field is not a frame failure: the pass receives null and
+    // treats the scene as static for this frame.
+    //
+    // NVOFA takes GRAYSCALE8 input, so this needs a BGRA8-to-R8 luminance
+    // stage feeding currentLuma_/previousLuma_. That stage is not built yet, so
+    // havePreviousFrame_ never becomes true and flow stays dormant even with
+    // the Optical Flow SDK compiled in.
+    ID3D12Resource* motion = nullptr;
+    if (flow_ && flow_->Available() && havePreviousFrame_) {
+      FlowOutput out{};
+      if (flow_->Execute(currentLuma_.Get(), previousLuma_.Get(), out)) {
+        flowToMv_->Record(cmdList_.Get(), out, motionTarget_.Get());
+        motion = motionTarget_.Get();
+      }
+    }
+
     // The pass writes workTarget_ and the overlay's present reads it straight
     // back, so bracket the pass: COPY_SOURCE at rest, COPY_DEST while written.
     D3D12_RESOURCE_BARRIER toWrite{};
@@ -167,7 +199,7 @@ void Pipeline::RenderLoop() {
     cmdList_->ResourceBarrier(1, &toWrite);
 
     const bool ok = pass_->Evaluate(cmdList_.Get(), frame->texture,
-                                    nullptr, nullptr, workTarget_.Get());
+                                    motion, nullptr, workTarget_.Get());
 
     D3D12_RESOURCE_BARRIER toRead = toWrite;
     toRead.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;

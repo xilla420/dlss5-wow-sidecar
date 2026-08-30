@@ -11,6 +11,9 @@
 
 #include "core/GpuProfile.h"
 #include "core/LatencyStats.h"
+#include "flow/FlowToMotionVec.h"
+#include "flow/NvofaFlow.h"
+#include "gpu/FormatNormalize.h"
 #include "neural/INeuralPass.h"
 #include "present/Hud.h"
 #include "present/WindowTracker.h"
@@ -64,6 +67,15 @@ class Pipeline {
   Microsoft::WRL::ComPtr<ID3D12Resource> workTarget_;
   Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc_;
   Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList> cmdList_;
+
+  std::unique_ptr<FormatNormalize> normalize_;
+  std::unique_ptr<NvofaFlow> flow_;
+  std::unique_ptr<FlowToMotionVec> flowToMv_;
+  Microsoft::WRL::ComPtr<ID3D12Resource> normalized_;
+  Microsoft::WRL::ComPtr<ID3D12Resource> motionTarget_;
+  Microsoft::WRL::ComPtr<ID3D12Resource> previousLuma_;
+  Microsoft::WRL::ComPtr<ID3D12Resource> currentLuma_;
+  bool havePreviousFrame_ = false;
 
   PipelineConfig config_;
   std::thread renderThread_;

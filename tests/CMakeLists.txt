@@ -11,6 +11,8 @@ add_executable(sidecar_tests
   test_window_tracker.cpp
   test_hud.cpp
   test_format_normalize.cpp
+  test_nvofa_flow.cpp
+  test_motion_vector_math.cpp
   ../src/runtime/Pipeline.cpp
   ../src/testpattern/Pattern.cpp)
 target_include_directories(sidecar_tests PRIVATE ../src)
