@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <atomic>
 #include <chrono>
+#include <string_view>
 #include <thread>
 
 #include "present/WindowTracker.h"
@@ -89,7 +90,23 @@ TEST_CASE("tracker reports a move", "[unit]") {
 TEST_CASE("FindWowWindow returns nothing when WoW is not running", "[unit]") {
   // The suite does not launch WoW. This asserts the negative path is clean
   // rather than throwing or returning a stale handle.
-  if (FindWindowW(L"GxWindowClass", nullptr) == nullptr) {
+  bool anyPresent = false;
+  for (const wchar_t* className : kWowWindowClasses) {
+    if (FindWindowW(className, nullptr) != nullptr) anyPresent = true;
+  }
+  if (!anyPresent) {
     REQUIRE(FindWowWindow().has_value() == false);
   }
+}
+
+TEST_CASE("both the retail and Classic window classes are recognised", "[unit]") {
+  // Retail registers "waApplication Window"; missing it is why the runtime
+  // failed to see a running game.
+  bool retail = false, classic = false;
+  for (const wchar_t* className : kWowWindowClasses) {
+    if (std::wstring_view(className) == L"waApplication Window") retail = true;
+    if (std::wstring_view(className) == L"GxWindowClass") classic = true;
+  }
+  REQUIRE(retail);
+  REQUIRE(classic);
 }
