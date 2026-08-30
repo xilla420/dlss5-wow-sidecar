@@ -1,0 +1,676 @@
+<title>DLSS 5 Sidecar</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+
+<style>
+:root{
+  --bg:#F1F4F3; --surface:#FFFFFF; --surface-2:#E8EDEC;
+  --border:#D3DDDB; --border-strong:#B6C4C2;
+  --ink:#101817; --ink-2:#33413F; --muted:#5A6866;
+  --accent:#0C6B69; --accent-ink:#FFFFFF; --accent-wash:#DCEBEA;
+  --ok:#2C7A50; --warn:#9E6A12; --danger:#A93429;
+  --ok-wash:#DDEDE3; --warn-wash:#F3E9D3; --danger-wash:#F3DEDB;
+  --rule:1px solid var(--border);
+  --shadow:0 1px 2px rgba(16,24,23,.05), 0 8px 24px -16px rgba(16,24,23,.25);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0D1312; --surface:#131C1B; --surface-2:#182321;
+    --border:#22302E; --border-strong:#33443F;
+    --ink:#E3EAE8; --ink-2:#C0CDCA; --muted:#8A9997;
+    --accent:#43BAB4; --accent-ink:#08201F; --accent-wash:#152B2A;
+    --ok:#57BC85; --warn:#D6A144; --danger:#E27366;
+    --ok-wash:#132A20; --warn-wash:#2B2413; --danger-wash:#2E1917;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0D1312; --surface:#131C1B; --surface-2:#182321;
+  --border:#22302E; --border-strong:#33443F;
+  --ink:#E3EAE8; --ink-2:#C0CDCA; --muted:#8A9997;
+  --accent:#43BAB4; --accent-ink:#08201F; --accent-wash:#152B2A;
+  --ok:#57BC85; --warn:#D6A144; --danger:#E27366;
+  --ok-wash:#132A20; --warn-wash:#2B2413; --danger-wash:#2E1917;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -16px rgba(0,0,0,.8);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:"IBM Plex Serif",Georgia,"Times New Roman",serif;
+  font-size:17px; line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px 96px}
+
+/* ---------- masthead ---------- */
+.mast{padding:64px 0 40px;border-bottom:2px solid var(--ink);margin-bottom:48px}
+.mast .kicker{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:12px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent);margin:0 0 18px;display:flex;gap:14px;flex-wrap:wrap;align-items:center
+}
+.mast .kicker span{color:var(--muted)}
+h1{
+  font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;
+  font-weight:700;font-size:clamp(40px,7.5vw,76px);line-height:.98;
+  letter-spacing:-.015em;margin:0 0 20px;text-wrap:balance;max-width:16ch
+}
+.standfirst{font-size:20px;line-height:1.55;color:var(--ink-2);max-width:62ch;margin:0}
+.meta{
+  display:flex;flex-wrap:wrap;gap:0 32px;margin-top:32px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12.5px;color:var(--muted)
+}
+.meta b{color:var(--ink);font-weight:500}
+
+/* ---------- layout ---------- */
+.cols{display:grid;grid-template-columns:1fr;gap:0}
+@media (min-width:1000px){
+  .cols{grid-template-columns:190px minmax(0,1fr);gap:56px;align-items:start}
+  .toc{position:sticky;top:28px}
+}
+.toc{font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;font-size:13.5px;line-height:1.45}
+.toc-h{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);padding-bottom:10px;border-bottom:var(--rule);margin-bottom:12px
+}
+.toc ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:7px}
+.toc a{
+  color:var(--muted);text-decoration:none;display:grid;grid-template-columns:24px 1fr;gap:6px;
+  padding:2px 0;border-radius:3px
+}
+.toc a:hover,.toc a:focus-visible{color:var(--accent)}
+.toc a i{font-style:normal;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:11px;
+  color:var(--border-strong);font-variant-numeric:tabular-nums}
+@media (max-width:999px){.toc{display:none}}
+
+main>section{padding-top:8px;margin-bottom:60px;scroll-margin-top:24px}
+h2{
+  font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;
+  font-weight:600;font-size:29px;line-height:1.15;letter-spacing:-.01em;
+  margin:0 0 6px;text-wrap:balance;
+  display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:baseline
+}
+h2 i{
+  font-style:normal;font-family:"IBM Plex Mono",ui-monospace,monospace;
+  font-size:13px;color:var(--accent);font-variant-numeric:tabular-nums;font-weight:500
+}
+h3{
+  font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;
+  font-weight:600;font-size:18px;letter-spacing:.005em;margin:34px 0 8px;color:var(--ink)
+}
+.sec-rule{height:1px;background:var(--border);margin:0 0 24px}
+p{margin:0 0 18px;max-width:68ch}
+a{color:var(--accent)}
+strong{font-weight:600}
+em{font-style:italic}
+code{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:.87em;
+  background:var(--surface-2);border:1px solid var(--border);border-radius:3px;padding:1px 5px
+}
+ul{margin:0 0 18px;padding-left:20px;max-width:68ch}
+li{margin-bottom:8px}
+ul.plain{list-style:none;padding-left:0}
+
+/* ---------- devices ---------- */
+.lede{
+  font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;
+  font-size:19px;line-height:1.5;color:var(--ink-2);max-width:60ch;margin:0 0 26px
+}
+.callout{
+  border:var(--rule);border-left:3px solid var(--accent);background:var(--surface);
+  padding:18px 22px;margin:0 0 22px;box-shadow:var(--shadow);border-radius:0 4px 4px 0
+}
+.callout.danger{border-left-color:var(--danger);background:var(--danger-wash)}
+.callout p:last-child{margin-bottom:0}
+.callout .lbl{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--muted);display:block;margin-bottom:7px
+}
+.callout.danger .lbl{color:var(--danger)}
+
+.scroll{overflow-x:auto;margin:0 0 24px;border:var(--rule);background:var(--surface);border-radius:4px}
+table{border-collapse:collapse;width:100%;font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;font-size:14.5px}
+th,td{text-align:left;padding:11px 16px;border-bottom:var(--rule);vertical-align:top}
+thead th{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10.5px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);font-weight:500;background:var(--surface-2);white-space:nowrap
+}
+tbody tr:last-child td{border-bottom:none}
+td code{background:transparent;border:none;padding:0;font-size:.9em}
+.num{font-variant-numeric:tabular-nums}
+
+pre{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:13px;line-height:1.6;
+  background:var(--surface);border:var(--rule);border-radius:4px;padding:18px 20px;
+  overflow-x:auto;margin:0 0 24px;color:var(--ink-2)
+}
+
+.pill{
+  display:inline-block;font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:10.5px;
+  letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:3px;white-space:nowrap;
+  border:1px solid transparent
+}
+.pill.ok{background:var(--ok-wash);color:var(--ok);border-color:var(--ok)}
+.pill.warn{background:var(--warn-wash);color:var(--warn);border-color:var(--warn)}
+.pill.bad{background:var(--danger-wash);color:var(--danger);border-color:var(--danger)}
+.pill.acc{background:var(--accent-wash);color:var(--accent);border-color:var(--accent)}
+
+figure{margin:0 0 28px}
+figure svg{display:block;width:100%;max-width:100%;height:auto;color:var(--ink)}
+.figbox{border:var(--rule);background:var(--surface);border-radius:4px;padding:26px 22px;overflow-x:auto}
+figcaption{
+  font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;font-size:13.5px;color:var(--muted);
+  margin-top:11px;max-width:66ch;line-height:1.5
+}
+
+/* invariants */
+.inv{display:grid;gap:0;border:var(--rule);border-radius:4px;overflow:hidden;background:var(--surface);margin-bottom:24px}
+.inv-row{display:grid;grid-template-columns:52px 1fr;gap:0;border-bottom:var(--rule)}
+.inv-row:last-child{border-bottom:none}
+.inv-id{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;font-weight:600;color:var(--accent);
+  background:var(--surface-2);display:flex;align-items:center;justify-content:center;
+  border-right:var(--rule)
+}
+.inv-t{padding:12px 16px;font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;font-size:14.5px;line-height:1.5}
+.inv-t code{font-size:.88em}
+
+/* milestones */
+.ms{list-style:none;padding:0;margin:0 0 24px;max-width:none}
+.ms li{
+  display:grid;grid-template-columns:60px 1fr;gap:16px;padding:14px 0;border-bottom:var(--rule);margin:0
+}
+.ms li:last-child{border-bottom:none}
+.ms .id{
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:15px;font-weight:600;color:var(--accent)
+}
+.ms .b{font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;font-size:15px;line-height:1.5}
+.ms .b b{display:block;font-weight:600;margin-bottom:2px}
+.ms .b span{color:var(--muted)}
+.ms li.gate .id{color:var(--warn)}
+.ms li.gate{background:var(--warn-wash);margin:0 -14px;padding:14px;border-radius:4px;border-bottom-color:transparent}
+
+.refs{list-style:none;padding:0;max-width:none;font-family:"IBM Plex Sans Condensed",system-ui,sans-serif;font-size:14px}
+.refs li{margin-bottom:9px;line-height:1.45}
+.refs a{text-decoration:none;border-bottom:1px solid var(--border-strong)}
+.refs a:hover{border-bottom-color:var(--accent)}
+
+footer{border-top:2px solid var(--ink);margin-top:56px;padding-top:22px;
+  font-family:"IBM Plex Mono",ui-monospace,monospace;font-size:12px;color:var(--muted)}
+
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+
+<header class="mast">
+  <p class="kicker">Design Specification <span>/</span> 2026-08-30 <span>/</span> Approved, pre-implementation</p>
+  <h1>DLSS 5 Sidecar</h1>
+  <p class="standfirst">Applying NVIDIA DLSS 5 Neural Rendering to World of Warcraft Retail without loading a single byte into <code>Wow.exe</code>.</p>
+  <div class="meta">
+    <div><b>Target</b> &nbsp;Windows 11 x64</div>
+    <div><b>GPU</b> &nbsp;RTX 40 (Ada), RTX 50 (Blackwell)</div>
+    <div><b>Toolchain</b> &nbsp;C++20 · CMake · MSVC v143</div>
+  </div>
+</header>
+
+<div class="cols">
+
+<nav class="toc" aria-label="Contents">
+  <div class="toc-h">Contents</div>
+  <ol>
+    <li><a href="#s1"><i>01</i>Summary</a></li>
+    <li><a href="#s2"><i>02</i>Why nothing works</a></li>
+    <li><a href="#s3"><i>03</i>Safety model</a></li>
+    <li><a href="#s4"><i>04</i>Architecture</a></li>
+    <li><a href="#s5"><i>05</i>Frame pipeline</a></li>
+    <li><a href="#s6"><i>06</i>GPU matrix</a></li>
+    <li><a href="#s7"><i>07</i>Neural routes</a></li>
+    <li><a href="#s8"><i>08</i>UI masking</a></li>
+    <li><a href="#s9"><i>09</i>Manager app</a></li>
+    <li><a href="#s10"><i>10</i>Testing</a></li>
+    <li><a href="#s11"><i>11</i>Milestones</a></li>
+    <li><a href="#s12"><i>12</i>Open risks</a></li>
+    <li><a href="#s13"><i>13</i>References</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<section id="s1">
+  <h2><i>01</i>Summary</h2><div class="sec-rule"></div>
+  <p class="lede">The sidecar treats World of Warcraft as a pixel source and nothing else. It captures the game's window through the OS, synthesises the inputs DLSS requires, runs the neural pass in its own process, and paints the result back over the game in a click-through overlay.</p>
+  <p>DLSS 5 is neural rendering, not upscaling — it re-lights and re-materialises surfaces, predominantly character models. WoW has no native DLSS of any kind, so there is no NGX call inside the game to intercept. Every published tool for enabling DLSS 5 solves that by injecting a ReShade add-on into the target process, which is precisely what cannot be done here.</p>
+  <p>So the neural pass moves out. The game process is never opened, never read, never written, never hooked. That constraint is the premise of the project, and every other decision on this page is subordinate to it.</p>
+</section>
+
+<section id="s2">
+  <h2><i>02</i>Why nothing off the shelf works</h2><div class="sec-rule"></div>
+  <p>The DLSS 5 runtime — <code>nvngx_dlssnr.dll</code>, DLSSNR 310.8.0.0 — leaked on 26 August 2026 in an NBA 2K27 early-access build. Within hours the community had it running in Control, GTA 5 and Skyrim, and a patched build followed that fixes the incompatible CUDA instructions so it runs on Ada.</p>
+  <p>Every one of those tools works the same way: a ReShade add-on detours <code>NVSDK_NGX_D3D12_CreateFeature</code> and <code>NVSDK_NGX_D3D12_EvaluateFeature</code> and inserts the neural pass into the game's own DLSS call.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Project</th><th>Solves</th><th>Applies to WoW</th></tr></thead>
+      <tbody>
+        <tr><td><code>DLSS5-Swapper</code></td><td>D3D12 games with native DLSS</td><td><span class="pill bad">No native DLSS</span></td></tr>
+        <tr><td><code>dlss5-dx11-bridge</code></td><td>D3D11 games with DLSS, via private D3D12 session</td><td><span class="pill bad">No native DLSS</span></td></tr>
+        <tr><td><code>DLSS5-Feeder</code></td><td>Games with no DLSS at all — synthesises a DLAA contract</td><td><span class="pill bad">Needs ReShade in-process</span></td></tr>
+        <tr><td><code>dlss5-d3d12-fix</code></td><td>Typeless-to-typed output mismatches</td><td><span class="pill warn">Informative only</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout danger">
+    <span class="lbl">The actual blocker</span>
+    <p>Blizzard's Terms of Use prohibit third-party client modification and Warden enforces it. Patch 11.1.7 (14 July 2025) explicitly rejected ReShade's <code>dxgi.dll</code>, and Blizzard has issued ban waves and blue posts naming ReShade, with penalties up to permanent account closure. This is not a rendering problem. It is a process-boundary problem.</p>
+  </div>
+
+  <p><code>DLSS5-Feeder</code> is architecturally the closest fit and is unusable for exactly one reason. This design takes its insight — synthesise the DLAA contract, run NGX on a private device — and relocates the whole thing outside the game.</p>
+</section>
+
+<section id="s3">
+  <h2><i>03</i>Safety model</h2><div class="sec-rule"></div>
+  <p>The safety claim is made mechanical rather than asserted. A CI job dumps each binary's import table and fails the build on any forbidden symbol.</p>
+
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 880 300" role="img" aria-label="Diagram: the only things crossing from Wow.exe to the sidecar are the DWM redirection surface and window styles; process memory, code injection and file access never cross.">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+          <marker id="arA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="#1B8A87"/>
+          </marker>
+        </defs>
+
+        <!-- left process -->
+        <rect x="16" y="52" width="250" height="212" rx="5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <text x="32" y="80" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" fill="currentColor">Wow.exe</text>
+        <text x="32" y="100" font-family="IBM Plex Sans Condensed, sans-serif" font-size="12" fill="currentColor" opacity=".62">borderless windowed</text>
+        <line x1="32" y1="114" x2="250" y2="114" stroke="currentColor" stroke-width="1" opacity=".22"/>
+        <text x="32" y="138" font-family="IBM Plex Sans Condensed, sans-serif" font-size="12.5" fill="currentColor" opacity=".8">D3D12 renderer</text>
+        <text x="32" y="160" font-family="IBM Plex Sans Condensed, sans-serif" font-size="12.5" fill="currentColor" opacity=".8">Game UI</text>
+        <text x="32" y="182" font-family="IBM Plex Sans Condensed, sans-serif" font-size="12.5" fill="currentColor" opacity=".8">Warden</text>
+        <text x="32" y="222" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity=".5">unmodified</text>
+        <text x="32" y="240" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity=".5">untouched</text>
+
+        <!-- wall -->
+        <line x1="330" y1="30" x2="330" y2="286" stroke="currentColor" stroke-width="2" stroke-dasharray="6 5"/>
+        <text x="330" y="22" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" letter-spacing="1.6" fill="currentColor" opacity=".62">PROCESS BOUNDARY</text>
+
+        <!-- allowed crossings -->
+        <line x1="266" y1="120" x2="392" y2="120" stroke="#1B8A87" stroke-width="1.8" marker-end="url(#arA)"/>
+        <text x="329" y="112" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#1B8A87">DWM surface</text>
+        <line x1="266" y1="176" x2="392" y2="176" stroke="#1B8A87" stroke-width="1.8" marker-end="url(#arA)"/>
+        <text x="329" y="168" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#1B8A87">window styles</text>
+
+        <!-- blocked crossings -->
+        <line x1="266" y1="236" x2="392" y2="236" stroke="currentColor" stroke-width="1.4" stroke-dasharray="4 4" opacity=".38"/>
+        <text x="329" y="228" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="currentColor" opacity=".55">memory · code · files</text>
+        <line x1="316" y1="222" x2="344" y2="250" stroke="currentColor" stroke-width="2"/>
+        <line x1="344" y1="222" x2="316" y2="250" stroke="currentColor" stroke-width="2"/>
+
+        <!-- right process -->
+        <rect x="392" y="52" width="250" height="212" rx="5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <text x="408" y="80" font-family="IBM Plex Mono, monospace" font-size="13" font-weight="600" fill="currentColor">wowsidecar.exe</text>
+        <text x="408" y="100" font-family="IBM Plex Sans Condensed, sans-serif" font-size="12" fill="currentColor" opacity=".62">our process, our rules</text>
+        <line x1="408" y1="114" x2="626" y2="114" stroke="currentColor" stroke-width="1" opacity=".22"/>
+        <text x="408" y="138" font-family="IBM Plex Sans Condensed, sans-serif" font-size="12.5" fill="currentColor" opacity=".8">WGC capture</text>
+        <text x="408" y="160" font-family="IBM Plex Sans Condensed, sans-serif" font-size="12.5" fill="currentColor" opacity=".8">NVOFA optical flow</text>
+        <text x="408" y="182" font-family="IBM Plex Sans Condensed, sans-serif" font-size="12.5" fill="currentColor" opacity=".8">NGX + nvngx_dlssnr</text>
+        <text x="408" y="204" font-family="IBM Plex Sans Condensed, sans-serif" font-size="12.5" fill="currentColor" opacity=".8">ReShade (route B)</text>
+        <text x="408" y="240" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" opacity=".5">never leaves this box</text>
+
+        <!-- overlay return -->
+        <path d="M642 158 L700 158 L700 292 L200 292 L200 270" fill="none" stroke="#1B8A87" stroke-width="1.8" marker-end="url(#arA)"/>
+        <text x="712" y="154" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#1B8A87">DComp overlay</text>
+        <text x="712" y="170" font-family="IBM Plex Sans Condensed, sans-serif" font-size="11.5" fill="currentColor" opacity=".62">click-through,</text>
+        <text x="712" y="186" font-family="IBM Plex Sans Condensed, sans-serif" font-size="11.5" fill="currentColor" opacity=".62">non-activating,</text>
+        <text x="712" y="202" font-family="IBM Plex Sans Condensed, sans-serif" font-size="11.5" fill="currentColor" opacity=".62">composited by DWM</text>
+      </svg>
+    </div>
+    <figcaption>Two things cross the boundary, both supplied by the OS: the composited window surface and the window styles. Process memory, injected code and file access never cross in either direction — which is what separates this from every existing DLSS 5 tool.</figcaption>
+  </figure>
+
+  <div class="inv">
+    <div class="inv-row"><div class="inv-id">I1</div><div class="inv-t">No <code>ReadProcessMemory</code>, <code>WriteProcessMemory</code>, <code>VirtualAllocEx</code>, <code>VirtualProtectEx</code> or <code>CreateRemoteThread</code> in either binary's import table.</div></div>
+    <div class="inv-row"><div class="inv-id">I2</div><div class="inv-t"><code>OpenProcess</code> never requested above <code>PROCESS_QUERY_LIMITED_INFORMATION</code>.</div></div>
+    <div class="inv-row"><div class="inv-id">I3</div><div class="inv-t"><code>SetWinEventHook</code> used only with <code>WINEVENT_OUTOFCONTEXT</code>. The in-context form maps a DLL into the target and would destroy the premise.</div></div>
+    <div class="inv-row"><div class="inv-id">I4</div><div class="inv-t"><code>SetWindowsHookEx</code> never used, in any form.</div></div>
+    <div class="inv-row"><div class="inv-id">I5</div><div class="inv-t">Never write to WoW's install directory; never read WoW's game data. Display mode comes from <code>GetWindowLong</code>, not from parsing <code>Config.wtf</code>.</div></div>
+    <div class="inv-row"><div class="inv-id">I6</div><div class="inv-t">Never synthesise input to WoW's window.</div></div>
+    <div class="inv-row"><div class="inv-id">I7</div><div class="inv-t">The installer hard-refuses any target path containing <code>Wow.exe</code>, <code>_retail_</code>, <code>_classic_</code> or <code>_classic_era_</code>.</div></div>
+    <div class="inv-row"><div class="inv-id">I8</div><div class="inv-t">On every launch, enumerate <em>filenames only</em> in WoW's install directory for known injector loaders — <code>dxgi.dll</code>, <code>d3d12.dll</code>, <code>dinput8.dll</code>, <code>version.dll</code>, <code>winmm.dll</code>, <code>opengl32.dll</code> — and refuse to launch if any are found. Deliberately reads that directory, to stop the user being banned for something they did before installing this.</div></div>
+    <div class="inv-row"><div class="inv-id">I9</div><div class="inv-t">The sidecar's own directory is re-verified at every launch to be outside WoW's install tree. I7 covers installation; I9 covers a user who moved things afterwards.</div></div>
+    <div class="inv-row"><div class="inv-id">I10</div><div class="inv-t">No network connection, ever. No telemetry, no update check, no download. CI asserts no <code>ws2_32</code>, <code>winhttp</code>, <code>wininet</code> or <code>urlmon</code> imports. A tool that downloads DLLs onto a gamer's machine looks exactly like malware; this one cannot.</div></div>
+    <div class="inv-row"><div class="inv-id">I11</div><div class="inv-t">The project distributes no third-party binaries — not the neural runtime, not the Ada patch, not ReShade. The user supplies them; we verify hashes and refuse unknown ones.</div></div>
+    <div class="inv-row"><div class="inv-id">I12</div><div class="inv-t">Never behave the way a cheat behaves. No packing, no obfuscation, no anti-debug, no process-name randomisation, no elevation. Warden can see <code>wowsidecar.exe</code> in a process list and that is fine — what gets software flagged is looking like it is hiding.</div></div>
+    <div class="inv-row"><div class="inv-id">I13</div><div class="inv-t">A panic hotkey hides the overlay and stops the pipeline instantly, without focus leaving the game.</div></div>
+  </div>
+
+  <h3>Ban-risk analysis</h3>
+  <p>Blizzard enforces against client modification and automation. Every vector they are known to act on is addressed by construction rather than by policy.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Enforcement vector</th><th>Applies</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Code injected into <code>Wow.exe</code></td><td><span class="pill ok">No</span></td><td>I1–I4. Nothing of ours is ever loaded into the game process.</td></tr>
+        <tr><td>Client memory read or written</td><td><span class="pill ok">No</span></td><td>I1, I2. We never open a handle capable of it.</td></tr>
+        <tr><td>Modified or added client files</td><td><span class="pill ok">No</span></td><td>I5, I7, I9. We never write to the install tree, and refuse to install into it.</td></tr>
+        <tr><td>Input automation, botting</td><td><span class="pill ok">No</span></td><td>I6. We never synthesise input. The sidecar cannot act.</td></tr>
+        <tr><td>Reading game state for advantage</td><td><span class="pill ok">No</span></td><td>We see only the pixels already on the player's screen, after the game drew them. No information the player did not already have.</td></tr>
+        <tr><td>Known-bad process signature</td><td><span class="pill ok">No</span></td><td>I12. We do nothing to hide, and we are not a cheat.</td></tr>
+        <tr><td>Screen capture of the game window</td><td><span class="pill ok">Not enforced</span></td><td>WGC is the same OS API behind OBS, Discord and Xbox Game Bar. Enforcing against it would ban most of the streaming population.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout danger">
+    <span class="lbl">Residual risk, stated honestly</span>
+    <p><strong>Blizzard could change what they enforce.</strong> This design removes every currently-known detection vector, which is the strongest position available — but it is not a guarantee, and nobody can offer one. If Blizzard's policy moves, the honest response is to stop shipping, not to evade.</p>
+    <p><strong>The user can still ban themselves.</strong> The most plausible path to an account closure for someone holding this tool is putting ReShade next to <code>Wow.exe</code> on their own initiative. I7 makes that awkward at install time and I8 makes it blocking at launch time, but a determined user can still do it.</p>
+    <p>The project claims what it can support: <em>this sidecar does not do any of the things Blizzard bans people for.</em> It does not claim that installing it is risk-free, because that claim would not be true of any third-party tool.</p>
+  </div>
+
+  <div class="callout danger">
+    <span class="lbl">Failure rule — outranks everything else</span>
+    <p>On <em>any</em> pipeline failure, hide the overlay immediately. This is an opaque window covering a live game; a broken pipeline that keeps presenting leaves the player blind mid-encounter. Fail to a visible game, never to black.</p>
+  </div>
+</section>
+
+<section id="s4">
+  <h2><i>04</i>Architecture</h2><div class="sec-rule"></div>
+  <p>One runtime executable plus one manager. Three threads in the runtime: <strong>capture</strong> (WinRT <code>GraphicsCaptureItem</code> on a D3D11 device, free-threaded frame pool), <strong>render</strong> (owns the D3D12 device — flow, neural pass, present), and <strong>control</strong> (hotkeys, config, window tracking, HUD).</p>
+
+  <h3>The D3D11-to-D3D12 seam</h3>
+  <p>WGC produces D3D11 textures; NGX and NVOFA consume D3D12 resources. Two devices are created on the same adapter, matched by LUID, bridged by a three-deep ring of <code>SHARED_NTHANDLE</code> textures opened with <code>OpenSharedHandle</code>. Synchronisation uses a shared fence pair. A keyed mutex is explicitly rejected — it serialises the two queues and costs latency the budget cannot absorb.</p>
+
+  <h3>Presentation</h3>
+  <p><code>WS_EX_LAYERED</code> cannot host a flip swapchain, so the overlay is a <code>WS_POPUP</code> with <code>WS_EX_NOREDIRECTIONBITMAP | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOPMOST</code>, a DirectComposition visual tree, and <code>CreateSwapChainForComposition</code> at <code>SetMaximumFrameLatency(1)</code>. <code>WS_EX_TRANSPARENT</code> gives click-through; <code>WS_EX_NOACTIVATE</code> keeps WoW focused so it never drops to its background frame limit.</p>
+
+  <h3>Modules</h3>
+<pre>capture/    WgcSource          HWND to shared D3D12 texture ring
+gpu/        DeviceBridge       two devices, shared fence, ring allocation
+            FormatNormalize    BGRA8 to RGBA16F
+flow/       NvofaFlow          NV_OF_D3D12, S10.5 grid flow
+            FlowToMotionVec    unpack, upscale, sign and scale, RG16F
+depth/      ConstantDepth      full-res R32F constant, Depth_Inverted flag
+neural/     INeuralPass        Evaluate(color, mv, depth) -> color
+            PassthroughPass    milestone 0, and permanent fallback
+            ReshadeHostedPass  route B, primary
+            DirectNgxPass      route A, clean-room upgrade
+mask/       UiMask             user rectangles + temporal heuristic
+present/    DCompOverlay       NOREDIRECTIONBITMAP window, DComp, flip chain
+            WindowTracker      out-of-context WinEvent hook
+core/       FrameClock         pacing, latency accounting, HUD counters
+            Config             TOML, hot-reload
+            GpuProfile         adapter detection, per-architecture selection
+safety/     Invariants         runtime guards mirroring the CI import check</pre>
+
+  <div class="callout">
+    <span class="lbl">Two modules carry disproportionate risk</span>
+    <p><strong><code>FlowToMotionVec</code></strong> — NVOFA emits S10.5 fixed-point flow whose direction is configuration-dependent, while NGX expects pixels or NDC governed by <code>MV_Scale_X/Y</code>. A wrong sign or scale produces smearing under motion: a failure that presents as a quality problem rather than a bug, and can therefore survive undiagnosed for a long time. It gets a unit test against synthetic pairs with known translation before it ever sees WoW.</p>
+    <p><strong><code>FormatNormalize</code></strong> — the existence of <code>dlss5-d3d12-fix</code>, which exists solely to correct typeless-to-typed mismatches, tells us the add-on is sensitive to resource formats. We normalise to <code>R16G16B16A16_FLOAT</code> with explicitly typed views on both ends.</p>
+  </div>
+</section>
+
+<section id="s5">
+  <h2><i>05</i>Frame pipeline and pacing</h2><div class="sec-rule"></div>
+
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 880 132" role="img" aria-label="Diagram: the frame path from WoW's present through DWM, capture, format normalise, optical flow, neural evaluate, UI mask, and back out through DirectComposition and DWM.">
+        <defs>
+          <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+        <g font-family="IBM Plex Sans Condensed, sans-serif" font-size="11.5" fill="currentColor">
+          <rect x="4" y="40" width="86" height="40" rx="4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="47" y="58" text-anchor="middle">WoW</text><text x="47" y="72" text-anchor="middle" opacity=".6">present N</text>
+
+          <rect x="118" y="40" width="72" height="40" rx="4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="4 3"/>
+          <text x="154" y="64" text-anchor="middle" opacity=".75">DWM</text>
+
+          <rect x="218" y="40" width="82" height="40" rx="4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="259" y="58" text-anchor="middle">WGC</text><text x="259" y="72" text-anchor="middle" opacity=".6">capture</text>
+
+          <rect x="328" y="40" width="86" height="40" rx="4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="371" y="58" text-anchor="middle">NVOFA</text><text x="371" y="72" text-anchor="middle" opacity=".6">N, N−1</text>
+
+          <rect x="442" y="40" width="96" height="40" rx="4" fill="none" stroke="#1B8A87" stroke-width="1.8"/>
+          <text x="490" y="58" text-anchor="middle" fill="#1B8A87">NGX DLAA</text><text x="490" y="72" text-anchor="middle" fill="#1B8A87" opacity=".8">neural pass</text>
+
+          <rect x="566" y="40" width="76" height="40" rx="4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="604" y="64" text-anchor="middle">UI mask</text>
+
+          <rect x="670" y="40" width="82" height="40" rx="4" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          <text x="711" y="64" text-anchor="middle">DComp</text>
+
+          <rect x="780" y="40" width="72" height="40" rx="4" fill="none" stroke="currentColor" stroke-width="1.3" stroke-dasharray="4 3"/>
+          <text x="816" y="64" text-anchor="middle" opacity=".75">DWM</text>
+        </g>
+        <g stroke="currentColor" stroke-width="1.3" marker-end="url(#ar2)">
+          <line x1="90" y1="60" x2="112" y2="60"/><line x1="190" y1="60" x2="212" y2="60"/>
+          <line x1="300" y1="60" x2="322" y2="60"/><line x1="414" y1="60" x2="436" y2="60"/>
+          <line x1="538" y1="60" x2="560" y2="60"/><line x1="642" y1="60" x2="664" y2="60"/>
+          <line x1="752" y1="60" x2="774" y2="60"/>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="10" fill="currentColor" opacity=".6">
+          <text x="154" y="98" text-anchor="middle">+1 vblank</text>
+          <text x="816" y="98" text-anchor="middle">+1 vblank</text>
+          <text x="490" y="24" text-anchor="middle" fill="#1B8A87" opacity="1">runs in our process</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>The two dashed DWM stages are the irreducible cost — one vblank in, one vblank out — and they are why refresh rate dominates everything else about this project.</figcaption>
+  </figure>
+
+  <figure>
+    <div class="figbox">
+      <svg viewBox="0 0 880 176" role="img" aria-label="Chart: added end-to-end latency at 60 hertz is roughly 50 to 70 milliseconds, of which 33 is the DWM floor; at 144 hertz it is 25 to 35 milliseconds, of which 13.9 is the floor.">
+        <g font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">
+          <text x="0" y="14" opacity=".6" letter-spacing="1.4">ADDED END-TO-END LATENCY</text>
+          <text x="0" y="56" font-size="13">60 Hz</text>
+          <text x="0" y="122" font-size="13">144 Hz</text>
+        </g>
+        <!-- scale: 0..80ms over 740px starting x=76 -->
+        <g>
+          <rect x="76" y="38" width="305" height="26" fill="currentColor" opacity=".28"/>
+          <rect x="381" y="38" width="342" height="26" fill="#1B8A87" opacity=".9"/>
+          <rect x="76" y="104" width="129" height="26" fill="currentColor" opacity=".28"/>
+          <rect x="205" y="104" width="195" height="26" fill="#1B8A87" opacity=".9"/>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="10.5" fill="currentColor">
+          <text x="86" y="55" opacity=".72">33 ms DWM floor</text>
+          <text x="391" y="55" fill="#FFFFFF">17–37 ms GPU work</text>
+          <text x="733" y="55" opacity=".6">≈ 50–70 ms</text>
+          <text x="86" y="121" opacity=".72">13.9 ms</text>
+          <text x="215" y="121" fill="#FFFFFF">11–21 ms GPU work</text>
+          <text x="410" y="121" opacity=".6">≈ 25–35 ms</text>
+        </g>
+        <g stroke="currentColor" opacity=".22" stroke-width="1">
+          <line x1="76" y1="146" x2="816" y2="146"/>
+        </g>
+        <g font-family="IBM Plex Mono, monospace" font-size="10" fill="currentColor" opacity=".55">
+          <text x="76" y="162" text-anchor="middle">0</text>
+          <text x="261" y="162" text-anchor="middle">20</text>
+          <text x="446" y="162" text-anchor="middle">40</text>
+          <text x="631" y="162" text-anchor="middle">60</text>
+          <text x="816" y="162" text-anchor="middle">80 ms</text>
+        </g>
+      </svg>
+    </div>
+    <figcaption>Refresh rate is the single biggest lever on playability. The same GPU work lands in a completely different experience depending on how much of the budget the compositor has already spent.</figcaption>
+  </figure>
+
+  <div class="callout">
+    <span class="lbl">Pacing rule</span>
+    <p>If the render thread is busy when a new capture arrives, the pending slot is <em>overwritten</em>, never queued. Queuing converts a transient hitch into permanent latency growth that never recovers. Latest frame wins; drops are counted and shown in the HUD.</p>
+  </div>
+
+  <p><strong>Honest scope.</strong> This suits questing, exploration, roleplay and screenshots. It does not suit Mythic+, raid progression or arena. The manager says so in plain words rather than burying it.</p>
+</section>
+
+<section id="s6">
+  <h2><i>06</i>GPU matrix</h2><div class="sec-rule"></div>
+  <p><code>GpuProfile</code> reads <code>DXGI_ADAPTER_DESC3</code>, maps device ID to architecture, and selects behaviour accordingly.</p>
+  <div class="scroll">
+    <table>
+      <thead><tr><th></th><th>RTX 50 · Blackwell</th><th>RTX 40 · Ada</th><th>RTX 20/30</th></tr></thead>
+      <tbody>
+        <tr><td>Neural runtime</td><td>stock <code>nvngx_dlssnr.dll</code> 310.8.0.0</td><td>community CUDA-patched Ada build</td><td>unsupported</td></tr>
+        <tr><td>Optical flow</td><td>Blackwell OFA, <code>NV_OF_D3D12</code></td><td>Ada OFA, <code>NV_OF_D3D12</code></td><td>present, unvalidated</td></tr>
+        <tr><td>Default internal res</td><td class="num">4K</td><td class="num">1440p</td><td>—</td></tr>
+        <tr><td>Behaviour</td><td><span class="pill ok">Full pipeline</span></td><td><span class="pill ok">Full pipeline</span></td><td><span class="pill bad">Refuse, passthrough</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>The neural runtime is user-supplied and verified by SHA-256 against a manifest covering both variants. An unknown hash is refused with a readable message rather than an access violation at feature creation. Nothing unredistributable enters the repository.</p>
+</section>
+
+<section id="s7">
+  <h2><i>07</i>Neural pass routes</h2><div class="sec-rule"></div>
+  <p><code>INeuralPass</code> abstracts how the neural pass is invoked. Three implementations, shipped in this order.</p>
+
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Implementation</th><th>Mechanism</th><th>Trade</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><code>PassthroughPass</code></td>
+          <td>Copies input to output, no NGX at all.</td>
+          <td>Lets the whole real-time pipeline be validated before any unredistributable binary is involved. Also the permanent fallback.</td>
+          <td><span class="pill acc">M0</span></td>
+        </tr>
+        <tr>
+          <td><code>ReshadeHostedPass</code></td>
+          <td>Our own D3D12 device and NGX session; ReShade loaded into <em>our</em> process so <code>renodx-dlss5</code> detours <em>our</em> evaluate call.</td>
+          <td>Depends on a closed-source community binary and inherits ReShade's lifecycle — both acceptable, since neither touches WoW. Proven to work today.</td>
+          <td><span class="pill ok">Primary</span></td>
+        </tr>
+        <tr>
+          <td><code>DirectNgxPass</code></td>
+          <td>Create the neural-rendering feature directly on our own NGX session. No detour, no ReShade, no third-party binary.</td>
+          <td>Feature ID and parameter contract are undocumented and need export-table reverse engineering. May not be callable standalone at all.</td>
+          <td><span class="pill warn">M6, speculative</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p>Route B ships first because it is the route proven to work. If route A cracks, this becomes the first DLSS-NR implementation with no ReShade dependency anywhere and route B is dropped. If it does not, route B already shipped and nothing was wasted.</p>
+</section>
+
+<section id="s8">
+  <h2><i>08</i>UI masking</h2><div class="sec-rule"></div>
+  <p>WoW's interface is composited into the captured frame and no API exposes a mask for it. Left alone, the neural pass will treat action bars and nameplates as material to re-render. This is the largest quality risk in the project.</p>
+  <p>A purely temporal heuristic was considered and rejected as the primary mechanism. Instead: a one-time calibration where the user drags rectangles over their action bars, unit frames, chat and minimap, stored in config. WoW interfaces are static per user, so this is close to exact for the large majority of screen-space UI at zero runtime cost.</p>
+  <p>A temporal-stability and edge-energy heuristic then handles only the moving remainder — nameplates and floating combat text. Original pixels are blended back wherever the combined mask indicates interface. v1 ships the config plumbing and blend path with an empty rectangle list.</p>
+</section>
+
+<section id="s9">
+  <h2><i>09</i>Manager application</h2><div class="sec-rule"></div>
+  <p><code>wowsidecar-manager.exe</code> — Dear ImGui on D3D11, custom-themed, borderless window with its own title bar. Same toolchain as the runtime, no additional runtime prerequisite for the user, single executable. WinUI 3 was considered and rejected: a more native feel is not worth a second toolchain and a .NET dependency for this audience.</p>
+
+  <h3>Dependency board</h3>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Probe</th><th>Method</th><th>Fails when</th></tr></thead>
+      <tbody>
+        <tr><td>GPU architecture</td><td><code>DXGI_ADAPTER_DESC3</code></td><td>Not Ada or Blackwell</td></tr>
+        <tr><td>Driver version</td><td>Registry / NVAPI</td><td>Below 610.47, the first build carrying DLSS-NR profile keys</td></tr>
+        <tr><td>Windows build</td><td><code>RtlGetVersion</code></td><td>No free-threaded WGC frame pool or occluded capture</td></tr>
+        <tr><td>Display refresh</td><td><code>DXGI_MODE_DESC</code></td><td>Below 120 Hz — flagged, not blocked</td></tr>
+        <tr><td>Neural runtime</td><td>SHA-256 vs manifest</td><td>Missing, or wrong variant for this architecture</td></tr>
+        <tr><td>ReShade + add-on</td><td>File presence in <em>sidecar</em> directory</td><td>Missing, for route B</td></tr>
+        <tr><td>WoW display mode</td><td><code>GetWindowLong</code> styles</td><td>Exclusive fullscreen — capture would go black</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Actions</h3>
+  <ul>
+    <li><strong>Install</strong> — place user-supplied DLLs into the sidecar directory, write config.</li>
+    <li><strong>Remove</strong> — delete everything created, verifiably clean.</li>
+    <li><strong>Launch / Stop</strong> — with a live HUD showing capture-to-present p50 and p99, plus dropped frames.</li>
+    <li><strong>Calibrate</strong> — paint the UI mask rectangles.</li>
+  </ul>
+
+  <div class="callout danger">
+    <span class="lbl">Two safety behaviours that are product features, not disclaimers</span>
+    <p>Per <strong>I7</strong>, the installer hard-refuses any target path containing a WoW install signature. The most plausible route to a ban for a user holding this tool is placing ReShade next to <code>Wow.exe</code> themselves, so the installer makes that physically awkward.</p>
+    <p>A first-run notice, acknowledged once, states the boundary plainly: this sidecar never loads code into <code>Wow.exe</code>, which is what makes it safe; ReShade pointed at <code>Wow.exe</code> is a bannable offence Blizzard actively enforces; and the tool will not help with that.</p>
+  </div>
+</section>
+
+<section id="s10">
+  <h2><i>10</i>Testing</h2><div class="sec-rule"></div>
+  <p><strong><code>testpattern.exe</code></strong> is the highest-value item here — a trivial D3D window rendering known geometry, shipped with the project, that lets the entire capture, bridge, overlay and pacing path be verified pixel-exact with neither WoW nor NGX involved.</p>
+  <ul>
+    <li><strong>Unit</strong> — <code>FlowToMotionVec</code> against synthetic pairs with known translation; <code>FormatNormalize</code> round-trip; config parsing; hash manifest matching.</li>
+    <li><strong>CI invariants</strong> — dumps both binaries' import tables and fails the build on any symbol forbidden by I1–I4, and on any networking import forbidden by I10. A second job asserts I12: binaries unpacked, unobfuscated, no elevated manifest. This is what converts the safety claim from an assertion into a check.</li>
+    <li><strong>Latency instrumentation</strong> — HUD reporting capture-to-present p50/p99 and dropped-frame count, which is the evidence for the M1 gate.</li>
+  </ul>
+</section>
+
+<section id="s11">
+  <h2><i>11</i>Milestones</h2><div class="sec-rule"></div>
+  <ol class="ms">
+    <li><div class="id">M0</div><div class="b"><b>testpattern passthrough</b><span>Capture, bridge, DComp overlay, click-through, pacing. No NGX.</span></div></li>
+    <li class="gate"><div class="id">M1</div><div class="b"><b>Live WoW, measured — decision gate</b><span>If capture-to-present exceeds roughly 80 ms, the honest conclusion is that live overlay is not the product and photo mode is.</span></div></li>
+    <li><div class="id">M2</div><div class="b"><b>NVOFA and motion vectors</b><span>Synthetic-validated first, then live.</span></div></li>
+    <li><div class="id">M3</div><div class="b"><b>ReshadeHostedPass</b><span>DLSS 5 Neural Rendering running on WoW Retail.</span></div></li>
+    <li><div class="id">M4</div><div class="b"><b>GPU matrix</b><span>Ada patched build and Blackwell stock, hash manifest, automatic selection.</span></div></li>
+    <li><div class="id">M5</div><div class="b"><b>UI mask calibration</b><span>Rectangle painter plus the temporal remainder heuristic.</span></div></li>
+    <li><div class="id">M6</div><div class="b"><b>DirectNgxPass clean-room</b><span>Drop ReShade entirely if the contract cracks.</span></div></li>
+  </ol>
+  <p>The manager is developed alongside M0 through M4, since its dependency board is the most convenient harness for the probes those milestones need anyway.</p>
+</section>
+
+<section id="s12">
+  <h2><i>12</i>Open risks</h2><div class="sec-rule"></div>
+  <div class="scroll">
+    <table>
+      <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr><td>Route A may be impossible</td><td>Route B ships first; A is pure upside.</td></tr>
+        <tr><td>Occluded-window capture under an always-on-top overlay is documented to work through DWM but unverified in this exact configuration</td><td>M0 tests precisely this, and is deliberately the first milestone.</td></tr>
+        <tr><td>The neural pass may be too expensive on Ada at useful resolutions — reported cost on Blackwell is severe (RTX 5090, 91 → 50 fps at 4K)</td><td>M1 and M3 measure it; 1440p is the Ada default for this reason.</td></tr>
+        <tr><td>The community Ada patch is an unofficial binary of unknown provenance</td><td>Hash-pinned, user-supplied, never redistributed by this project.</td></tr>
+        <tr><td>Blizzard could begin detecting WGC capture of its window</td><td>Extremely unlikely — it would break OBS, Discord and Xbox Game Bar simultaneously. But this is the residual risk, and it is not zero.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="s13">
+  <h2><i>13</i>References</h2><div class="sec-rule"></div>
+  <ul class="refs">
+    <li><a href="https://docs.nvidia.com/ngx/latest/programming-guide/index.html">NVIDIA NGX Programming Guide</a></li>
+    <li><a href="https://github.com/NVIDIA/DLSS">NVIDIA DLSS SDK</a></li>
+    <li><a href="https://github.com/jlrouzies-fr/DLSS5-Feeder">jlrouzies-fr/DLSS5-Feeder</a> — synthetic DLAA contract for games with no DLSS</li>
+    <li><a href="https://github.com/NIGos/dlss5-dx11-bridge">NIGos/dlss5-dx11-bridge</a> — D3D11 to private D3D12 NGX session</li>
+    <li><a href="https://github.com/NIGos/dlss5-d3d12-fix">NIGos/dlss5-d3d12-fix</a> — typeless-to-typed output correction</li>
+    <li><a href="https://github.com/rakanki911/DLSS5-Swapper">rakanki911/DLSS5-Swapper</a> — one-click installer for D3D12 titles</li>
+    <li><a href="https://www.techpowerup.com/350916/nvidia-shows-dlss-5-progress-and-technical-details-at-siggraph-2026">TechPowerUp — DLSS 5 at SIGGRAPH 2026</a></li>
+    <li><a href="https://videocardz.com/newz/nvidia-dlss-5-neural-rendering-dll-found-in-nba-2k27-early-access-build-file-is-3x-larger-than-dlss-4">VideoCardz — DLL found in NBA 2K27</a></li>
+    <li><a href="https://www.tomshardware.com/pc-components/gpus/exclusive-dlss-5-has-already-been-ported-to-work-on-rtx-4000-series-graphics-cards-incompatible-cuda-instructions-get-patched-to-work-on-previous-gen-hardware">Tom's Hardware — RTX 40 port</a></li>
+    <li><a href="https://www.guru3d.com/story/nvidia-geforce-61047-driver-quietly-adds-first-dlss-5-neural-rendering-profiles/">Guru3D — driver 610.47 adds DLSS-NR profiles</a></li>
+    <li><a href="https://reshade.me/forum/troubleshooting/10065-world-of-warcraft-blocking-reshade-dxgi-dll-after-7-14-2025-11-1-7-61965-patch">ReShade forum — WoW blocking dxgi.dll</a></li>
+    <li><a href="https://www.wowhead.com/news/blizzard-reminds-players-that-third-party-software-is-prohibited-378029">Wowhead — Blizzard reminds players third-party software is prohibited</a></li>
+  </ul>
+</section>
+
+<footer>
+  Design specification · 2026-08-30 · Approved, pre-implementation · Source of truth: <code>docs/superpowers/specs/2026-08-30-dlss5-wow-sidecar-design.md</code>
+</footer>
+
+</main>
+</div>
+</div>
