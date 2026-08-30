@@ -36,7 +36,8 @@ target_link_libraries(sidecar_common PUBLIC
 target_sources(sidecar_common PRIVATE
   src/common/.keep.cpp
   src/common/core/GpuProfile.cpp
-  src/common/core/LatencyStats.cpp)
+  src/common/core/LatencyStats.cpp
+  src/common/gpu/DeviceBridge.cpp)
 
 add_executable(wowsidecar WIN32 src/runtime/main.cpp)
 target_link_libraries(wowsidecar PRIVATE sidecar_common)
