@@ -63,6 +63,13 @@ TEST_CASE("clicks pass through the overlay to the window beneath", "[device]") {
   REQUIRE(hit != overlay->Hwnd());
   REQUIRE(hit == beneath);
 
+  // WindowFromPoint only honours hit-testing within the calling thread; asked
+  // from another process it reports the overlay regardless. What actually
+  // routes a click past us is the overlay answering HTTRANSPARENT, so assert
+  // on that directly -- it is the property that must never regress.
+  REQUIRE(SendMessageW(overlay->Hwnd(), WM_NCHITTEST, 0,
+                       MAKELPARAM(p.x, p.y)) == HTTRANSPARENT);
+
   DestroyWindow(beneath);
 }
 
