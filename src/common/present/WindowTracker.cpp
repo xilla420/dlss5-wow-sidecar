@@ -31,16 +31,25 @@ std::optional<RECT> ClientRectInScreen(HWND hwnd) {
 }
 
 std::optional<TargetWindow> FindWowWindow() {
-  HWND hwnd = FindWindowW(kWowWindowClass, nullptr);
-  if (!hwnd || !IsWindow(hwnd)) return std::nullopt;
-  auto rect = ClientRectInScreen(hwnd);
-  if (!rect) return std::nullopt;
+  // A client can own several windows of its class, most of them hidden or
+  // zero-sized, so take the first visible one with a real client area rather
+  // than whatever FindWindow happens to return first.
+  for (const wchar_t* className : kWowWindowClasses) {
+    HWND hwnd = nullptr;
+    while ((hwnd = FindWindowExW(nullptr, hwnd, className, nullptr)) != nullptr) {
+      if (!IsWindowVisible(hwnd)) continue;
+      auto rect = ClientRectInScreen(hwnd);
+      if (!rect) continue;
+      if (rect->right - rect->left <= 0 || rect->bottom - rect->top <= 0) continue;
 
-  TargetWindow t;
-  t.hwnd = hwnd;
-  t.clientScreen = *rect;
-  t.borderless = IsBorderless(hwnd);
-  return t;
+      TargetWindow t;
+      t.hwnd = hwnd;
+      t.clientScreen = *rect;
+      t.borderless = IsBorderless(hwnd);
+      return t;
+    }
+  }
+  return std::nullopt;
 }
 
 std::unique_ptr<WindowTracker> WindowTracker::Create(HWND target, MovedCallback onMoved) {

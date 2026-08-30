@@ -13,9 +13,13 @@ struct TargetWindow {
   bool borderless = false;
 };
 
-// WoW's top-level window class. Matching by class rather than by process is
-// deliberate: it needs no process handle at all (I2).
-inline constexpr wchar_t kWowWindowClass[] = L"GxWindowClass";
+// WoW's top-level window classes. Modern retail registers "waApplication
+// Window"; older and Classic clients use "GxWindowClass". Matching by class
+// rather than by process is deliberate: it needs no process handle at all (I2).
+inline constexpr const wchar_t* kWowWindowClasses[] = {
+    L"waApplication Window",
+    L"GxWindowClass",
+};
 
 std::optional<TargetWindow> FindWowWindow();
 
