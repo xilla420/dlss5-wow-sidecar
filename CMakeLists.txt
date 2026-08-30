@@ -138,5 +138,25 @@ add_executable(testpattern WIN32
 target_link_libraries(testpattern PRIVATE d3d11 dxgi)
 add_invariant_check(testpattern)
 
+# Throwaway spike harness for the M3 plan, Task 3. Deliberately not part of the
+# product: it is not linked into sidecar_common, not shipped, and not built
+# unless someone points DLSS_SDK_DIR at a checkout of github.com/NVIDIA/DLSS.
+# CI has no such checkout and simply skips it.
+#
+# It is also exempt from the import-table check on purpose. The check exists to
+# prove what the *shipped* binaries do not do; extending it to a scratch tool
+# that never leaves this machine would say nothing useful.
+set(DLSS_SDK_DIR "" CACHE PATH "NVIDIA DLSS SDK root (github.com/NVIDIA/DLSS)")
+if(DLSS_SDK_DIR)
+  add_executable(spike_ngx tools/spike_ngx/main.cpp)
+  target_include_directories(spike_ngx PRIVATE "${DLSS_SDK_DIR}/include")
+  # The SDK ships one library per CRT flavour; mixing them is a hard link
+  # error about _ITERATOR_DEBUG_LEVEL rather than anything subtle.
+  target_link_libraries(spike_ngx PRIVATE
+    d3d12 dxgi
+    "$<$<CONFIG:Debug>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d_dbg.lib>"
+    "$<$<NOT:$<CONFIG:Debug>>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d.lib>")
+endif()
+
 enable_testing()
 add_subdirectory(tests)
