@@ -4,6 +4,11 @@ out/
 .cache/
 third_party/
 *.user
+__pycache__/
+.pytest_cache/
+
+# AppleDouble sidecars from files that have travelled via macOS
+._*
 
 # Never commit third-party or unredistributable binaries (spec C5, I11)
 *.dll
