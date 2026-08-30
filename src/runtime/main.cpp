@@ -8,6 +8,7 @@
 
 #include "core/Config.h"
 #include "core/GpuProfile.h"
+#include "core/Log.h"
 #include "neural/NeuralPassFactory.h"
 #include "present/WindowTracker.h"
 #include "runtime/Pipeline.h"
@@ -28,12 +29,11 @@ fs::path ExecutableDirectory() {
   return fs::path(buffer).parent_path();
 }
 
-// Config problems are warnings by design, so they must not interrupt startup
-// with a dialog. There is no logging module yet, so they go to the debugger.
+// Config problems are warnings by design: they must not interrupt startup with
+// a dialog, but they do have to end up somewhere the operator can read.
 void ReportWarnings(const std::vector<std::string>& warnings) {
   for (const auto& warning : warnings) {
-    const std::string line = "[sidecar] config: " + warning + "\n";
-    OutputDebugStringA(line.c_str());
+    GlobalLog().Warn("config: " + warning);
   }
 }
 
@@ -60,12 +60,22 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   int argc = 0;
   wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
 
+  // Truncated each run: the interesting log is always the most recent session,
+  // and an ever-growing file next to the executable would be rude.
+  GlobalLog().OpenFile(ExecutableDirectory() / "sidecar.log");
+  GlobalLog().Info("sidecar starting");
+
   auto gpu = DetectPrimaryGpu();
   if (!gpu) {
+    GlobalLog().Error("no NVIDIA adapter found");
     MessageBoxW(nullptr, L"No NVIDIA adapter found.", L"DLSS 5 Sidecar", MB_ICONERROR);
     return 1;
   }
+  GlobalLog().Info(std::string("adapter: ") + ToString(gpu->arch));
+
   if (gpu->arch != GpuArch::Ada && gpu->arch != GpuArch::Blackwell) {
+    GlobalLog().Error(std::string(ToString(gpu->arch)) +
+                      " is not supported; RTX 40 or RTX 50 required");
     wchar_t msg[256];
     swprintf_s(msg, L"%hs is not supported. RTX 40 or RTX 50 required.",
                ToString(gpu->arch));
@@ -75,6 +85,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
   const Target target = ResolveTarget(argc, argv);
   if (!target.hwnd) {
+    GlobalLog().Error("no capture target: see the dialog for what to do");
     MessageBoxW(nullptr, target.problem, L"DLSS 5 Sidecar", MB_ICONERROR);
     return 1;
   }
@@ -98,10 +109,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
 
   auto pipeline = Pipeline::Create(*gpu, cfg, std::move(pass));
   if (!pipeline) {
+    GlobalLog().Error("could not create the pipeline");
     MessageBoxW(nullptr, L"Failed to create the pipeline.", L"DLSS 5 Sidecar", MB_ICONERROR);
     return 1;
   }
   pipeline->Start();
+  GlobalLog().Info("overlay running");
 
   MSG msg{};
   while (GetMessageW(&msg, nullptr, 0, 0)) {

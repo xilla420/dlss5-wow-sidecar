@@ -3,6 +3,7 @@
 #include <chrono>
 
 #include "capture/WgcSource.h"
+#include "core/Log.h"
 #include "gpu/DeviceBridge.h"
 #include "present/DCompOverlay.h"
 
@@ -99,6 +100,17 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
   p->dev_.flowToMv = FlowToMotionVec::Create(dev, w, h);
   p->dev_.motionTarget = FlowToMotionVec::CreateMotionTarget(dev, w, h);
 
+  // Say which way this went. "No motion vectors" is the difference between a
+  // neural pass that tracks the scene and one that assumes it is static, and
+  // silently guessing wrong is exactly the kind of thing that gets diagnosed
+  // as a quality problem months later.
+  if (p->dev_.flow && p->dev_.flow->Available()) {
+    GlobalLog().Info("optical flow available, grid size " +
+                     std::to_string(config.flowGridSize));
+  } else {
+    GlobalLog().Warn("optical flow unavailable; running on a zero motion field");
+  }
+
   Pipeline* raw = p.get();
   p->dev_.source = WgcSource::CreateForWindow(config.target, *p->dev_.bridge,
                                               [raw] { raw->stats_.RecordDrop(); });
@@ -126,6 +138,7 @@ void Pipeline::FailAndHide(const char* reason) {
   // Spec failure rule: hide first, then record. Never leave an opaque overlay
   // over a live game.
   if (dev_.overlay) dev_.overlay->Hide();
+  GlobalLog().Error(reason);
   std::lock_guard<std::mutex> lock(errorMutex_);
   lastError_ = reason;
 }

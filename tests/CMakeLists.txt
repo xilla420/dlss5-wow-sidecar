@@ -16,6 +16,7 @@ add_executable(sidecar_tests
   test_nvofa_flow.cpp
   test_motion_vector_math.cpp
   test_config.cpp
+  test_log.cpp
   test_probes.cpp
   test_neural_pass_factory.cpp
   test_panic_switch.cpp
