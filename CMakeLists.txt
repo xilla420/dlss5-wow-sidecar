@@ -82,7 +82,8 @@ target_sources(sidecar_common PRIVATE
   src/common/present/DCompOverlay.cpp
   src/common/present/WindowTracker.cpp
   src/common/present/Hud.cpp
-  src/common/neural/PassthroughPass.cpp)
+  src/common/neural/PassthroughPass.cpp
+  src/common/neural/NeuralPassFactory.cpp)
 
 # The NVIDIA Optical Flow SDK is a manual download and is never vendored (I11).
 # Without it the project still builds; NvofaFlow reports Available() false and

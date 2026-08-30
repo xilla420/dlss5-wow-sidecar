@@ -95,7 +95,7 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
   p->luminance_ = Luminance::Create(dev, w, h);
   p->previousLuma_ = Luminance::CreateR8Target(dev, w, h, D3D12_RESOURCE_STATE_COMMON);
   p->currentLuma_ = Luminance::CreateR8Target(dev, w, h, D3D12_RESOURCE_STATE_COMMON);
-  p->flow_ = NvofaFlow::Create(dev, p->bridge_->Queue(), w, h, 4);
+  p->flow_ = NvofaFlow::Create(dev, p->bridge_->Queue(), w, h, config.flowGridSize);
   p->flowToMv_ = FlowToMotionVec::Create(dev, w, h);
   p->motionTarget_ = FlowToMotionVec::CreateMotionTarget(dev, w, h);
 
@@ -184,7 +184,7 @@ bool Pipeline::Rebuild() {
 
   source_->Start();
   if (config_.showOverlay) overlay_->Show();
-  if (hud_) hud_->Show();
+  if (hud_ && config_.showHud) hud_->Show();
   return true;
 }
 
@@ -197,7 +197,7 @@ void Pipeline::Start() {
   running_.store(true, std::memory_order_release);
   source_->Start();
   if (config_.showOverlay) overlay_->Show();
-  if (hud_) hud_->Show();
+  if (hud_ && config_.showHud) hud_->Show();
   renderThread_ = std::thread([this] { RenderLoop(); });
 }
 

@@ -1,0 +1,53 @@
+name: CI
+
+# The project's central claim is that no code is loaded into Wow.exe, and that
+# the claim is checked rather than asserted. This workflow is where that check
+# runs for anyone who did not build locally.
+#
+# The NVIDIA Optical Flow SDK is a manual download and is never vendored (I11),
+# so CI builds without it: NvofaFlow reports Available() false and the two
+# optical-flow device tests skip. Nothing else changes.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # pefile is what reads the import directory; the post-build invariant
+      # check fails the build without it.
+      - name: Install Python dependencies
+        run: python -m pip install --disable-pip-version-check pefile pytest
+
+      - name: Test the invariant checker itself
+        run: python -m pytest ci/test_check_imports.py -v
+
+      - name: Configure
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+
+      # The invariant check runs as a post-build step on every executable, so a
+      # forbidden import fails this step rather than shipping.
+      - name: Build
+        run: cmake --build build --config Debug
+
+      # [device] tests need an NVIDIA GPU and are deliberately excluded: the
+      # runners have none, and a skipped GPU test must not read as a pass.
+      - name: Unit tests
+        run: build\tests\Debug\sidecar_tests.exe "[unit]"
+
+      # Belt and braces: assert the invariant against the finished binaries
+      # too, independently of the build having run its post-build step.
+      - name: Re-check binaries against the safety invariants
+        run: |
+          python ci/check_imports.py build\Debug\wowsidecar.exe build\Debug\wowsidecar-manager.exe build\Debug\testpattern.exe

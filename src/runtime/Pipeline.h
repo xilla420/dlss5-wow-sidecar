@@ -29,6 +29,10 @@ class DCompOverlay;
 struct PipelineConfig {
   HWND target = nullptr;
   bool showOverlay = true;
+  bool showHud = true;
+  // Pixels per flow vector. Validated to 1, 2 or 4 by Config before it gets
+  // here; NvofaFlow refuses anything else.
+  uint32_t flowGridSize = 4;
 };
 
 // Owns the render thread and the per-frame orchestration: acquire the newest
