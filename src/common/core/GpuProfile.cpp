@@ -48,6 +48,31 @@ uint32_t DefaultInternalHeight(GpuArch arch) {
   }
 }
 
+RenderSize InternalRenderSize(uint32_t captureWidth, uint32_t captureHeight,
+                              GpuArch arch) {
+  if (captureWidth == 0 || captureHeight == 0) return RenderSize{};
+
+  const uint32_t ceilingHeight = DefaultInternalHeight(arch);
+  // No ceiling means an architecture outside the matrix. The pass will refuse
+  // to run there anyway; scaling its resolution would be inventing a policy for
+  // a case that does not exist.
+  if (ceilingHeight == 0 || captureHeight <= ceilingHeight) {
+    return RenderSize{captureWidth, captureHeight};
+  }
+
+  // Round the width to the nearest even pixel rather than truncating, so a
+  // 21:9 capture does not drift a pixel off its aspect ratio.
+  const uint64_t scaledWidth =
+      (static_cast<uint64_t>(captureWidth) * ceilingHeight + captureHeight / 2) /
+      captureHeight;
+
+  RenderSize out;
+  out.width = static_cast<uint32_t>(scaledWidth) & ~1u;
+  out.height = ceilingHeight & ~1u;
+  if (out.width == 0) out.width = 2;
+  return out;
+}
+
 const char* ToString(GpuArch arch) {
   switch (arch) {
     case GpuArch::Blackwell:   return "Blackwell (RTX 50)";

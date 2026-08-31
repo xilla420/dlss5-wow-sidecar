@@ -14,6 +14,11 @@ struct HudModel {
   uint64_t drops = 0;
   const char* passName = "";
   const char* gpuName = "";
+  // Which neural runtime build is live. Two builds share a version string and a
+  // byte count and differ only by digest, and one of them cannot run on Ada at
+  // all, so naming it on screen is the difference between "it works" and "it
+  // works and I know why".
+  const char* runtimeVariant = "";
 };
 
 // Spec M1: above roughly 80 ms capture-to-present, live overlay is not the

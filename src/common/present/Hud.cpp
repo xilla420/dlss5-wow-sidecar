@@ -27,10 +27,20 @@ GateVerdict JudgeGate(double p99Ms) {
 }
 
 std::string FormatHud(const HudModel& model) {
+  // The runtime variant is appended to the pass name rather than given its own
+  // field, so a passthrough run -- which has no runtime -- does not leave a
+  // dangling empty column.
+  char pass[128];
+  if (model.runtimeVariant && *model.runtimeVariant) {
+    std::snprintf(pass, sizeof(pass), "%s [%s]", model.passName, model.runtimeVariant);
+  } else {
+    std::snprintf(pass, sizeof(pass), "%s", model.passName);
+  }
+
   char buffer[512];
   std::snprintf(buffer, sizeof(buffer),
                 "%s | %s | p50 %.1f ms  p99 %.1f ms (%s) | %llu frames  %llu drops",
-                model.gpuName, model.passName, model.p50Ms, model.p99Ms,
+                model.gpuName, pass, model.p50Ms, model.p99Ms,
                 VerdictWord(JudgeGate(model.p99Ms)),
                 static_cast<unsigned long long>(model.frames),
                 static_cast<unsigned long long>(model.drops));

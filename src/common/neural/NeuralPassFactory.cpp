@@ -21,6 +21,7 @@ std::unique_ptr<INeuralPass> MakeNeuralPass(std::string_view name,
     options.runtimeDir = context.runtimeDir;
     options.width = context.width;
     options.height = context.height;
+    options.arch = context.arch;
 
     std::string reason;
     if (auto pass = ReshadeHostedPass::Create(context.device, options, reason)) {

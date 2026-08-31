@@ -3,6 +3,29 @@
 
 using namespace sidecar;
 
+// M4: which runtime build is live has to be visible, because two builds share a
+// version string and a byte count and only one of them runs on Ada.
+TEST_CASE("the HUD names the live runtime variant", "[unit]") {
+  HudModel model;
+  model.gpuName = "RTX 4080";
+  model.passName = "reshade-hosted DLSS 5 NR";
+  model.runtimeVariant = "Ada-patched";
+  const std::string text = FormatHud(model);
+  CHECK(text.find("reshade-hosted DLSS 5 NR") != std::string::npos);
+  CHECK(text.find("Ada-patched") != std::string::npos);
+}
+
+// Passthrough has no runtime behind it, so the field must vanish rather than
+// leave an empty bracket on screen.
+TEST_CASE("the HUD omits the variant when there is none", "[unit]") {
+  HudModel model;
+  model.gpuName = "RTX 4080";
+  model.passName = "passthrough";
+  const std::string text = FormatHud(model);
+  CHECK(text.find("passthrough") != std::string::npos);
+  CHECK(text.find("[") == std::string::npos);
+}
+
 TEST_CASE("hud line carries every number the gate decision needs", "[unit]") {
   HudModel m;
   m.p50Ms = 21.4; m.p99Ms = 33.8;

@@ -8,6 +8,7 @@
 #include <string_view>
 #include <vector>
 
+#include "core/GpuProfile.h"
 #include "neural/INeuralPass.h"
 
 namespace sidecar {
@@ -22,6 +23,10 @@ struct NeuralPassContext {
   std::filesystem::path runtimeDir;
   uint32_t width = 0;
   uint32_t height = 0;
+  // Decides the working resolution and which runtime build is acceptable. The
+  // stock neural runtime is Blackwell-only, so a pass built for the wrong
+  // architecture is refused before NGX is touched.
+  GpuArch arch = GpuArch::Unsupported;
 };
 
 // Builds the neural pass named in the config file.

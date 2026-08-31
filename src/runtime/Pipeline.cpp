@@ -9,6 +9,7 @@
 #include "gpu/DeviceBridge.h"
 #include "neural/NeuralPassFactory.h"
 #include "neural/PassthroughPass.h"
+#include "neural/ReshadeHostedPass.h"
 #include "present/DCompOverlay.h"
 
 using Microsoft::WRL::ComPtr;
@@ -151,12 +152,18 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
     ctx.runtimeDir = config.runtimeDir;
     ctx.width = w;
     ctx.height = h;
+    ctx.arch = gpu.arch;
 
     std::vector<std::string> warnings;
     p->dev_.pass = MakeNeuralPass(config.neuralPass, ctx, warnings);
     for (const auto& warning : warnings) GlobalLog().Warn(warning);
     if (!p->dev_.pass) return nullptr;
     GlobalLog().Info(std::string("neural pass: ") + p->dev_.pass->Name());
+    // Only a route-B pass has a runtime behind it; passthrough leaves this
+    // empty and the HUD omits the field entirely.
+    if (auto* hosted = dynamic_cast<ReshadeHostedPass*>(p->dev_.pass.get())) {
+      p->dev_.runtimeVariant = ToString(hosted->Variant());
+    }
   }
 
   // A pass that names its own output format wants an intermediate target in it,
@@ -634,6 +641,7 @@ void Pipeline::RenderLoop() {
                          dev_.pass->Name());
       }
       model.passName = dev_.pass->Name();
+      model.runtimeVariant = dev_.runtimeVariant;
       model.gpuName = dev_.gpuName.c_str();
       dev_.hud->Update(model);
     }

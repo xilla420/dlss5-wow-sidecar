@@ -124,6 +124,9 @@ class Pipeline {
     std::unique_ptr<Hud> hud;
     std::unique_ptr<INeuralPass> pass;
     std::string gpuName;
+    // Names the live neural runtime build for the HUD. Points at a string
+    // literal from RuntimeManifest, so it outlives the frame that reads it.
+    const char* runtimeVariant = "";
 
     Microsoft::WRL::ComPtr<ID3D12Resource> workTarget;
     Microsoft::WRL::ComPtr<ID3D12CommandAllocator> alloc;
