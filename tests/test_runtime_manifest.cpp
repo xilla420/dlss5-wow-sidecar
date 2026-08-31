@@ -75,6 +75,47 @@ TEST_CASE("Unsupported architectures ask for no runtime at all", "[unit]") {
   CHECK(VariantForArchitecture(GpuArch::Unsupported) == RuntimeVariant::None);
 }
 
+// The pairing that cost the Task 4 spike a day of ambiguity. The stock runtime
+// carries Blackwell-built CUDA binaries; on Ada it loads, initialises, and then
+// fails at feature creation with a bare error code and nothing else to go on.
+// Checking the pair up front is the whole point.
+TEST_CASE("The stock runtime on an Ada card is refused with an explanation",
+          "[unit]") {
+  CHECK(CheckRuntimeCompatibility(GpuArch::Ada, RuntimeVariant::Stock) ==
+        RuntimeCompatibility::WrongVariant);
+
+  const std::string why = DescribeCompatibility(GpuArch::Ada, RuntimeVariant::Stock);
+  CHECK(why.empty() == false);
+  // It has to name both halves of the mismatch, or the operator cannot act.
+  CHECK(why.find("Blackwell") != std::string::npos);
+  CHECK(why.find("Ada") != std::string::npos);
+}
+
+TEST_CASE("Runtimes that can run on a card are accepted", "[unit]") {
+  CHECK(CheckRuntimeCompatibility(GpuArch::Blackwell, RuntimeVariant::Stock) ==
+        RuntimeCompatibility::Ok);
+  CHECK(CheckRuntimeCompatibility(GpuArch::Ada, RuntimeVariant::AdaPatched) ==
+        RuntimeCompatibility::Ok);
+  // The patched build adds Ada without dropping Blackwell, so it is correct on
+  // both rather than being an Ada-only substitute.
+  CHECK(CheckRuntimeCompatibility(GpuArch::Blackwell, RuntimeVariant::AdaPatched) ==
+        RuntimeCompatibility::Ok);
+}
+
+TEST_CASE("A compatible pairing has nothing to say", "[unit]") {
+  CHECK(DescribeCompatibility(GpuArch::Blackwell, RuntimeVariant::Stock).empty());
+  CHECK(DescribeCompatibility(GpuArch::Ada, RuntimeVariant::AdaPatched).empty());
+}
+
+TEST_CASE("Cards outside the matrix are reported as such, not as wrong runtimes",
+          "[unit]") {
+  for (GpuArch arch : {GpuArch::Turing, GpuArch::Ampere, GpuArch::Unsupported}) {
+    CHECK(CheckRuntimeCompatibility(arch, RuntimeVariant::AdaPatched) ==
+          RuntimeCompatibility::UnsupportedArchitecture);
+    CHECK(DescribeCompatibility(arch, RuntimeVariant::AdaPatched).empty() == false);
+  }
+}
+
 TEST_CASE("Every variant has a name fit to show an operator", "[unit]") {
   CHECK(std::string(ToString(RuntimeVariant::Stock)).find("tock") != std::string::npos);
   CHECK(std::string(ToString(RuntimeVariant::AdaPatched)).find("da") != std::string::npos);
