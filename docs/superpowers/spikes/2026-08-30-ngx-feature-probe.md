@@ -6,6 +6,12 @@
 **SDK:** public NVIDIA DLSS SDK, `NVSDK_NGX_VERSION_API_MACRO = 0x15` (1.5.0).
 **Runtimes visible to the probe:** `nvngx_dlss.dll`, `nvngx_dlssg.dll`, `nvngx_dlssnr.dll`.
 
+> **Narrowed by a later spike.** Everything measured below still holds. But the conclusion drawn
+> from it — that route A is closed — was drawn too broadly: it tested only the NGX *core*, and
+> `nvngx_dlssnr.dll` turns out to export the D3D12 entry points itself, so the core's registry can
+> be bypassed. That second door was then tested separately and is also shut, for a different
+> reason. See [2026-08-31-reshade-detour.md](2026-08-31-reshade-detour.md).
+
 ## Answer
 
 **No. DLSS 5 Neural Rendering cannot be reached through the public NGX SDK on this driver.** Route A (`DirectNgxPass`, milestone M6) is blocked, and not by a missing parameter contract — by a version horizon that cannot be raised.

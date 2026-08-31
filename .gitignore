@@ -1,4 +1,5 @@
-build/
+﻿build/
+build-ci/
 out/
 .vs/
 .cache/
