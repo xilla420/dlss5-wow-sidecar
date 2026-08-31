@@ -19,6 +19,27 @@ class INeuralPass {
                         ID3D12Resource* depth,
                         ID3D12Resource* out) = 0;
 
+  // The resource state `out` must be in when Evaluate is called.
+  //
+  // Passes disagree about this and the caller cannot guess: PassthroughPass
+  // writes with CopyResource and needs COPY_DEST, while anything driving NGX
+  // writes through an unordered-access view. Getting it wrong is a debug-layer
+  // error at best and a device removal under load at worst, so the pass states
+  // its own requirement and the pipeline brackets accordingly.
+  virtual D3D12_RESOURCE_STATES OutputState() const {
+    return D3D12_RESOURCE_STATE_COPY_DEST;
+  }
+
+  // The format this pass wants to write, or UNKNOWN for "whatever the caller's
+  // work target already is".
+  //
+  // A pass that names a format is asking the pipeline for its own intermediate
+  // target in that format, which the blend stage then resolves down to the
+  // presentable one. NGX wants explicitly typed float colour on both ends --
+  // the whole reason FormatNormalize exists (spec §8) -- while the overlay
+  // presents BGRA8, and something has to bridge the two.
+  virtual DXGI_FORMAT OutputFormat() const { return DXGI_FORMAT_UNKNOWN; }
+
   // Shown in the HUD so it is always obvious which pass is live.
   virtual const char* Name() const = 0;
 };

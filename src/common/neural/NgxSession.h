@@ -105,6 +105,10 @@ class NgxSession {
   NgxSession() = default;
 
   ID3D12Device* device_ = nullptr;
+  // Remembered from feature creation, because every evaluate has to restate them
+  // as the render subrect and NGX refuses a zero one.
+  uint32_t renderWidth_ = 0;
+  uint32_t renderHeight_ = 0;
   bool initialised_ = false;
   bool dlssSupported_ = false;
   std::string unavailableReason_;

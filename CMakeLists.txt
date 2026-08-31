@@ -89,6 +89,7 @@ target_sources(sidecar_common PRIVATE
   src/common/neural/PassthroughPass.cpp
   src/common/neural/RuntimeManifest.cpp
   src/common/neural/NgxSession.cpp
+  src/common/neural/ReshadeHostedPass.cpp
   src/common/neural/NeuralPassFactory.cpp)
 
 # The NVIDIA Optical Flow SDK is a manual download and is never vendored (I11).

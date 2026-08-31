@@ -233,6 +233,8 @@ bool NgxSession::CreateDlssFeature(ID3D12GraphicsCommandList* cl,
     return false;
   }
   handle_ = handle;
+  renderWidth_ = desc.renderWidth;
+  renderHeight_ = desc.renderHeight;
   return true;
 }
 
@@ -250,6 +252,12 @@ bool NgxSession::Evaluate(ID3D12GraphicsCommandList* cl, const DlssEvalDesc& des
   eval.pInMotionVectors = desc.motion;
   eval.InJitterOffsetX = desc.jitterX;
   eval.InJitterOffsetY = desc.jitterY;
+  // Not optional. Left at zero, NGX rejects every evaluate with InvalidParameter
+  // -- and because the pass degrades to a copy on failure, the symptom is a
+  // pipeline that runs at full rate doing nothing, which is why this is recorded
+  // rather than merely fixed.
+  eval.InRenderSubrectDimensions.Width = renderWidth_;
+  eval.InRenderSubrectDimensions.Height = renderHeight_;
   eval.InMVScaleX = desc.motionScaleX;
   eval.InMVScaleY = desc.motionScaleY;
   eval.InReset = desc.reset ? 1 : 0;

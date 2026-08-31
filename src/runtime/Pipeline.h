@@ -42,6 +42,14 @@ struct PipelineConfig {
   uint32_t uiMaskWidth = 0;
   uint32_t uiMaskHeight = 0;
   int32_t uiMaskFeather = 4;
+
+  // Which pass to build. Only consulted when Create() is handed a null pass,
+  // which is how the runtime asks for one -- a device-backed pass cannot be
+  // constructed before the device exists, and must be rebuilt with it after
+  // device loss.
+  std::string neuralPass = "passthrough";
+  // Where nvngx_*.dll live. Defaults to the executable's own directory.
+  std::filesystem::path runtimeDir;
 };
 
 // Owns the render thread and the per-frame orchestration: acquire the newest
@@ -156,6 +164,9 @@ class Pipeline {
   std::atomic<bool> running_{false};
   std::atomic<bool> stopRequested_{false};
   std::atomic<bool> rebuildRequested_{false};
+  // True when dev_.pass was built from config_ rather than handed in, and so
+  // must be rebuilt against a new device rather than carried across one.
+  bool passFromConfig_ = false;
   // The thread that called Start(), and therefore owns the windows.
   DWORD ownerThreadId_ = 0;
   LatencyStats stats_;

@@ -108,10 +108,14 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // capture", which is right until the calibration UI records it explicitly.
   cfg.uiMaskRects = config.uiMaskRects;
 
-  auto pass = MakeNeuralPass(config.neuralPass, warnings);
+  // The pass is named here and built by the pipeline, because a device-backed
+  // pass cannot exist before the device does -- and has to be rebuilt with it
+  // after device loss.
+  cfg.neuralPass = config.neuralPass;
+  cfg.runtimeDir = ExecutableDirectory();
   ReportWarnings(warnings);
 
-  auto pipeline = Pipeline::Create(*gpu, cfg, std::move(pass));
+  auto pipeline = Pipeline::Create(*gpu, cfg, nullptr);
   if (!pipeline) {
     GlobalLog().Error("could not create the pipeline");
     MessageBoxW(nullptr, L"Failed to create the pipeline.", L"DLSS 5 Sidecar", MB_ICONERROR);
