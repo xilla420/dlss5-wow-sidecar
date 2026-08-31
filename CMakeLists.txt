@@ -156,6 +156,27 @@ if(DLSS_SDK_DIR)
     d3d12 dxgi
     "$<$<CONFIG:Debug>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d_dbg.lib>"
     "$<$<NOT:$<CONFIG:Debug>>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d.lib>")
+
+  # Second spike, same terms. spike_ngx asked the NGX core for a feature and was
+  # refused; this one skips the core and calls nvngx_dlssnr.dll's own exported
+  # entry points. It links the SDK library only to obtain a parameter block --
+  # every feature call it makes is resolved with GetProcAddress at runtime.
+  add_executable(spike_snippet tools/spike_snippet/main.cpp)
+  target_include_directories(spike_snippet PRIVATE "${DLSS_SDK_DIR}/include")
+  target_link_libraries(spike_snippet PRIVATE
+    d3d12 dxgi
+    "$<$<CONFIG:Debug>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d_dbg.lib>"
+    "$<$<NOT:$<CONFIG:Debug>>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d.lib>")
+
+  # Task 4's spike. Must be run from a scratch directory holding ReShade and the
+  # add-on -- never from the build output directory, since a ReShade dxgi.dll
+  # sitting next to wowsidecar.exe would be injected into it on its next run.
+  add_executable(spike_reshade tools/spike_reshade/main.cpp)
+  target_include_directories(spike_reshade PRIVATE "${DLSS_SDK_DIR}/include")
+  target_link_libraries(spike_reshade PRIVATE
+    d3d12 dxgi dcomp psapi
+    "$<$<CONFIG:Debug>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d_dbg.lib>"
+    "$<$<NOT:$<CONFIG:Debug>>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d.lib>")
 endif()
 
 enable_testing()
