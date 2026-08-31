@@ -87,6 +87,52 @@ TEST_CASE("pipeline runs end to end over the test pattern", "[device]") {
   REQUIRE(pipeline->Running() == false);
 }
 
+// M3 Task 8, step 4. The masked path adds a second render target and four more
+// barrier transitions per frame, and a wrong resource state is the kind of bug
+// that shows up as a device removal under load rather than a wrong pixel. So
+// this runs the whole pipeline with a mask configured and requires it to keep
+// presenting at the same throughput as the unmasked path.
+//
+// It cannot assert what the blend produced -- with PassthroughPass the neural
+// input and the original are the same image, so the blend is an identity by
+// construction. UiMask's own [device] tests cover the pixels; this covers the
+// plumbing.
+TEST_CASE("pipeline runs with a UI mask configured", "[device]") {
+  auto gpu = DetectPrimaryGpu();
+  REQUIRE(gpu.has_value());
+
+  PatternApp app;
+  REQUIRE(app.Launch());
+
+  PipelineConfig cfg;
+  cfg.target = app.hwnd;
+  cfg.showOverlay = true;
+  // Two overlapping rectangles, so the union path and the feather both run.
+  cfg.uiMaskRects = {UiRect{0, 0, 200, 120}, UiRect{150, 80, 400, 300}};
+  cfg.uiMaskFeather = 6;
+
+  auto pipeline = Pipeline::Create(*gpu, cfg, PassthroughPass::Create());
+  REQUIRE(pipeline != nullptr);
+  pipeline->Start();
+
+  std::this_thread::sleep_for(3s);
+  INFO("lastError='" << pipeline->LastError() << "'");
+  REQUIRE(pipeline->Running());
+
+  const auto& stats = pipeline->Stats();
+  INFO("p50=" << stats.P50() << "ms p99=" << stats.P99()
+              << "ms drops=" << stats.Dropped());
+  REQUIRE(stats.Count() >= 30);
+  REQUIRE(stats.P99() < 250.0);
+  // A barrier mistake surfaces as device removal, which the render loop reports
+  // rather than throwing. Requiring the error to stay empty is what makes this
+  // test worth running.
+  REQUIRE(pipeline->LastError().empty());
+
+  pipeline->Stop();
+  REQUIRE(pipeline->Running() == false);
+}
+
 TEST_CASE("pipeline hides the overlay when the target window closes", "[device]") {
   auto gpu = DetectPrimaryGpu();
   REQUIRE(gpu.has_value());

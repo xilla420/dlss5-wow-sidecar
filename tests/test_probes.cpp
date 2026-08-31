@@ -159,6 +159,44 @@ TEST_CASE("ReShade probe warns when no host is present", "[unit]") {
   std::filesystem::remove_all(dir);
 }
 
+// Opt-in, because it needs a real ~166 MB runtime that is never committed.
+// Point SIDECAR_TEST_RUNTIME_DIR at a directory holding nvngx_dlssnr.dll to
+// check the probe end to end -- real hash, real manifest lookup, real detected
+// GPU -- rather than only through the pure verdict above.
+//
+//   set SIDECAR_TEST_RUNTIME_DIR=D:\path\to\runtimes
+TEST_CASE("Neural runtime probe diagnoses a real runtime against this GPU",
+          "[device]") {
+  size_t len = 0;
+  char raw[1024] = {};
+  if (getenv_s(&len, raw, sizeof(raw), "SIDECAR_TEST_RUNTIME_DIR") != 0 || len == 0) {
+    SUCCEED("SIDECAR_TEST_RUNTIME_DIR not set");
+    return;
+  }
+
+  const auto r = ProbeNeuralRuntime(std::filesystem::path(raw));
+  INFO("state:  " << static_cast<int>(r.state));
+  INFO("detail: " << r.detail);
+  INFO("remedy: " << r.remedy);
+
+  // Whatever the answer, it must be a real one: never silently Ok on a runtime
+  // this card cannot run, and never a bare failure with nothing to act on.
+  CHECK(r.detail.empty() == false);
+  if (r.state != ProbeState::Ok) CHECK(r.remedy.empty() == false);
+
+  const auto gpu = DetectPrimaryGpu();
+  const std::string digest = Sha256File(std::filesystem::path(raw) / "nvngx_dlssnr.dll");
+  if (gpu && !digest.empty()) {
+    if (const auto entry = LookupRuntime(digest)) {
+      // A recognised runtime that cannot run here must be reported as such.
+      const bool runnable =
+          CheckRuntimeCompatibility(gpu->arch, entry->variant) ==
+          RuntimeCompatibility::Ok;
+      CHECK((r.state == ProbeState::Ok) == runnable);
+    }
+  }
+}
+
 TEST_CASE("every probe result carries a remedy when it is not Ok", "[unit]") {
   const auto results = RunAllProbes("C:/Tools/dlss5-sidecar", "");
   REQUIRE(results.empty() == false);

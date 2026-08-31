@@ -103,6 +103,10 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   cfg.showOverlay = config.showOverlay;
   cfg.showHud = config.showHud;
   cfg.flowGridSize = config.flowGridSize;
+  // Calibrated at the desktop resolution the operator was looking at, which is
+  // what UiMask scales from. Leaving the source size zero means "same as the
+  // capture", which is right until the calibration UI records it explicitly.
+  cfg.uiMaskRects = config.uiMaskRects;
 
   auto pass = MakeNeuralPass(config.neuralPass, warnings);
   ReportWarnings(warnings);
