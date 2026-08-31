@@ -62,6 +62,7 @@ endfunction()
 compile_compute_shader(FormatNormalize)
 compile_compute_shader(FlowToMotionVec)
 compile_compute_shader(LuminanceR8)
+compile_compute_shader(UiMaskBlend)
 
 add_library(sidecar_common STATIC)
 target_include_directories(sidecar_common PUBLIC src/common)
@@ -78,6 +79,7 @@ target_sources(sidecar_common PRIVATE
   src/common/gpu/DeviceBridge.cpp
   src/common/gpu/FormatNormalize.cpp
   src/common/gpu/Luminance.cpp
+  src/common/gpu/UiMask.cpp
   src/common/flow/NvofaFlow.cpp
   src/common/flow/FlowToMotionVec.cpp
   src/common/capture/WgcSource.cpp

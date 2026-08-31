@@ -9,6 +9,7 @@
 #include <string>
 #include <thread>
 
+#include "core/Config.h"
 #include "core/GpuProfile.h"
 #include "core/LatencyStats.h"
 #include "core/PanicSwitch.h"
@@ -16,6 +17,7 @@
 #include "flow/NvofaFlow.h"
 #include "gpu/FormatNormalize.h"
 #include "gpu/Luminance.h"
+#include "gpu/UiMask.h"
 #include "neural/INeuralPass.h"
 #include "present/Hud.h"
 #include "present/WindowTracker.h"
@@ -33,6 +35,13 @@ struct PipelineConfig {
   // Pixels per flow vector. Validated to 1, 2 or 4 by Config before it gets
   // here; NvofaFlow refuses anything else.
   uint32_t flowGridSize = 4;
+  // Screen-space rectangles the neural pass must leave alone, in the resolution
+  // the operator calibrated at. Empty means no masking, and the mask pass is
+  // then not created at all.
+  std::vector<UiRect> uiMaskRects;
+  uint32_t uiMaskWidth = 0;
+  uint32_t uiMaskHeight = 0;
+  int32_t uiMaskFeather = 4;
 };
 
 // Owns the render thread and the per-frame orchestration: acquire the newest
@@ -127,6 +136,16 @@ class Pipeline {
     Microsoft::WRL::ComPtr<ID3D12Resource> previousLuma;
     Microsoft::WRL::ComPtr<ID3D12Resource> currentLuma;
     bool havePreviousFrame = false;
+
+    // Only created when the operator configured mask rectangles. When absent the
+    // render loop takes exactly the path it took before this existed, so an
+    // unmasked run pays nothing and cannot regress.
+    //
+    // Appended at the end deliberately: members are destroyed in reverse, so
+    // these come apart before the bridge they were created from.
+    std::unique_ptr<UiMask> uiMask;
+    Microsoft::WRL::ComPtr<ID3D12Resource> neuralTarget;
+    bool maskUploaded = false;
   };
   DeviceState dev_;
 

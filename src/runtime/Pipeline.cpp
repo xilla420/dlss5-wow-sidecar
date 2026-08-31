@@ -100,6 +100,25 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
   p->dev_.flowToMv = FlowToMotionVec::Create(dev, w, h);
   p->dev_.motionTarget = FlowToMotionVec::CreateMotionTarget(dev, w, h);
 
+  // The UI mask, only when the operator actually configured rectangles. Without
+  // it the render loop takes the path it took before this existed, so an
+  // unmasked run pays nothing for the feature and cannot regress because of it.
+  if (!config.uiMaskRects.empty()) {
+    p->dev_.uiMask = UiMask::Create(dev, w, h);
+    if (p->dev_.uiMask) p->dev_.neuralTarget = CreateWorkTarget(dev, w, h);
+    if (!p->dev_.uiMask || !p->dev_.neuralTarget) {
+      // Degrade rather than fail: an unmasked overlay is worth more than none,
+      // and the failure rule reserves hiding for things that break the frame.
+      p->dev_.uiMask.reset();
+      p->dev_.neuralTarget.Reset();
+      GlobalLog().Warn("UI mask could not be created; the interface will be "
+                       "processed along with the rest of the frame.");
+    } else {
+      GlobalLog().Info("UI mask active with " +
+                       std::to_string(config.uiMaskRects.size()) + " rectangle(s).");
+    }
+  }
+
   // Say which way this went. "No motion vectors" is the difference between a
   // neural pass that tracks the scene and one that assumes it is static, and
   // silently guessing wrong is exactly the kind of thing that gets diagnosed
@@ -377,23 +396,77 @@ void Pipeline::RenderLoop() {
       motion = dev_.motionTarget.Get();
     }
 
-    // The pass writes dev_.workTarget and the overlay's present reads it straight
-    // back, so bracket the pass: COPY_SOURCE at rest, COPY_DEST while written.
+    // With no mask configured this is exactly the path it always was: the pass
+    // writes dev_.workTarget and the overlay presents it. The masked path adds
+    // one indirection -- the pass writes a scratch target, and the blend
+    // composes that against the original frame into workTarget.
+    const bool masked = dev_.uiMask && dev_.neuralTarget;
+
+    // The mask texture is uploaded once, not per frame: it only changes when the
+    // configuration does. cmdList2 is open here, which is the cheapest place to
+    // record the copy.
+    if (masked && !dev_.maskUploaded) {
+      std::vector<MaskRect> rects;
+      rects.reserve(config_.uiMaskRects.size());
+      for (const auto& r : config_.uiMaskRects) {
+        rects.push_back(MaskRect{r.left, r.top, r.right, r.bottom});
+      }
+      const uint32_t sourceWidth =
+          config_.uiMaskWidth ? config_.uiMaskWidth : dev_.bridge->Width();
+      const uint32_t sourceHeight =
+          config_.uiMaskHeight ? config_.uiMaskHeight : dev_.bridge->Height();
+      dev_.uiMask->Rasterise(dev_.cmdList2.Get(), rects, sourceWidth, sourceHeight,
+                             config_.uiMaskFeather);
+      dev_.maskUploaded = true;
+    }
+
+    // The pass's destination rests in COPY_SOURCE and is COPY_DEST while written,
+    // because PassthroughPass writes it with CopyResource.
+    ID3D12Resource* passTarget =
+        masked ? dev_.neuralTarget.Get() : dev_.workTarget.Get();
+
     D3D12_RESOURCE_BARRIER toWrite{};
     toWrite.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-    toWrite.Transition.pResource = dev_.workTarget.Get();
+    toWrite.Transition.pResource = passTarget;
     toWrite.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
     toWrite.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
     toWrite.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
     dev_.cmdList2->ResourceBarrier(1, &toWrite);
 
     const bool ok = dev_.pass->Evaluate(dev_.cmdList2.Get(), frame->texture,
-                                    motion, nullptr, dev_.workTarget.Get());
+                                    motion, nullptr, passTarget);
 
     D3D12_RESOURCE_BARRIER toRead = toWrite;
     toRead.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    toRead.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+    toRead.Transition.StateAfter = masked
+                                       ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+                                       : D3D12_RESOURCE_STATE_COPY_SOURCE;
     dev_.cmdList2->ResourceBarrier(1, &toRead);
+
+    if (masked) {
+      // workTarget becomes the blend's UAV output, then goes back to
+      // COPY_SOURCE for the present. neuralTarget returns to COPY_SOURCE so the
+      // next frame starts from the state this one assumed.
+      D3D12_RESOURCE_BARRIER toBlend{};
+      toBlend.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+      toBlend.Transition.pResource = dev_.workTarget.Get();
+      toBlend.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+      toBlend.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
+      toBlend.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+      dev_.cmdList2->ResourceBarrier(1, &toBlend);
+
+      dev_.uiMask->Record(dev_.cmdList2.Get(), frame->texture,
+                          dev_.neuralTarget.Get(), dev_.workTarget.Get());
+
+      D3D12_RESOURCE_BARRIER after[2]{};
+      after[0] = toBlend;
+      after[0].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+      after[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+      after[1] = toRead;
+      after[1].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+      after[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+      dev_.cmdList2->ResourceBarrier(2, after);
+    }
 
     dev_.cmdList2->Close();
     if (!ok) {
