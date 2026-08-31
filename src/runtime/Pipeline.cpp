@@ -1,10 +1,14 @@
 #include "runtime/Pipeline.h"
 
 #include <chrono>
+#include <cstdio>
+#include <string>
 
 #include "capture/WgcSource.h"
 #include "core/Log.h"
 #include "gpu/DeviceBridge.h"
+#include "neural/NeuralPassFactory.h"
+#include "neural/PassthroughPass.h"
 #include "present/DCompOverlay.h"
 
 using Microsoft::WRL::ComPtr;
@@ -12,6 +16,39 @@ using Clock = std::chrono::steady_clock;
 
 namespace sidecar {
 namespace {
+
+// Two decimals is the useful precision for a millisecond figure; std::to_string
+// would print six and bury it.
+std::string FormatMs(double ms) {
+  char buffer[32];
+  std::snprintf(buffer, sizeof(buffer), "%.2f", ms);
+  return buffer;
+}
+
+// Same shape as the work target but in a caller-chosen format, for a pass that
+// writes something other than the presentable one. It rests in
+// UNORDERED_ACCESS because that is how NGX writes it.
+ComPtr<ID3D12Resource> CreateTypedTarget(ID3D12Device* dev, uint32_t w, uint32_t h,
+                                         DXGI_FORMAT format) {
+  D3D12_HEAP_PROPERTIES heap{};
+  heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+
+  D3D12_RESOURCE_DESC rd{};
+  rd.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+  rd.Width = w;
+  rd.Height = h;
+  rd.DepthOrArraySize = 1;
+  rd.MipLevels = 1;
+  rd.Format = format;
+  rd.SampleDesc.Count = 1;
+  rd.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+
+  ComPtr<ID3D12Resource> tex;
+  dev->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &rd,
+                               D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+                               IID_PPV_ARGS(&tex));
+  return tex;
+}
 
 // A D3D12 texture the neural pass can write into, matching the capture format.
 // It rests in COPY_SOURCE between frames because the overlay's present is the
@@ -53,6 +90,11 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
   std::unique_ptr<Pipeline> p(new Pipeline());
   p->config_ = config;
   p->gpu_ = gpu;
+  // A caller-supplied pass is device-free by construction -- that is the only
+  // kind that can exist before this function runs. A pass named in config may
+  // hold device resources, so it is built below, once the device does, and
+  // rebuilt with it after device loss.
+  p->passFromConfig_ = (pass == nullptr);
   p->dev_.pass = std::move(pass);
 
   p->dev_.bridge = DeviceBridge::Create(gpu.luid, w, h);
@@ -100,20 +142,56 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
   p->dev_.flowToMv = FlowToMotionVec::Create(dev, w, h);
   p->dev_.motionTarget = FlowToMotionVec::CreateMotionTarget(dev, w, h);
 
+  // Build the configured pass now that there is a device for it to hold. Any
+  // failure inside MakeNeuralPass degrades to passthrough and explains itself,
+  // so this cannot fail the pipeline (spec section 11).
+  if (p->passFromConfig_) {
+    NeuralPassContext ctx;
+    ctx.device = dev;
+    ctx.runtimeDir = config.runtimeDir;
+    ctx.width = w;
+    ctx.height = h;
+
+    std::vector<std::string> warnings;
+    p->dev_.pass = MakeNeuralPass(config.neuralPass, ctx, warnings);
+    for (const auto& warning : warnings) GlobalLog().Warn(warning);
+    if (!p->dev_.pass) return nullptr;
+    GlobalLog().Info(std::string("neural pass: ") + p->dev_.pass->Name());
+  }
+
+  // A pass that names its own output format wants an intermediate target in it,
+  // which the mask blend then resolves down to the presentable BGRA8. That is
+  // also the only stage that can convert between the two, so a pass asking for
+  // a format implies the blend runs whether or not any rectangles are masked.
+  const DXGI_FORMAT passFormat = p->dev_.pass->OutputFormat();
+  const bool needsResolve = passFormat != DXGI_FORMAT_UNKNOWN;
+
   // The UI mask, only when the operator actually configured rectangles. Without
   // it the render loop takes the path it took before this existed, so an
   // unmasked run pays nothing for the feature and cannot regress because of it.
-  if (!config.uiMaskRects.empty()) {
+  if (!config.uiMaskRects.empty() || needsResolve) {
     p->dev_.uiMask = UiMask::Create(dev, w, h);
-    if (p->dev_.uiMask) p->dev_.neuralTarget = CreateWorkTarget(dev, w, h);
+    if (p->dev_.uiMask) {
+      p->dev_.neuralTarget = needsResolve
+                                 ? CreateTypedTarget(dev, w, h, passFormat)
+                                 : CreateWorkTarget(dev, w, h);
+    }
     if (!p->dev_.uiMask || !p->dev_.neuralTarget) {
-      // Degrade rather than fail: an unmasked overlay is worth more than none,
-      // and the failure rule reserves hiding for things that break the frame.
       p->dev_.uiMask.reset();
       p->dev_.neuralTarget.Reset();
-      GlobalLog().Warn("UI mask could not be created; the interface will be "
-                       "processed along with the rest of the frame.");
-    } else {
+      if (needsResolve) {
+        // Without the resolve stage this pass's output cannot be presented at
+        // all, so fall back to the one pass that needs no resolve.
+        GlobalLog().Error("the neural pass needs a resolve stage that could not "
+                          "be created; falling back to passthrough.");
+        p->dev_.pass = PassthroughPass::Create();
+      } else {
+        // Degrade rather than fail: an unmasked overlay is worth more than none,
+        // and the failure rule reserves hiding for things that break the frame.
+        GlobalLog().Warn("UI mask could not be created; the interface will be "
+                         "processed along with the rest of the frame.");
+      }
+    } else if (!config.uiMaskRects.empty()) {
       GlobalLog().Info("UI mask active with " +
                        std::to_string(config.uiMaskRects.size()) + " rectangle(s).");
     }
@@ -182,8 +260,11 @@ bool Pipeline::Rebuild() {
   // is the only ordering the driver survives.
   DrainGpu();
 
-  // Keep the neural pass: it is chosen from config and is not device-derived.
-  auto pass = std::move(dev_.pass);
+  // A caller-supplied pass holds no device resources and is carried across. One
+  // built from config may hold plenty -- an NGX session, a depth plane -- all of
+  // it belonging to the device that just went away, so it is dropped here and
+  // rebuilt against the new device by Create().
+  auto pass = passFromConfig_ ? nullptr : std::move(dev_.pass);
 
   // Move out and let the temporary die, rather than assigning an empty state
   // over the top. Move-assignment releases the old members in *declaration*
@@ -305,6 +386,7 @@ void Pipeline::RenderLoop() {
   panic_ = PanicSwitch::Create([this] { Panic(); });
 
   uint64_t sinceHudUpdate = 0;
+  uint64_t hudUpdates = 0;
   while (!stopRequested_.load(std::memory_order_acquire)) {
     if (panic_) panic_->Pump();
     if (panic_ && panic_->Triggered()) break;
@@ -420,28 +502,52 @@ void Pipeline::RenderLoop() {
       dev_.maskUploaded = true;
     }
 
-    // The pass's destination rests in COPY_SOURCE and is COPY_DEST while written,
-    // because PassthroughPass writes it with CopyResource.
+    // A pass that names an output format writes the intermediate target and
+    // reads the widened frame; one that does not writes the work target and
+    // reads the captured frame directly, exactly as before.
+    const bool resolving = dev_.pass->OutputFormat() != DXGI_FORMAT_UNKNOWN;
     ID3D12Resource* passTarget =
-        masked ? dev_.neuralTarget.Get() : dev_.workTarget.Get();
+        (masked || resolving) ? dev_.neuralTarget.Get() : dev_.workTarget.Get();
+    ID3D12Resource* passColor =
+        resolving ? dev_.normalized.Get() : frame->texture;
+
+    // Each pass declares the state it needs its output in: PassthroughPass
+    // copies and wants COPY_DEST, anything driving NGX writes a UAV. The
+    // intermediate target rests in UNORDERED_ACCESS, the work target in
+    // COPY_SOURCE, because that is how each is consumed afterwards.
+    const D3D12_RESOURCE_STATES restState =
+        (masked || resolving) ? D3D12_RESOURCE_STATE_UNORDERED_ACCESS
+                              : D3D12_RESOURCE_STATE_COPY_SOURCE;
+    const D3D12_RESOURCE_STATES writeState = dev_.pass->OutputState();
 
     D3D12_RESOURCE_BARRIER toWrite{};
     toWrite.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
     toWrite.Transition.pResource = passTarget;
     toWrite.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-    toWrite.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_SOURCE;
-    toWrite.Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_DEST;
-    dev_.cmdList2->ResourceBarrier(1, &toWrite);
+    toWrite.Transition.StateBefore = restState;
+    toWrite.Transition.StateAfter = writeState;
+    if (restState != writeState) dev_.cmdList2->ResourceBarrier(1, &toWrite);
 
-    const bool ok = dev_.pass->Evaluate(dev_.cmdList2.Get(), frame->texture,
+    const bool ok = dev_.pass->Evaluate(dev_.cmdList2.Get(), passColor,
                                     motion, nullptr, passTarget);
 
+    // Back to rest, then on to whatever reads it: the blend samples the
+    // intermediate target, the overlay copies from the work target.
+    if (restState != writeState) {
+      D3D12_RESOURCE_BARRIER back = toWrite;
+      back.Transition.StateBefore = writeState;
+      back.Transition.StateAfter = restState;
+      dev_.cmdList2->ResourceBarrier(1, &back);
+    }
+
     D3D12_RESOURCE_BARRIER toRead = toWrite;
-    toRead.Transition.StateBefore = D3D12_RESOURCE_STATE_COPY_DEST;
-    toRead.Transition.StateAfter = masked
-                                       ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
-                                       : D3D12_RESOURCE_STATE_COPY_SOURCE;
-    dev_.cmdList2->ResourceBarrier(1, &toRead);
+    toRead.Transition.StateBefore = restState;
+    toRead.Transition.StateAfter =
+        (masked || resolving) ? D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE
+                              : D3D12_RESOURCE_STATE_COPY_SOURCE;
+    if (toRead.Transition.StateBefore != toRead.Transition.StateAfter) {
+      dev_.cmdList2->ResourceBarrier(1, &toRead);
+    }
 
     if (masked) {
       // workTarget becomes the blend's UAV output, then goes back to
@@ -464,13 +570,32 @@ void Pipeline::RenderLoop() {
       after[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
       after[1] = toRead;
       after[1].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
-      after[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COPY_SOURCE;
+      // Back to whatever this target rests in, which depends on how the pass
+      // writes it -- not unconditionally COPY_SOURCE.
+      after[1].Transition.StateAfter = restState;
       dev_.cmdList2->ResourceBarrier(2, after);
     }
 
     dev_.cmdList2->Close();
     if (!ok) {
-      FailAndHide("neural pass rejected the frame");
+      // Spec section 11: an unusable neural pass degrades to passthrough and
+      // says so. It does not hide the overlay -- that is reserved for failures
+      // that break the frame itself.
+      //
+      // The list is deliberately not executed: after a failed pass its recorded
+      // barriers no longer describe reality. Nothing was submitted, so the GPU's
+      // actual states still match what the next frame will assume. Rebuilding
+      // reuses the device-loss path, which already drains and reconstructs on
+      // the thread that owns the windows.
+      GlobalLog().Error("the neural pass rejected a frame; rebuilding on passthrough.");
+      {
+        std::lock_guard<std::mutex> lock(errorMutex_);
+        lastError_ = "neural pass failed; fell back to passthrough";
+      }
+      config_.neuralPass = "passthrough";
+      passFromConfig_ = true;
+      rebuildRequested_.store(true, std::memory_order_release);
+      if (ownerThreadId_ != 0) PostThreadMessageW(ownerThreadId_, WM_NULL, 0, 0);
       break;
     }
 
@@ -497,6 +622,17 @@ void Pipeline::RenderLoop() {
       model.p99Ms = stats_.P99();
       model.frames = stats_.Count();
       model.drops = stats_.Dropped();
+      // Periodically to the log as well, roughly every ten seconds. The HUD is
+      // the operator's view, but a bug report needs numbers that survive being
+      // pasted into a text box -- and it is the only way to read latency from a
+      // headless run.
+      if (++hudUpdates % 20 == 0) {
+        GlobalLog().Info("latency p50 " + FormatMs(stats_.P50()) + " ms, p99 " +
+                         FormatMs(stats_.P99()) + " ms over " +
+                         std::to_string(stats_.Count()) + " frames, " +
+                         std::to_string(stats_.Dropped()) + " dropped, pass " +
+                         dev_.pass->Name());
+      }
       model.passName = dev_.pass->Name();
       model.gpuName = dev_.gpuName.c_str();
       dev_.hud->Update(model);

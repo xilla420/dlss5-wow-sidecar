@@ -22,6 +22,7 @@ add_executable(sidecar_tests
   test_ngx_session.cpp
   test_mask_math.cpp
   test_ui_mask.cpp
+  test_reshade_hosted_pass.cpp
   test_probes.cpp
   test_neural_pass_factory.cpp
   test_panic_switch.cpp
