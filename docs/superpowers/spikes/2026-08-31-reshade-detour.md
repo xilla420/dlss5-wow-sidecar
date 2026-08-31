@@ -91,16 +91,29 @@ and the design this project relocates out of process — reports `feature 18 cre
 `inline feature 18 evaluation succeeded`. The mechanism is sound; ours failed on the runtime,
 not on the idea.
 
-**3. Question 1 has an answer, and it is the unwelcome one.** DLSS5-Feeder feeds a DLAA
-contract of colour + **R32F depth** + **RG16F motion vectors**, all at output resolution, no
-jitter, render size equal to output size. Depth is **mandatory, with no synthetic fallback**.
-It gets real hardware depth from ReShade because it runs inside the game.
+**3. Question 1, and a correction to how this section first stated it.** DLSS5-Feeder feeds a
+DLAA contract of colour + **R32F depth** + **RG16F motion vectors**, all at output resolution,
+no jitter, render size equal to output size. It gets real hardware depth from ReShade because
+it runs inside the game.
 
-This sidecar has no depth and cannot obtain one — that is what capturing DWM's composited
-output means. So M3 cannot simply copy the prior art. What remains untested by anyone is
-whether NR tolerates a *synthesised* depth (constant, or a luminance-derived proxy), and with
-what quality cost. That is now the single open question for M3, and it can only be answered
-once an Ada-capable runtime is present.
+The first version of this section read that as "depth is mandatory with no synthetic fallback,
+and that is the unwelcome answer". Reading further, the distinction is finer and it matters:
+the depth *binding* is required — there is no code path that omits it — but **wrong depth
+degrades rather than fails.** Their own troubleshooting describes a missing or mis-selected
+depth buffer as producing an image that is "static-sharp" but "smears when moving", not a
+refused feature. Depth feeds disocclusion detection in the reprojection, so bad depth costs
+temporal stability under motion; it does not stop NR running.
+
+That makes a synthesised depth worth trying rather than a dead end. The sidecar can bind a
+constant or luminance-derived R32F and expect degraded motion handling, which is a very
+different proposition from "M3 cannot ship". Still untested by anyone, and still needs an
+Ada-capable runtime to try.
+
+Two mitigations the prior art already points at, both of which this project can use:
+their **trust mask** zeroes vectors that fail a disocclusion and consistency check and passes
+it as DLSS's bias-current-colour mask, and the **CNN presets (E/F)** clamp temporal history
+harder than the default transformer preset specifically to contain confidently-wrong vectors.
+Both target exactly the failure mode a synthetic depth would provoke.
 
 **4. Two details worth taking for free.** Their motion vectors are in pixels with
 `prev_uv = uv + mv`, which is an independent cross-check on the sign convention M2 measured

@@ -10,12 +10,29 @@ namespace sidecar {
 
 // How a DLSS feature is configured. Kept as plain values so the shape of the
 // contract is visible here rather than buried in NGX parameter names.
+// DLSS render presets, as the SDK numbers them.
+//
+// Default is the transformer preset (K) for DLAA. The CNN presets clamp
+// temporal history much harder, which matters here specifically because this
+// project's motion vectors are *estimated* from two colour frames rather than
+// rendered by an engine. DLSS5-Feeder, working from the same kind of estimated
+// vectors, recommends exactly these when confidently-wrong vectors cause
+// warping on flames, flickering lights and transparencies.
+enum class DlssPreset {
+  Default = 0,
+  CnnE = 5,          // clamps history hardest
+  CnnF = 6,
+  TransformerJ = 10,
+  TransformerK = 11,  // SDK default for DLAA
+};
+
 struct DlssFeatureDesc {
   uint32_t renderWidth = 0;
   uint32_t renderHeight = 0;
   uint32_t outputWidth = 0;
   uint32_t outputHeight = 0;
   bool hdr = false;
+  DlssPreset preset = DlssPreset::Default;
 };
 
 // The resources a single evaluation reads and writes.
