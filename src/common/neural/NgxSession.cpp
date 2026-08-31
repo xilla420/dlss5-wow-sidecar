@@ -53,6 +53,41 @@ const char* ResultName(NVSDK_NGX_Result r) {
   }
 }
 
+// NGX is a closed vendor runtime driven, in route B, through a third-party
+// detour. DLSS5-Feeder -- the only working implementation of this contract --
+// wraps its NGX calls in SEH and discards the command list rather than
+// submitting it after a fault, because a crash inside NGX otherwise takes the
+// host process down with it. The failure rule here says degrade to passthrough,
+// never crash, and that is not achievable without this.
+//
+// These hold only PODs, which is what lets __try coexist with /EHsc.
+NVSDK_NGX_Result GuardedCreateDlss(ID3D12GraphicsCommandList* cl,
+                                   NVSDK_NGX_Parameter* params,
+                                   NVSDK_NGX_DLSS_Create_Params* create,
+                                   NVSDK_NGX_Handle** outHandle, DWORD* outSeh) {
+  *outSeh = 0;
+  __try {
+    return NGX_D3D12_CREATE_DLSS_EXT(cl, 1, 1, outHandle, params, create);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    *outSeh = GetExceptionCode();
+    return NVSDK_NGX_Result_Fail;
+  }
+}
+
+NVSDK_NGX_Result GuardedEvaluateDlss(ID3D12GraphicsCommandList* cl,
+                                     NVSDK_NGX_Handle* handle,
+                                     NVSDK_NGX_Parameter* params,
+                                     NVSDK_NGX_D3D12_DLSS_Eval_Params* eval,
+                                     DWORD* outSeh) {
+  *outSeh = 0;
+  __try {
+    return NGX_D3D12_EVALUATE_DLSS_EXT(cl, handle, params, eval);
+  } __except (EXCEPTION_EXECUTE_HANDLER) {
+    *outSeh = GetExceptionCode();
+    return NVSDK_NGX_Result_Fail;
+  }
+}
+
 }  // namespace
 
 std::unique_ptr<NgxSession> NgxSession::Create(ID3D12Device* device,
@@ -173,9 +208,26 @@ bool NgxSession::CreateDlssFeature(ID3D12GraphicsCommandList* cl,
   if (desc.hdr) flags |= NVSDK_NGX_DLSS_Feature_Flags_IsHDR;
   create.InFeatureCreateFlags = flags;
 
+  if (desc.preset != DlssPreset::Default) {
+    const auto preset = static_cast<unsigned int>(desc.preset);
+    // Set every mode's hint: which one NGX consults depends on the quality
+    // value it resolves internally, and setting only DLAA silently does nothing
+    // when the ratio makes it pick another.
+    Params(parameters_)->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_DLAA, preset);
+    Params(parameters_)->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Quality, preset);
+    Params(parameters_)->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Balanced, preset);
+    Params(parameters_)->Set(NVSDK_NGX_Parameter_DLSS_Hint_Render_Preset_Performance, preset);
+  }
+
   NVSDK_NGX_Handle* handle = nullptr;
+  DWORD seh = 0;
   const NVSDK_NGX_Result r =
-      NGX_D3D12_CREATE_DLSS_EXT(cl, 1, 1, &handle, Params(parameters_), &create);
+      GuardedCreateDlss(cl, Params(parameters_), &create, &handle, &seh);
+  if (seh != 0) {
+    GlobalLog().Error("DLSS feature creation faulted inside NGX (SEH " +
+                      std::to_string(seh) + "); falling back to passthrough.");
+    return false;
+  }
   if (r != NVSDK_NGX_Result_Success || !handle) {
     GlobalLog().Error(std::string("DLSS feature creation failed: ") + ResultName(r));
     return false;
@@ -202,8 +254,18 @@ bool NgxSession::Evaluate(ID3D12GraphicsCommandList* cl, const DlssEvalDesc& des
   eval.InMVScaleY = desc.motionScaleY;
   eval.InReset = desc.reset ? 1 : 0;
 
-  const NVSDK_NGX_Result r =
-      NGX_D3D12_EVALUATE_DLSS_EXT(cl, Handle(handle_), Params(parameters_), &eval);
+  DWORD seh = 0;
+  const NVSDK_NGX_Result r = GuardedEvaluateDlss(cl, Handle(handle_),
+                                                 Params(parameters_), &eval, &seh);
+  if (seh != 0) {
+    // The command list is now of unknown validity, so the caller must discard
+    // it rather than submit it. Dropping the feature makes HasFeature() false,
+    // which is how the pipeline is told to stop trying.
+    GlobalLog().Error("DLSS evaluate faulted inside NGX (SEH " +
+                      std::to_string(seh) + "); dropping the feature.");
+    ReleaseFeature();
+    return false;
+  }
   if (r != NVSDK_NGX_Result_Success) {
     GlobalLog().Error(std::string("DLSS evaluate failed: ") + ResultName(r));
     return false;
