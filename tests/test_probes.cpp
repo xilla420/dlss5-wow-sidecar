@@ -115,7 +115,8 @@ TEST_CASE("Neural runtime verdict accepts a known build and names its version",
           "[unit]") {
   const auto r = NeuralRuntimeVerdict(
       "nvngx_dlssnr.dll",
-      "e16bcf15e16e13f527491cdf7845b2fe6521a738d8f7c9c721866a8496e1fc8e");
+      "e16bcf15e16e13f527491cdf7845b2fe6521a738d8f7c9c721866a8496e1fc8e",
+      GpuArch::Blackwell);
   CHECK(r.state == ProbeState::Ok);
   CHECK(r.detail.find("310.8.0") != std::string::npos);
   // An Ok row needs no remedy; there is nothing to remedy.
@@ -125,7 +126,7 @@ TEST_CASE("Neural runtime verdict accepts a known build and names its version",
 TEST_CASE("Neural runtime verdict warns, with the digest, on an unknown build",
           "[unit]") {
   const std::string digest(64, 'c');
-  const auto r = NeuralRuntimeVerdict("nvngx_dlssnr.dll", digest);
+  const auto r = NeuralRuntimeVerdict("nvngx_dlssnr.dll", digest, GpuArch::Blackwell);
   CHECK(r.state == ProbeState::Warn);
   CHECK(r.detail.find(digest) != std::string::npos);
   CHECK(r.remedy.empty() == false);
@@ -133,7 +134,7 @@ TEST_CASE("Neural runtime verdict warns, with the digest, on an unknown build",
 
 TEST_CASE("Neural runtime verdict treats an unreadable file as its own case",
           "[unit]") {
-  const auto r = NeuralRuntimeVerdict("nvngx_dlssnr.dll", "");
+  const auto r = NeuralRuntimeVerdict("nvngx_dlssnr.dll", "", GpuArch::Blackwell);
   CHECK(r.state == ProbeState::Warn);
   CHECK(r.detail.find("could not be read") != std::string::npos);
 }

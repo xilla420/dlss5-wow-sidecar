@@ -72,6 +72,52 @@ variant and Ada needs a patched one. A stock Blackwell-only runtime refusing fea
 Ada would produce exactly this generic failure at exactly this step. Distinguishing the two
 requires the Ada variant, which is user-supplied — it is not something to go and fetch.
 
+## What the published prior art settles
+
+**Everything in this section is read, not measured.** It is kept separate from the
+measurements above on purpose. It does, however, resolve the ambiguity this spike could not.
+
+**1. The stock runtime is Blackwell-only, and that is almost certainly our `0xbad00001`.**
+The leaked `nvngx_dlssnr.dll` contains CUDA binaries compiled for Blackwell. A patched build
+replacing the Ada-incompatible ones exists and is reported to add RTX 40 and 50 support. So a
+stock runtime on an RTX 4080 failing at feature creation — after loading and initialising
+cleanly — is the expected outcome, not a rejected contract.
+
+This is now checked before anything is attempted: `CheckRuntimeCompatibility(Ada, Stock)`
+returns `WrongVariant` and the probe says why, so nobody else has to spend a spike finding out.
+
+**2. Feature 18 does work, given a real depth buffer.** DLSS5-Feeder — the closest prior art,
+and the design this project relocates out of process — reports `feature 18 created` and
+`inline feature 18 evaluation succeeded`. The mechanism is sound; ours failed on the runtime,
+not on the idea.
+
+**3. Question 1 has an answer, and it is the unwelcome one.** DLSS5-Feeder feeds a DLAA
+contract of colour + **R32F depth** + **RG16F motion vectors**, all at output resolution, no
+jitter, render size equal to output size. Depth is **mandatory, with no synthetic fallback**.
+It gets real hardware depth from ReShade because it runs inside the game.
+
+This sidecar has no depth and cannot obtain one — that is what capturing DWM's composited
+output means. So M3 cannot simply copy the prior art. What remains untested by anyone is
+whether NR tolerates a *synthesised* depth (constant, or a luminance-derived proxy), and with
+what quality cost. That is now the single open question for M3, and it can only be answered
+once an Ada-capable runtime is present.
+
+**4. Two details worth taking for free.** Their motion vectors are in pixels with
+`prev_uv = uv + mv`, which is an independent cross-check on the sign convention M2 measured
+(NVOFA returned −4.5 px against +4 px/frame, and `FlowToMotionPixels` negates). And they pass
+a `R8` trust mask for vectors that failed validation as DLSS's **bias-current-colour mask** —
+which means the UI mask of Tasks 7 and 8 has a second consumer, and optical-flow vectors over
+interface elements are exactly the vectors worth distrusting.
+
+**5. A performance warning.** An RTX 4090 running NR in-engine is reported dropping from ~135
+to ~82 FPS, roughly −39%. The M1 gate passed at p99 6.1 ms against an ~80 ms threshold, so
+there is headroom, but this is the first indication that the neural pass may dominate the
+budget on Ada. Task 5 Step 9 measures it rather than assuming either way.
+
+Sources: [Tom's Hardware](https://www.tomshardware.com/pc-components/gpus/exclusive-dlss-5-has-already-been-ported-to-work-on-rtx-4000-series-graphics-cards-incompatible-cuda-instructions-get-patched-to-work-on-previous-gen-hardware),
+[DLSS5-Feeder](https://github.com/jlrouzies-fr/DLSS5-Feeder),
+[DLSS5-Swapper releases](https://github.com/rakanki911/DLSS5-Swapper/releases).
+
 ## Correction to Task 3
 
 Task 3 concluded "M6 / Task 10 is closed". **That conclusion was drawn too broadly** and is

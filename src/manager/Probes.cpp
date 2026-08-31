@@ -212,11 +212,13 @@ ProbeResult ProbeNeuralRuntime(const fs::path& sidecarDir) {
   // Hash it rather than trust the filename. A wrong or truncated binary here
   // becomes an access violation inside NGX at feature creation (spec §10), and
   // a digest is the only thing that distinguishes it from a good one beforehand.
-  return NeuralRuntimeVerdict(dll.filename().string(), Sha256File(dll));
+  const auto gpu = DetectPrimaryGpu();
+  return NeuralRuntimeVerdict(dll.filename().string(), Sha256File(dll),
+                              gpu ? gpu->arch : GpuArch::Unsupported);
 }
 
 ProbeResult NeuralRuntimeVerdict(std::string_view fileName,
-                                 std::string_view sha256Hex) {
+                                 std::string_view sha256Hex, GpuArch arch) {
   ProbeResult r;
   r.title = "Neural runtime";
 
@@ -229,8 +231,19 @@ ProbeResult NeuralRuntimeVerdict(std::string_view fileName,
   }
 
   r.detail = DescribeRuntime(fileName, sha256Hex);
-  if (LookupRuntime(sha256Hex)) {
-    r.state = ProbeState::Ok;
+  if (const auto entry = LookupRuntime(sha256Hex)) {
+    // Recognising the build is only half the question. The stock runtime is
+    // built for Blackwell and fails on Ada at feature creation with a bare
+    // error code, so saying so here is what turns that into a diagnosis.
+    const std::string mismatch = DescribeCompatibility(arch, entry->variant);
+    if (mismatch.empty()) {
+      r.state = ProbeState::Ok;
+      return r;
+    }
+    r.state = ProbeState::Warn;
+    r.detail += " " + mismatch;
+    r.remedy = "Supply a runtime built for this GPU, or the neural pass will "
+               "fall back to passthrough.";
     return r;
   }
 

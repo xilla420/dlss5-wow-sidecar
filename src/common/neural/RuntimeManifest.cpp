@@ -75,6 +75,46 @@ RuntimeVariant VariantForArchitecture(GpuArch arch) {
   }
 }
 
+RuntimeCompatibility CheckRuntimeCompatibility(GpuArch arch, RuntimeVariant variant) {
+  if (arch != GpuArch::Ada && arch != GpuArch::Blackwell) {
+    return RuntimeCompatibility::UnsupportedArchitecture;
+  }
+  switch (variant) {
+    // The patched build adds Ada support without dropping Blackwell, so it is
+    // the one variant that is correct on both.
+    case RuntimeVariant::AdaPatched:
+      return RuntimeCompatibility::Ok;
+    case RuntimeVariant::Stock:
+      return arch == GpuArch::Blackwell ? RuntimeCompatibility::Ok
+                                        : RuntimeCompatibility::WrongVariant;
+    default:
+      return RuntimeCompatibility::WrongVariant;
+  }
+}
+
+std::string DescribeCompatibility(GpuArch arch, RuntimeVariant variant) {
+  switch (CheckRuntimeCompatibility(arch, variant)) {
+    case RuntimeCompatibility::Ok:
+      return {};
+    case RuntimeCompatibility::UnsupportedArchitecture:
+      return std::string("This GPU (") + ToString(arch) +
+             ") is outside the supported matrix; neural rendering needs Ada or "
+             "Blackwell.";
+    case RuntimeCompatibility::WrongVariant:
+    default:
+      if (arch == GpuArch::Ada && variant == RuntimeVariant::Stock) {
+        // The specific case worth spelling out, because the symptom is a bare
+        // failure code at feature creation and nothing else says why.
+        return "This is the stock runtime, which is built for Blackwell. On an "
+               "Ada card neural-rendering feature creation fails with no "
+               "explanation. An Ada-compatible build of nvngx_dlssnr.dll is "
+               "required.";
+      }
+      return std::string("The ") + ToString(variant) + " runtime does not run on " +
+             ToString(arch) + ".";
+  }
+}
+
 const char* ToString(RuntimeVariant variant) {
   switch (variant) {
     case RuntimeVariant::Stock:      return "stock NVIDIA";
