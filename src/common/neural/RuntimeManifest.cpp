@@ -19,9 +19,17 @@ struct ManifestRow {
 // confirmed twice over during the M3 Task 4 spike: renodx-dlss5.addon64 reported
 // it as a reference match, and the file carries a valid NVIDIA Authenticode
 // signature.
-constexpr std::array<ManifestRow, 1> kManifest{{
+constexpr std::array<ManifestRow, 2> kManifest{{
     {"e16bcf15e16e13f527491cdf7845b2fe6521a738d8f7c9c721866a8496e1fc8e",
      "310.8.0", RuntimeVariant::Stock},
+    // Same version and byte count as the stock build, and it still carries
+    // NVIDIA's signature block -- but Authenticode reports HashMismatch,
+    // because the Blackwell-built CUDA binaries inside were replaced with
+    // Ada-compatible ones. Verified on an RTX 4080: with the stock build,
+    // neural-rendering feature creation fails with a bare 0xbad00001; with this
+    // one it creates and evaluates. That is the whole reason this row exists.
+    {"e67dee209320cdafe0e93e45675d7aa34323a53acc57a72b2e40a181581c989a",
+     "310.8.0", RuntimeVariant::AdaPatched},
 }};
 
 std::string ToLower(std::string_view text) {

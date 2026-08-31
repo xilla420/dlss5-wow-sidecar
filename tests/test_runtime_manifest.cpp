@@ -20,6 +20,28 @@ TEST_CASE("A known runtime digest resolves to its build", "[unit]") {
   CHECK(entry->variant == RuntimeVariant::Stock);
 }
 
+// Verified on hardware: with this build the neural-rendering feature creates
+// and evaluates on an RTX 4080, where the stock build fails outright.
+TEST_CASE("The Ada-patched runtime resolves to its own variant", "[unit]") {
+  const auto entry = LookupRuntime(
+      "e67dee209320cdafe0e93e45675d7aa34323a53acc57a72b2e40a181581c989a");
+  REQUIRE(entry.has_value());
+  CHECK(entry->version == "310.8.0");
+  CHECK(entry->variant == RuntimeVariant::AdaPatched);
+}
+
+// The two builds share a version string and a byte count, so nothing but the
+// digest tells them apart. If these ever collide the manifest is useless.
+TEST_CASE("The stock and Ada-patched builds are distinguished", "[unit]") {
+  const auto stock = LookupRuntime(
+      "e16bcf15e16e13f527491cdf7845b2fe6521a738d8f7c9c721866a8496e1fc8e");
+  const auto patched = LookupRuntime(
+      "e67dee209320cdafe0e93e45675d7aa34323a53acc57a72b2e40a181581c989a");
+  REQUIRE(stock.has_value());
+  REQUIRE(patched.has_value());
+  CHECK(stock->variant != patched->variant);
+}
+
 TEST_CASE("Digest matching ignores case", "[unit]") {
   // The add-on prints uppercase, Sha256Hex produces lowercase, and an operator
   // pasting either into a bug report should get the same answer.

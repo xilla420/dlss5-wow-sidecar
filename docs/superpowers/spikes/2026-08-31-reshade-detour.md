@@ -14,9 +14,53 @@ all Authenticode-valid NVIDIA builds, 310.8.0.
 
 ## Answer
 
-**Yes.** The detour fires in a process shaped like the sidecar, and it goes considerably
-further than the plan asked: the add-on brings the DLSS 5 NR runtime up inside our process and
-attempts the NR feature. It gets to the last step and fails there.
+**Yes — and with an Ada-capable runtime, DLSS 5 Neural Rendering creates and evaluates inside a
+process shaped like this sidecar, on an RTX 4080.** Route B is proven end to end.
+
+## Update: the Ada-patched runtime closes the loop
+
+The first pass through this spike ended at `feature 18 create failed with 0xbad00001` and could
+not say whether the contract or the runtime was at fault. Published prior art pointed at the
+runtime; supplying an Ada-patched build settles it on hardware.
+
+| | stock `e16bcf15…` | patched `e67dee20…` |
+|---|---|---|
+| size | 165,840,496 | 165,840,496 (identical) |
+| version resource | 310.8.0 | 310.8.0 (identical) |
+| Authenticode | **Valid**, NVIDIA | **HashMismatch**, NVIDIA block retained |
+| add-on verdict | "reference match" | "custom runtime accepted; untested build" |
+| `CreateFeature(18)` | `0xbad00001` | **created** |
+| evaluate | — | **succeeded** |
+
+Nothing but the digest separates the two files, which is precisely why the manifest is a hash
+table and not a filename check.
+
+The add-on's own account:
+
+```
+feature 18 created via the signed snippet after DLSS/DLAA
+   for NR input 1920x1080 -> output 1920x1080 with guides 1920x1080
+inline feature 18 evaluation succeeded
+   (count=1, NR input 1920x1080 (guides 1280x720), output 1920x1080 [native])
+```
+
+**So the earlier reading was right for the right reason:** the stock runtime carries
+Blackwell-built CUDA binaries and fails at feature creation on Ada with no diagnostic. The
+sidecar now refuses that pairing up front instead of letting it fail inside NGX, and the probe
+reports the patched build as `Ok` on this card.
+
+### And a first data point on the depth question
+
+**This spike's depth texture was created and never written.** It was an R32_FLOAT committed
+resource with undefined contents, and NR created and evaluated against it anyway. So at the
+*contract* level a depth binding with arbitrary content is accepted — which is the strongest
+evidence yet that the synthesised-depth plan is viable, and it agrees with the prior art's
+description of bad depth as degrading rather than refusing.
+
+What this does **not** establish is image quality. The spike reads back no pixels; "evaluation
+succeeded" is an NGX return code, not a judgement about the output. Quality under synthetic
+depth remains the open question, and it is now answerable — it needs `ReshadeHostedPass`
+(Task 5) and a look at real frames.
 
 ## What was measured
 
