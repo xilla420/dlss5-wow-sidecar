@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "core/Log.h"
+#include "core/Sha256.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -50,6 +51,24 @@ std::unique_ptr<ReshadeHostedPass> ReshadeHostedPass::Create(
     return nullptr;
   }
 
+  // Check the runtime against the card before touching NGX. The stock build is
+  // Blackwell-only: on Ada it loads, initialises, and then fails at feature
+  // creation with a bare 0xbad00001 and nothing else to go on. Refusing it here
+  // turns a dead end into one sentence.
+  const std::filesystem::path runtime = options.runtimeDir / "nvngx_dlssnr.dll";
+  const std::string digest = Sha256File(runtime);
+  const auto entry = LookupRuntime(digest);
+  if (entry) {
+    const std::string mismatch = DescribeCompatibility(options.arch, entry->variant);
+    if (!mismatch.empty()) {
+      reason = mismatch;
+      return nullptr;
+    }
+  }
+  // An unrecognised digest is not refused: the operator may legitimately have a
+  // newer build than the manifest knows, and finding out costs one failed
+  // feature creation that already degrades to passthrough.
+
   auto session = NgxSession::Create(device, options.runtimeDir);
   if (!session) {
     reason = "NGX session could not be created";
@@ -63,8 +82,41 @@ std::unique_ptr<ReshadeHostedPass> ReshadeHostedPass::Create(
 
   std::unique_ptr<ReshadeHostedPass> p(new ReshadeHostedPass());
   p->session_ = std::move(session);
+  p->variant_ = entry ? entry->variant : RuntimeVariant::None;
+
+  if (options.width == 0 || options.height == 0) {
+    reason = "the capture size came out empty";
+    return nullptr;
+  }
+
+  // The GPU matrix says what this architecture should work at. Running below the
+  // capture size would mean resampling both the colour input and the motion
+  // field into that smaller space, and neither stage can do it yet:
+  // FormatNormalize loads texels one-to-one rather than sampling, and
+  // FlowToMotionVec normalises by its own output extent. Shipping half of that
+  // would silently feed DLSS the top-left corner of the frame.
+  //
+  // So the cap is reported, not applied. It costs nothing for a capture that
+  // already fits -- which is every 1440p display on Ada and every 4K one on
+  // Blackwell -- and anyone above it gets told why they are paying more.
+  const RenderSize matrix =
+      InternalRenderSize(options.width, options.height, options.arch);
   p->width_ = options.width;
   p->height_ = options.height;
+  if (matrix.height != 0 && matrix.height < options.height) {
+    GlobalLog().Warn(
+        "capture is " + std::to_string(options.width) + "x" +
+        std::to_string(options.height) + " but the GPU matrix wants " +
+        std::to_string(matrix.width) + "x" + std::to_string(matrix.height) +
+        " on " + ToString(options.arch) +
+        "; the pass runs at capture resolution and will cost more than the "
+        "matrix intends. Internal downscaling is not implemented.");
+  }
+
+  GlobalLog().Info(std::string("neural runtime: ") + ToString(p->variant_) +
+                   (entry ? " " + entry->version : std::string(" (unrecognised build)")) +
+                   ", working at " + std::to_string(p->width_) + "x" +
+                   std::to_string(p->height_) + " on " + ToString(options.arch));
 
   if (!p->PrepareDepth(device, options.syntheticDepth)) {
     reason = "the synthetic depth plane could not be allocated";

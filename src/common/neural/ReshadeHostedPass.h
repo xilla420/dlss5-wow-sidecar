@@ -7,7 +7,9 @@
 #include <memory>
 #include <string>
 
+#include "core/GpuProfile.h"
 #include "neural/INeuralPass.h"
+#include "neural/RuntimeManifest.h"
 #include "neural/NgxSession.h"
 
 namespace sidecar {
@@ -39,6 +41,11 @@ class ReshadeHostedPass : public INeuralPass {
     std::filesystem::path runtimeDir;
     uint32_t width = 0;
     uint32_t height = 0;
+    // Which card this has to run on. Decides the working resolution, and which
+    // runtime build is acceptable -- the stock runtime is Blackwell-only and
+    // fails on Ada at feature creation with no diagnostic, so it is refused here
+    // instead.
+    GpuArch arch = GpuArch::Unsupported;
     // Estimated vectors do better under the CNN presets, which clamp temporal
     // history harder than the default transformer preset. See the Task 4
     // findings.
@@ -72,6 +79,15 @@ class ReshadeHostedPass : public INeuralPass {
 
   const char* Name() const override { return "reshade-hosted DLSS 5 NR"; }
 
+  // Which runtime build is live, for the HUD and the log. Never ambiguous:
+  // two builds share a version string and a byte count, so only the digest
+  // separates them.
+  RuntimeVariant Variant() const { return variant_; }
+
+  // The resolution the pass actually works at, which is the capture size unless
+  // the GPU matrix capped it.
+  RenderSize WorkingSize() const { return RenderSize{width_, height_}; }
+
  private:
   ReshadeHostedPass() = default;
 
@@ -86,6 +102,7 @@ class ReshadeHostedPass : public INeuralPass {
   uint32_t height_ = 0;
   uint32_t depthRowPitch_ = 0;
   DlssPreset preset_ = DlssPreset::CnnF;
+  RuntimeVariant variant_ = RuntimeVariant::None;
   bool depthUploaded_ = false;
   bool featureFailed_ = false;
   bool warmedUp_ = false;
