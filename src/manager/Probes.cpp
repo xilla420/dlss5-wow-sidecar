@@ -1,5 +1,8 @@
 #include "manager/Probes.h"
 
+#include "core/Sha256.h"
+#include "neural/RuntimeManifest.h"
+
 #include <windows.h>
 #include <dxgi1_6.h>
 #include <wrl/client.h>
@@ -198,16 +201,44 @@ ProbeResult ProbeNeuralRuntime(const fs::path& sidecarDir) {
 
   std::error_code ec;
   const fs::path dll = sidecarDir / "nvngx_dlssnr.dll";
-  if (fs::exists(dll, ec) && !ec) {
-    r.state = ProbeState::Ok;
-    r.detail = "nvngx_dlssnr.dll present.";
+  if (!fs::exists(dll, ec) || ec) {
+    r.state = ProbeState::Warn;
+    r.detail = "nvngx_dlssnr.dll not found next to the sidecar.";
+    r.remedy = "Optional until the neural pass ships. Without it the pipeline "
+               "runs the passthrough pass.";
     return r;
   }
 
+  // Hash it rather than trust the filename. A wrong or truncated binary here
+  // becomes an access violation inside NGX at feature creation (spec §10), and
+  // a digest is the only thing that distinguishes it from a good one beforehand.
+  return NeuralRuntimeVerdict(dll.filename().string(), Sha256File(dll));
+}
+
+ProbeResult NeuralRuntimeVerdict(std::string_view fileName,
+                                 std::string_view sha256Hex) {
+  ProbeResult r;
+  r.title = "Neural runtime";
+
+  if (sha256Hex.empty()) {
+    r.state = ProbeState::Warn;
+    r.detail = std::string(fileName) + " is present but could not be read.";
+    r.remedy = "Check the file is not locked by another process, and that the "
+               "sidecar has permission to read it.";
+    return r;
+  }
+
+  r.detail = DescribeRuntime(fileName, sha256Hex);
+  if (LookupRuntime(sha256Hex)) {
+    r.state = ProbeState::Ok;
+    return r;
+  }
+
+  // Amber, not red. A newer runtime than this manifest knows is a legitimate
+  // thing for an operator to have, and refusing it outright would age badly.
   r.state = ProbeState::Warn;
-  r.detail = "nvngx_dlssnr.dll not found next to the sidecar.";
-  r.remedy = "Optional until the neural pass ships. Without it the pipeline "
-             "runs the passthrough pass.";
+  r.remedy = "The pass will still try this build. If it fails, quote the "
+             "SHA-256 above when reporting it.";
   return r;
 }
 
@@ -215,18 +246,29 @@ ProbeResult ProbeReshade(const fs::path& sidecarDir) {
   ProbeResult r;
   r.title = "ReShade host (optional)";
 
+  // ReShade installs itself as a proxy DLL named after the API the host imports,
+  // not as ReShade64.dll -- which is what this probe used to look for, so it
+  // never once found a real install. The sidecar imports dxgi, so dxgi.dll is
+  // the name here; the others are listed because an operator may have copied a
+  // proxy built for a different API.
+  static constexpr const char* kProxyNames[] = {
+      "dxgi.dll", "d3d12.dll", "d3d11.dll", "ReShade64.dll"};
+
   std::error_code ec;
-  const bool present = fs::exists(sidecarDir / "ReShade64.dll", ec) && !ec;
-  if (present) {
-    r.state = ProbeState::Ok;
-    r.detail = "ReShade64.dll present next to the sidecar, where it is harmless.";
-    return r;
+  for (const char* name : kProxyNames) {
+    if (fs::exists(sidecarDir / name, ec) && !ec) {
+      r.state = ProbeState::Ok;
+      r.detail = std::string(name) +
+                 " present next to the sidecar, where it is harmless.";
+      return r;
+    }
   }
 
   r.state = ProbeState::Warn;
   r.detail = "No ReShade host alongside the sidecar.";
-  r.remedy = "Only needed for the ReShade-hosted neural pass. Never place "
-             "ReShade next to Wow.exe.";
+  r.remedy = "Only needed for the ReShade-hosted neural pass. Install ReShade "
+             "against the sidecar so it lands as dxgi.dll. Never place ReShade "
+             "next to Wow.exe.";
   return r;
 }
 

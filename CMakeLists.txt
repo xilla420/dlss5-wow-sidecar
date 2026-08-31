@@ -66,13 +66,14 @@ compile_compute_shader(LuminanceR8)
 add_library(sidecar_common STATIC)
 target_include_directories(sidecar_common PUBLIC src/common)
 target_link_libraries(sidecar_common PUBLIC
-  d3d11 d3d12 dxgi dxguid dcomp windowsapp tomlplusplus::tomlplusplus)
+  d3d11 d3d12 dxgi dxguid dcomp windowsapp bcrypt tomlplusplus::tomlplusplus)
 target_sources(sidecar_common PRIVATE
   src/common/.keep.cpp
   src/common/core/GpuProfile.cpp
   src/common/core/LatencyStats.cpp
   src/common/core/Config.cpp
   src/common/core/Log.cpp
+  src/common/core/Sha256.cpp
   src/common/core/PanicSwitch.cpp
   src/common/gpu/DeviceBridge.cpp
   src/common/gpu/FormatNormalize.cpp
@@ -84,6 +85,8 @@ target_sources(sidecar_common PRIVATE
   src/common/present/WindowTracker.cpp
   src/common/present/Hud.cpp
   src/common/neural/PassthroughPass.cpp
+  src/common/neural/RuntimeManifest.cpp
+  src/common/neural/NgxSession.cpp
   src/common/neural/NeuralPassFactory.cpp)
 
 # The NVIDIA Optical Flow SDK is a manual download and is never vendored (I11).
@@ -97,6 +100,29 @@ if(NVOF_SDK_DIR)
 else()
   message(WARNING "NVOF_SDK_DIR not set; optical flow will report unavailable.")
   target_compile_definitions(sidecar_common PUBLIC SIDECAR_HAVE_NVOF=0)
+endif()
+
+# The NVIDIA DLSS SDK, on the same terms as the Optical Flow SDK: a manual
+# download, never vendored (I11), and optional. Without it NgxSession compiles
+# to a stub that reports why it is unavailable, and the neural pass falls back
+# to passthrough.
+#
+# Linking nvsdk_ngx_d.lib adds no DLL import -- it resolves _nvngx.dll with
+# LoadLibrary at first use, verified against ci/check_imports.py on the spike
+# binaries. So the shipped executables still pass the import-table check and
+# still load on a machine with no NGX core.
+set(DLSS_SDK_DIR "" CACHE PATH "NVIDIA DLSS SDK root (github.com/NVIDIA/DLSS)")
+if(DLSS_SDK_DIR)
+  target_include_directories(sidecar_common PUBLIC "${DLSS_SDK_DIR}/include")
+  target_compile_definitions(sidecar_common PUBLIC SIDECAR_HAVE_NGX=1)
+  # The SDK ships one library per CRT flavour; mixing them is a hard link error
+  # about _ITERATOR_DEBUG_LEVEL rather than anything subtle.
+  target_link_libraries(sidecar_common PUBLIC
+    "$<$<CONFIG:Debug>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d_dbg.lib>"
+    "$<$<NOT:$<CONFIG:Debug>>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d.lib>")
+else()
+  message(WARNING "DLSS_SDK_DIR not set; the neural pass will report unavailable.")
+  target_compile_definitions(sidecar_common PUBLIC SIDECAR_HAVE_NGX=0)
 endif()
 
 # Generated shader headers, listed as sources so the custom commands run.
@@ -146,7 +172,6 @@ add_invariant_check(testpattern)
 # It is also exempt from the import-table check on purpose. The check exists to
 # prove what the *shipped* binaries do not do; extending it to a scratch tool
 # that never leaves this machine would say nothing useful.
-set(DLSS_SDK_DIR "" CACHE PATH "NVIDIA DLSS SDK root (github.com/NVIDIA/DLSS)")
 if(DLSS_SDK_DIR)
   add_executable(spike_ngx tools/spike_ngx/main.cpp)
   target_include_directories(spike_ngx PRIVATE "${DLSS_SDK_DIR}/include")

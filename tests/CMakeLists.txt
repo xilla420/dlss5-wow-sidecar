@@ -17,6 +17,9 @@ add_executable(sidecar_tests
   test_motion_vector_math.cpp
   test_config.cpp
   test_log.cpp
+  test_sha256.cpp
+  test_runtime_manifest.cpp
+  test_ngx_session.cpp
   test_probes.cpp
   test_neural_pass_factory.cpp
   test_panic_switch.cpp

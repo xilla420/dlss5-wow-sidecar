@@ -1,6 +1,7 @@
 #pragma once
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace sidecar {
@@ -28,6 +29,12 @@ bool PathLooksLikeWowInstall(const std::filesystem::path& path);
 // system DLLs the game already imports. Matching is on filenames only; none of
 // these files is ever opened.
 std::vector<std::string> FindInjectorLoaders(const std::vector<std::string>& filenames);
+
+// The neural-runtime verdict, given a digest rather than a file. Split out
+// because the recognised path cannot otherwise be tested: producing a file that
+// hashes to a manifest entry would mean inverting SHA-256. An empty digest means
+// the file was found but could not be read.
+ProbeResult NeuralRuntimeVerdict(std::string_view fileName, std::string_view sha256Hex);
 
 ProbeResult ProbeGpu();
 ProbeResult ProbeDriver();
