@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -12,6 +13,7 @@ namespace sidecar {
 namespace {
 
 constexpr std::string_view kAddonSection = "ADDON";
+constexpr std::string_view kGeneralSection = "GENERAL";
 constexpr std::string_view kNeuralSection = "RenoDX.DLSS5";
 
 std::string Lower(std::string_view text) {
@@ -39,15 +41,18 @@ std::string Float(float value) {
 // One key the manager owns. Order is the order they are written in a section we
 // have to create from nothing, so it is chosen to read top-down: what is on,
 // then how strong, then the colour handling.
+//
+// An absent value means "remove this key", which is not the same as skipping it
+// -- see NeuralKeys.
 struct Setting {
   std::string key;
-  std::string value;
+  std::optional<std::string> value;
 };
 
 std::vector<Setting> NeuralKeys(const NeuralSettings& s) {
   std::vector<Setting> out{
       {"EnableHooks", std::to_string(s.enableHooks)},
-      {"NREnableUpscaling", s.upscaling ? "1" : "0"},
+      {"NREnableUpscaling", std::string(s.upscaling ? "1" : "0")},
       {"NRPreset", std::to_string(s.preset)},
       {"NRStyle", std::to_string(s.style)},
       {"NRIntensity", Float(s.intensity)},
@@ -55,12 +60,21 @@ std::vector<Setting> NeuralKeys(const NeuralSettings& s) {
       {"NRTransferStrength", Float(s.transferStrength)},
       {"NRPaperWhiteScale", Float(s.paperWhiteScale)},
   };
-  // A negative strength means the operator never touched it. Writing a guess
-  // would pin the add-on to a default we do not know, so the key is left out and
-  // whatever the add-on does by itself stands.
-  if (s.localStructure >= 0.0f) out.push_back({"NRLocalStructure", Float(s.localStructure)});
-  if (s.localTone >= 0.0f) out.push_back({"NRLocalTone", Float(s.localTone)});
-  if (s.skinStructure >= 0.0f) out.push_back({"NRSkinStructure", Float(s.skinStructure)});
+  // A negative strength means the operator never set it, and the add-on's own
+  // default should stand. That requires *deleting* the key, not skipping it.
+  //
+  // This transform is a merge into a file we do not own, so skipping a key
+  // leaves whatever was there before. A value written during an earlier session
+  // -- or by the add-on's own overlay, which ReShade persists on exit -- then
+  // survives every subsequent save, and the operator is told the setting is at
+  // its default while the add-on reads 1.29. Removing the line is the only way
+  // to actually mean "untouched".
+  const auto strength = [](float value) {
+    return value >= 0.0f ? std::optional<std::string>(Float(value)) : std::nullopt;
+  };
+  out.push_back({"NRLocalStructure", strength(s.localStructure)});
+  out.push_back({"NRLocalTone", strength(s.localTone)});
+  out.push_back({"NRSkinStructure", strength(s.skinStructure)});
   return out;
 }
 
@@ -101,10 +115,23 @@ bool UpdateSection(std::vector<Line>& lines, std::string_view section,
   if (!sectionSeen) return false;
 
   for (const auto& setting : settings) {
+    if (!setting.value) {
+      // Remove every line for this key in this section. Erasing rather than
+      // leaving it is the whole point: the caller means "restore the add-on's
+      // own default", and a stale line does the opposite.
+      lines.erase(std::remove_if(lines.begin(), lines.end(),
+                                 [&](const Line& line) {
+                                   return SameName(line.section, section) &&
+                                          SameName(line.key, setting.key);
+                                 }),
+                  lines.end());
+      continue;
+    }
+
     bool replaced = false;
     for (auto& line : lines) {
       if (!SameName(line.section, section) || !SameName(line.key, setting.key)) continue;
-      line.text = setting.key + "=" + setting.value;
+      line.text = setting.key + "=" + *setting.value;
       replaced = true;
       break;
     }
@@ -118,7 +145,7 @@ bool UpdateSection(std::vector<Line>& lines, std::string_view section,
       if (SameName(lines[i].section, section)) insertAt = i + 1;
     }
     Line added;
-    added.text = setting.key + "=" + setting.value;
+    added.text = setting.key + "=" + *setting.value;
     added.section = std::string(section);
     added.key = setting.key;
     lines.insert(lines.begin() + static_cast<ptrdiff_t>(insertAt), std::move(added));
@@ -133,7 +160,9 @@ void AppendSection(std::vector<Line>& lines, std::string_view section,
   }
   lines.push_back(Line{"[" + std::string(section) + "]", std::string(section), {}});
   for (const auto& setting : settings) {
-    lines.push_back(Line{setting.key + "=" + setting.value, std::string(section), setting.key});
+    if (!setting.value) continue;   // nothing to remove from a section being created
+    lines.push_back(
+        Line{setting.key + "=" + *setting.value, std::string(section), setting.key});
   }
 }
 
@@ -177,9 +206,32 @@ std::string ApplyNeuralSettings(std::string_view ini, const NeuralSettings& sett
   // AddonPath is what makes ReShade look beside the executable for the add-on at
   // all. Without it there is no neural rendering and no error either, which is
   // the worst of both.
-  const std::vector<Setting> addon{{"AddonPath", "."}};
+  const std::vector<Setting> addon{{"AddonPath", std::string(".")}};
   if (!UpdateSection(lines, kAddonSection, addon)) {
     AppendSection(lines, kAddonSection, addon);
+  }
+
+  // ReShade's effect pipeline is pinned off, and pointed somewhere that cannot
+  // match anything.
+  //
+  // This sidecar hosts ReShade for exactly one reason: to load the add-on that
+  // substitutes neural-rendered output for our own NGX call. Effects are a
+  // separate mechanism -- ordinary .fx shaders applied to the swapchain at
+  // present -- and none is wanted. A fresh install has no .fx files, so by
+  // default nothing loads, but ReShade's own defaults point the search at the
+  // executable's directory. Anything dropped in beside the sidecar would then
+  // be compiled and blended into every frame, silently and on top of the neural
+  // pass, and the operator would have no way to tell which was responsible for
+  // what they were looking at.
+  //
+  // Naming a directory that does not exist is stronger than leaving the value
+  // empty, because it does not depend on how ReShade treats an empty path.
+  const std::vector<Setting> effects{
+      {"EffectSearchPaths", std::string(".\\no-effects\\")},
+      {"TextureSearchPaths", std::string(".\\no-effects\\")},
+  };
+  if (!UpdateSection(lines, kGeneralSection, effects)) {
+    AppendSection(lines, kGeneralSection, effects);
   }
   const auto neural = NeuralKeys(settings);
   if (!UpdateSection(lines, kNeuralSection, neural)) {
