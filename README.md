@@ -86,35 +86,35 @@ for.
 | **WoW** | Running in **borderless windowed** mode. Exclusive fullscreen has no compositor surface to capture. |
 | **Resolution** | Up to 1440p on Ada, up to 2160p on Blackwell, is what the GPU matrix intends. Above that it still runs, and tells you it will cost more. |
 
-### Three files you must supply yourself
-
-None of these is ours to redistribute, and **neither binary in this project can
-reach the network at all** — nothing here downloads, updates, or phones home.
-The manager's **Setup** tab tells you exactly what is missing, what it is for,
-and where it comes from; you fetch it, and point the manager at the file.
-
-| File | What it is | Where |
-|---|---|---|
-| `nvngx_dlssnr.dll` | The DLSS 5 neural rendering runtime. **On RTX 40 this must be an Ada-patched build** — the stock runtime is Blackwell-only and fails at feature creation with no diagnostic. | [DLSS5-Swapper](https://github.com/rakanki911/DLSS5-Swapper/releases) |
-| `dxgi.dll` | ReShade, **the build with full add-on support**. | [reshade.me](https://reshade.me) |
-| `renodx-dlss5.addon64` | The RenoDX DLSS 5 add-on. | [renodx-dev](https://github.com/renodx-dev) |
-
-All three go next to `wowsidecar.exe`. **Never next to `Wow.exe`** — the manager
-refuses that arrangement and the check is unit-tested.
-
 ---
 
 ## Using it
 
-1. Run `wowsidecar-manager.exe`.
-2. **Setup** — install the three files above. Each row says whether it is
-   present and what it is for.
-3. **Checks** — everything should be green. A failing check always comes with a
+Everything is in the release. Take the latest from
+[**Releases**](../../releases), unzip it anywhere — **not** into your WoW
+folder — and run `wowsidecar-manager.exe`.
+
+The zip contains both executables, the neural runtime, ReShade, the RenoDX
+add-on, and a `sidecar.toml` already set to the Recommended preset. There is
+nothing else to download and nothing to configure before first run. The four
+third-party binaries belong to their authors and are listed in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+
+1. Unzip, run `wowsidecar-manager.exe`.
+2. **Checks** — everything should be green. A failing check always comes with a
    remedy; a warning is a judgement call left to you.
-4. Start WoW in borderless windowed mode.
-5. **Start overlay.** The manager minimises itself and the overlay comes up.
+3. Start WoW in borderless windowed mode.
+4. **Start overlay.** The manager minimises itself and the overlay comes up.
+
+**Never unzip next to `Wow.exe`.** The manager refuses that arrangement and the
+check is unit-tested — putting ReShade beside the game is the thing Blizzard
+bans people for, and it is not what this does.
 
 ![The Setup page](docs/screenshots/setup.png)
+
+The **Setup** tab shows each component, whether it is present, and what it is
+for. You should not need it after a release install; it exists so that a missing
+or replaced file is a named problem with a remedy rather than a silent failure.
 
 **You play normally.** The overlay covers the game completely but passes every
 click straight through to it and never takes focus. If the keyboard stops
@@ -297,23 +297,13 @@ not read as a pass.
 
 ---
 
-## Prior art
-
-This project would not exist without work that got there first:
-
-- **[DLSS5-Feeder](https://github.com/jlrouzies-fr/DLSS5-Feeder)** — the closest
-  prior art. It synthesises the DLAA contract from ReShade's depth buffer *inside*
-  the game process. This project relocates that idea to the outside, and pays for
-  it in the depth buffer it can no longer see.
-- **[RenoDX](https://github.com/renodx-dev)** — the DLSS 5 add-on that makes
-  route B possible at all.
-- **[DLSS5-Swapper](https://github.com/rakanki911/DLSS5-Swapper)** — the
-  Ada-patched runtime.
-- **[dlss5-d3d12-fix](https://github.com/NIGos/dlss5-d3d12-fix)** and
-  **[dlss5-dx11-bridge](https://github.com/NIGos/dlss5-dx11-bridge)**.
-
 ## License
 
-See [LICENSE](LICENSE). The three files you supply yourself are covered by their
-own licences, are never redistributed here, and `.gitignore` blocks them from
-ever being committed.
+The source here is MIT — see [LICENSE](LICENSE).
+
+The four binaries in the release bundle are not ours and are not covered by it.
+They are listed with their publishers and terms in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), which also explains why the
+two NVIDIA runtimes should come out of the release assets before this repository
+is made public. `.gitignore` still blocks all of them from the repository
+itself; they ride on the release, not in the tree.
