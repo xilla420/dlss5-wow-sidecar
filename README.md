@@ -8,13 +8,27 @@ process, and the result is presented back over the top through an opaque
 click-through overlay. WoW never sees this program. There is no injector, no
 detour, no hook, no memory read, and nothing placed in the game's folder.
 
-Measured on an RTX 4080 at 2560×1440 against retail WoW: **p50 10.2 ms, p99
-14.0 ms** capture-to-present, with neural rendering armed.
+Measured on an RTX 4080 at 2560×1440 against retail WoW: **p50 11.6 ms, p99
+12.6 ms** capture-to-present, with neural rendering armed.
 
 > **Status: working, and rough.** Neural rendering runs on real frames on Ada
 > hardware. What it costs in image quality, and whether it is worth the latency
 > on your setup, is a judgement you make with the game in front of you — the
 > manager ships a one-click A/B against the untouched frame so you can.
+
+## What it actually looks like
+
+![DLSS 5 Neural Rendering, off and on](docs/screenshots/dlss-comparison.png)
+
+Retail WoW, RTX 4080, 2560×1440, shown at 2× on a patch of static geometry so
+the two halves line up pixel-for-pixel — the overlay was toggled between the two
+captures and nothing in the scene moved. Neural rendering softens aliasing along
+the plank edges and the metal fittings, and evens out the wood grain.
+
+**That is the size of the effect, and it is not dramatic.** It is presented at
+2× zoom for a reason. Judge it yourself with the one-click A/B in the app rather
+than from a screenshot; full frames are in
+[`docs/screenshots/`](docs/screenshots/) as `dlss-on.jpg` and `dlss-off.jpg`.
 
 ![The manager's Status page](docs/screenshots/status.png)
 
