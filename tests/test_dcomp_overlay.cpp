@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 #include <windows.h>
 #include <chrono>
+#include <future>
 #include <thread>
 
 #include "core/GpuProfile.h"
@@ -26,8 +27,12 @@ TEST_CASE("overlay window carries exactly the required extended styles", "[devic
   REQUIRE((ex & WS_EX_TOPMOST) != 0);
   REQUIRE((ex & WS_EX_TOOLWINDOW) != 0);
 
-  // Spec C2: a layered window cannot host a flip swapchain.
-  REQUIRE((ex & WS_EX_LAYERED) == 0);
+  // WS_EX_LAYERED is what makes the overlay click-through for the game's
+  // process. It was once asserted absent here, on the belief that a layered
+  // window cannot host a flip swapchain -- true of CreateSwapChainForHwnd, and
+  // irrelevant to a composition swapchain bound to a DirectComposition visual.
+  // Removing it makes the game unclickable.
+  REQUIRE((ex & WS_EX_LAYERED) != 0);
 
   const LONG style = GetWindowLongW(overlay->Hwnd(), GWL_STYLE);
   REQUIRE((style & WS_POPUP) != 0);
@@ -55,6 +60,22 @@ TEST_CASE("clicks pass through the overlay to the window beneath", "[device]") {
   SetWindowPos(beneath, HWND_TOPMOST, 0, 0, 0, 0,
                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
+  // Asked from a foreign thread, always.
+  //
+  // On the test's own thread HTTRANSPARENT grants a fall-through that no other
+  // process ever gets, which is how this test passed for months while every
+  // real click stopped dead at the overlay and the game could be neither
+  // clicked nor typed into. A foreign thread removes that courtesy and leaves
+  // only what the system honours across processes: WS_EX_LAYERED |
+  // WS_EX_TRANSPARENT.
+  const POINT p{400, 350};
+  const auto hitTest = [p] {
+    return std::async(std::launch::async, [p] { return WindowFromPoint(p); }).get();
+  };
+
+  std::this_thread::sleep_for(150ms);
+  const HWND before = hitTest();
+
   auto overlay = DCompOverlay::Create(*bridge, 400, 300);
   REQUIRE(overlay != nullptr);
   RECT bounds{200, 200, 600, 500};
@@ -65,19 +86,18 @@ TEST_CASE("clicks pass through the overlay to the window beneath", "[device]") {
   SetWindowPos(overlay->Hwnd(), HWND_TOPMOST, 0, 0, 0, 0,
                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
   std::this_thread::sleep_for(150ms);
+  const HWND after = hitTest();
 
-  // A point squarely inside both windows must resolve to the one beneath.
-  const POINT p{400, 350};
-  const HWND hit = WindowFromPoint(p);
-  REQUIRE(hit != overlay->Hwnd());
-  REQUIRE(hit == beneath);
-
-  // WindowFromPoint only honours hit-testing within the calling thread; asked
-  // from another process it reports the overlay regardless. What actually
-  // routes a click past us is the overlay answering HTTRANSPARENT, so assert
-  // on that directly -- it is the property that must never regress.
-  REQUIRE(SendMessageW(overlay->Hwnd(), WM_NCHITTEST, 0,
-                       MAKELPARAM(p.x, p.y)) == HTTRANSPARENT);
+  // The assertion is relative, not absolute, and deliberately so.
+  //
+  // Requiring `after == beneath` says "this exact window got the click", which
+  // is only true on a desktop with nothing else topmost over that point. Any
+  // always-on-top application -- Task Manager, a chat overlay -- owns the point
+  // instead and fails the test for a reason that has nothing to do with the
+  // code. Asking instead that the overlay did not *change* who receives the
+  // click tests the real property, and stays true whoever is underneath.
+  REQUIRE(after != overlay->Hwnd());
+  REQUIRE(after == before);
 
   DestroyWindow(beneath);
 }

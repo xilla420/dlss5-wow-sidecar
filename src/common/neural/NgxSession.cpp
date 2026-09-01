@@ -12,6 +12,46 @@
 
 namespace sidecar {
 
+// Deliberately outside the SDK guard. The manager builds a preset menu on
+// machines that may have no DLSS SDK and no NVIDIA card at all, and a dropdown
+// that silently empties itself is worse than one that cannot be applied.
+namespace {
+
+// Order is the order the menu offers them. CNN first, because this project's
+// motion vectors are estimated from two colour frames rather than rendered, and
+// the CNN presets clamp temporal history hardest against confidently-wrong
+// vectors -- the failure mode this sidecar is most exposed to.
+constexpr DlssPresetChoice kPresetChoices[] = {
+    {"cnn-f", "CNN F. The default here: clamps history hard, which suits "
+              "estimated motion vectors.", DlssPreset::CnnF},
+    {"cnn-e", "CNN E. Clamps hardest. Try this first if motion smears or "
+              "flames and lights flicker.", DlssPreset::CnnE},
+    {"transformer-k", "Transformer K. The SDK default for DLAA. Sharpest when "
+                      "the vectors are trustworthy.", DlssPreset::TransformerK},
+    {"transformer-j", "Transformer J. The older transformer preset.",
+     DlssPreset::TransformerJ},
+    {"default", "Whatever the runtime picks for itself.", DlssPreset::Default},
+    {nullptr, nullptr, DlssPreset::Default},
+};
+
+}  // namespace
+
+std::optional<DlssPreset> DlssPresetFromName(std::string_view name) {
+  for (const auto* choice = kPresetChoices; choice->name; ++choice) {
+    if (name == choice->name) return choice->value;
+  }
+  return std::nullopt;
+}
+
+const char* DlssPresetName(DlssPreset preset) {
+  for (const auto* choice = kPresetChoices; choice->name; ++choice) {
+    if (choice->value == preset) return choice->name;
+  }
+  return "default";
+}
+
+const DlssPresetChoice* DlssPresetChoices() { return kPresetChoices; }
+
 #if SIDECAR_HAVE_NGX
 
 namespace {

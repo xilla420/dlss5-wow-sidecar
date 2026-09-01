@@ -16,6 +16,8 @@ add_executable(sidecar_tests
   test_nvofa_flow.cpp
   test_motion_vector_math.cpp
   test_config.cpp
+  test_addon_settings.cpp
+  test_install.cpp
   test_log.cpp
   test_sha256.cpp
   test_runtime_manifest.cpp
@@ -26,6 +28,7 @@ add_executable(sidecar_tests
   test_probes.cpp
   test_neural_pass_factory.cpp
   test_panic_switch.cpp
+  ../src/manager/Install.cpp
   ../src/manager/Probes.cpp
   ../src/runtime/Pipeline.cpp
   ../src/testpattern/Pattern.cpp)

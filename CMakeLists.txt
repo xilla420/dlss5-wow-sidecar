@@ -73,6 +73,7 @@ target_sources(sidecar_common PRIVATE
   src/common/core/GpuProfile.cpp
   src/common/core/LatencyStats.cpp
   src/common/core/Config.cpp
+  src/common/core/ControlChannel.cpp
   src/common/core/Log.cpp
   src/common/core/Sha256.cpp
   src/common/core/PanicSwitch.cpp
@@ -86,6 +87,7 @@ target_sources(sidecar_common PRIVATE
   src/common/present/DCompOverlay.cpp
   src/common/present/WindowTracker.cpp
   src/common/present/Hud.cpp
+  src/common/neural/AddonSettings.cpp
   src/common/neural/PassthroughPass.cpp
   src/common/neural/RuntimeManifest.cpp
   src/common/neural/NgxSession.cpp
@@ -148,6 +150,7 @@ add_invariant_check(wowsidecar)
 
 add_executable(wowsidecar-manager WIN32
   src/manager/main.cpp
+  src/manager/Install.cpp
   src/manager/Probes.cpp
   src/manager/Theme.cpp
   ${imgui_SOURCE_DIR}/imgui.cpp
@@ -158,7 +161,22 @@ add_executable(wowsidecar-manager WIN32
   ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp)
 target_include_directories(wowsidecar-manager PRIVATE
   src ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
-target_link_libraries(wowsidecar-manager PRIVATE sidecar_common shell32)
+target_link_libraries(wowsidecar-manager PRIVATE sidecar_common shell32 comdlg32 dwmapi)
+
+# Keep ReShade out of the manager.
+#
+# ReShade ships as a dxgi.dll that has to sit beside wowsidecar.exe, and both
+# executables live in the same directory. Statically importing DXGI or D3D11
+# would hand the manager ReShade's copy at load time, which drags in the add-on
+# and a 160 MB neural runtime for a control panel that renders one ImGui window
+# -- and writes a ReShade.log about the manager that reads exactly like the
+# runtime's.
+#
+# Delay-loading both means neither is resolved until first use, by which point
+# PinSystemGraphicsDlls has already loaded the System32 copies under those base
+# names, and the loader will not look for a second module with a name it has.
+target_link_options(wowsidecar-manager PRIVATE /DELAYLOAD:dxgi.dll /DELAYLOAD:d3d11.dll)
+target_link_libraries(wowsidecar-manager PRIVATE delayimp)
 add_invariant_check(wowsidecar-manager)
 
 add_executable(testpattern WIN32
@@ -206,6 +224,11 @@ if(DLSS_SDK_DIR)
     "$<$<CONFIG:Debug>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d_dbg.lib>"
     "$<$<NOT:$<CONFIG:Debug>>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d.lib>")
 endif()
+
+# Which window styles actually make a DirectComposition overlay click-through
+# for another process's hit test. Needs no SDK, so it builds unconditionally.
+add_executable(spike_clickthrough tools/spike_clickthrough/main.cpp)
+target_link_libraries(spike_clickthrough PRIVATE d3d11 d3d12 dxgi dcomp)
 
 enable_testing()
 add_subdirectory(tests)

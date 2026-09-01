@@ -1,0 +1,27 @@
+# This is a Windows project, but the repository is the neutral copy: text is
+# stored with LF and checked out however the platform wants it. Without this,
+# a file that has been through a macOS or Linux machine arrives with mixed
+# endings and the next commit is a whole-file diff.
+* text=auto
+
+# Line endings that are load-bearing rather than incidental.
+*.sln         text eol=crlf
+*.vcxproj     text eol=crlf
+*.bat         text eol=crlf
+*.cmd         text eol=crlf
+*.sh          text eol=lf
+
+# Not text, and must never be mangled by an end-of-line conversion. None of
+# these is committed today -- .gitignore blocks them -- but the two rules
+# protect different things and a mistake here corrupts a file silently.
+*.dll         binary
+*.exe         binary
+*.addon64     binary
+*.addon32     binary
+*.png         binary
+*.ico         binary
+
+# GitHub's language summary should describe the project, not its dependencies
+# or its generated build files.
+build/**      linguist-generated
+docs/sidecar-spec.html linguist-documentation
