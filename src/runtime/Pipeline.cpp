@@ -492,6 +492,12 @@ void Pipeline::RenderLoop() {
 
     if (dev_.source->IsClosed()) {
       FailAndHide("capture item closed: the target window went away");
+      // Tell the owner, and wake it so it acts now rather than whenever the
+      // next message happens to arrive. Without this the process sits in its
+      // message loop with a dead render thread, still answering the manager as
+      // though it were running.
+      targetLost_.store(true, std::memory_order_release);
+      if (ownerThreadId_ != 0) PostThreadMessageW(ownerThreadId_, WM_NULL, 0, 0);
       break;
     }
 
