@@ -721,6 +721,44 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                "in this tool can raise it.");
         }
 
+        // Video memory, before the frame breakdown, because when this is the
+        // problem the breakdown below is a red herring: it shows a huge GPU
+        // wait that is not GPU work at all, but the driver paging evicted
+        // resources over PCIe. Diagnosing that from frame times alone is
+        // near-impossible, so it gets said outright.
+        if (s.vramBudgetMb > 0) {
+          const bool over = s.vramUsedMb > s.vramBudgetMb;
+          const float ratio = static_cast<float>(s.vramUsedMb) /
+                              static_cast<float>(s.vramBudgetMb);
+          ImGui::Dummy(ImVec2(0.0f, 12.0f));
+          if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
+          ImGui::TextDisabled("GPU MEMORY");
+          if (g_fonts.caption) ImGui::PopFont();
+          ImGui::PushStyleColor(ImGuiCol_PlotHistogram,
+                                over        ? Rgb(g_colors.fail)
+                                : ratio > 0.9f ? Rgb(g_colors.warn)
+                                               : Rgb(g_colors.accent));
+          char label[64];
+          std::snprintf(label, sizeof(label), "%u / %u MB", s.vramUsedMb, s.vramBudgetMb);
+          ImGui::ProgressBar(ratio > 1.0f ? 1.0f : ratio, ImVec2(-1.0f, 20.0f), label);
+          ImGui::PopStyleColor();
+          if (over || ratio > 0.92f) {
+            ImGui::TextColored(Rgb(over ? g_colors.fail : g_colors.warn),
+                               "%s", over
+                                   ? "Out of GPU memory. This is almost certainly why the "
+                                     "overlay is slow."
+                                   : "GPU memory is nearly full.");
+            Hint("Past the budget the driver moves resources to system memory "
+                 "and every frame waits on the PCIe bus. It shows up below as a "
+                 "huge GPU wait even though the GPU is nearly idle, so it is "
+                 "easy to mistake for a slow neural pass.\n\n"
+                 "Close what else is using the card -- browsers, streaming and "
+                 "capture tools, and anything compositing a second monitor -- "
+                 "and lower the game's texture quality. Nothing in this tool "
+                 "can make room.");
+          }
+        }
+
         // Where the frame went, as a stacked bar. A frame rate on its own tells
         // you something is slow; this tells you which of four different things
         // it is, and they have four different answers.

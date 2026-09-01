@@ -63,6 +63,13 @@ struct SidecarStatus {
   double recordMs = 0.0;
   double presentWaitMs = 0.0;
   double gpuWaitMs = 0.0;
+
+  // Video memory, in megabytes. When used exceeds budget the driver is evicting
+  // to system memory and every frame is waiting on PCIe -- which produces huge
+  // frame times with the GPU nearly idle, and is indistinguishable from a slow
+  // neural pass unless you are told.
+  uint32_t vramUsedMb = 0;
+  uint32_t vramBudgetMb = 0;
   char passName[64] = {};
   char runtimeVariant[64] = {};
   char lastError[256] = {};

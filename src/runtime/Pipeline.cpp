@@ -278,6 +278,10 @@ void Pipeline::PublishStatus(const HudModel& model, const FrameBudget& budget) {
   status.hudVisible = hudVisible_.load(std::memory_order_acquire) ? 1u : 0u;
   status.width = dev_.bridge ? dev_.bridge->Width() : 0;
   status.height = dev_.bridge ? dev_.bridge->Height() : 0;
+  if (auto memory = QueryVideoMemory(gpu_.luid)) {
+    status.vramUsedMb = static_cast<uint32_t>(memory->usedBytes / (1024 * 1024));
+    status.vramBudgetMb = static_cast<uint32_t>(memory->budgetBytes / (1024 * 1024));
+  }
   status.p50Ms = model.p50Ms;
   status.p99Ms = model.p99Ms;
   status.frames = model.frames;

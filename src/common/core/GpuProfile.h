@@ -21,6 +21,25 @@ struct GpuInfo {
 // guess selects the wrong neural runtime variant.
 GpuArch ArchitectureFromDeviceId(uint32_t vendorId, uint32_t deviceId);
 
+// How much video memory this process is allowed, and how much it is using.
+//
+// Worth reporting because running past the budget is the single worst thing
+// that can happen to this pipeline, and it does not look like what it is: the
+// driver evicts resources to system memory, every frame then waits on PCIe
+// transfers, and the result is enormous frame times with the GPU almost idle.
+// That reads exactly like a slow neural pass and is nothing of the sort.
+//
+// Measured against the sidecar's own adapter. Windows reports a per-process
+// budget rather than the card's total, and the budget shrinks as other
+// applications take memory -- which is the case worth catching, because
+// nothing this program does causes it and no setting here fixes it.
+struct VideoMemory {
+  uint64_t budgetBytes = 0;
+  uint64_t usedBytes = 0;
+  bool OverBudget() const { return budgetBytes > 0 && usedBytes > budgetBytes; }
+};
+std::optional<VideoMemory> QueryVideoMemory(LUID adapter);
+
 // Spec GPU matrix: 4K on Blackwell, 1440p on Ada, nothing else supported.
 uint32_t DefaultInternalHeight(GpuArch arch);
 
