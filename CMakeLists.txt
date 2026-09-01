@@ -69,7 +69,6 @@ target_include_directories(sidecar_common PUBLIC src/common)
 target_link_libraries(sidecar_common PUBLIC
   d3d11 d3d12 dxgi dxguid dcomp windowsapp bcrypt tomlplusplus::tomlplusplus)
 target_sources(sidecar_common PRIVATE
-  src/common/.keep.cpp
   src/common/core/GpuProfile.cpp
   src/common/core/LatencyStats.cpp
   src/common/core/Config.cpp

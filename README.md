@@ -202,7 +202,7 @@ DLSS/DLAA feature, and the RenoDX add-on — loaded by ReShade into *our* proces
 never the game's — detours our own NGX calls and substitutes neural-rendered
 output.
 
-Design and spike write-ups live in [`docs/superpowers/`](docs/superpowers/).
+Design and spike write-ups live in [`docs/`](docs/).
 
 ---
 

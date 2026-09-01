@@ -208,7 +208,7 @@ src/common/         shared code (core/, gpu/, safety/)
 src/testpattern/    testpattern.exe
 tests/              Catch2 unit tests
 ci/                 import-table invariant checker
-docs/superpowers/specs/
+docs/specs/
 third_party/        vendored via FetchContent, not checked in
 ```
 
