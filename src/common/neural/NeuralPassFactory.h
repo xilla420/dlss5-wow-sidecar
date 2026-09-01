@@ -27,6 +27,15 @@ struct NeuralPassContext {
   // stock neural runtime is Blackwell-only, so a pass built for the wrong
   // architecture is refused before NGX is touched.
   GpuArch arch = GpuArch::Unsupported;
+
+  // The DLSS render preset, by name. An unrecognised name warns and leaves the
+  // pass on its own default rather than failing the pass -- a preset is a
+  // quality dial, and nobody should lose the overlay over a typo in one.
+  std::string dlssPreset = "cnn-f";
+
+  // The constant written into the synthetic depth plane. A dial, not a
+  // measurement: there is no real depth buffer to capture.
+  float syntheticDepth = 0.5f;
 };
 
 // Builds the neural pass named in the config file.

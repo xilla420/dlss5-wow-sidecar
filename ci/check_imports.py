@@ -35,18 +35,28 @@ def forbidden_imports(entries):
 
 
 def parse_imports(pe_path):
-    """Returns a set of 'MODULE.dll!Symbol' strings from a PE import directory."""
+    """Returns a set of 'MODULE.dll!Symbol' strings from a PE file's imports.
+
+    Both directories are read. The delayed one matters as much as the static
+    one: the manager delay-loads dxgi and d3d11 so ReShade's copies are never
+    consulted, and a checker that looked only at the static table would let any
+    forbidden symbol through by the same trick.
+    """
     import pefile
     pe = pefile.PE(pe_path, fast_load=True)
     pe.parse_data_directories(
-        directories=[pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"]]
+        directories=[
+            pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_IMPORT"],
+            pefile.DIRECTORY_ENTRY["IMAGE_DIRECTORY_ENTRY_DELAY_IMPORT"],
+        ]
     )
     out = set()
-    for entry in getattr(pe, "DIRECTORY_ENTRY_IMPORT", []):
-        module = entry.dll.decode("ascii", "replace")
-        for imp in entry.imports:
-            name = imp.name.decode("ascii", "replace") if imp.name else f"#{imp.ordinal}"
-            out.add(f"{module}!{name}")
+    for attribute in ("DIRECTORY_ENTRY_IMPORT", "DIRECTORY_ENTRY_DELAY_IMPORT"):
+        for entry in getattr(pe, attribute, []):
+            module = entry.dll.decode("ascii", "replace")
+            for imp in entry.imports:
+                name = imp.name.decode("ascii", "replace") if imp.name else f"#{imp.ordinal}"
+                out.add(f"{module}!{name}")
     return out
 
 

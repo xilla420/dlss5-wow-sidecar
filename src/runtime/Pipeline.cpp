@@ -1,7 +1,9 @@
 #include "runtime/Pipeline.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <string>
 
 #include "capture/WgcSource.h"
@@ -24,6 +26,17 @@ std::string FormatMs(double ms) {
   char buffer[32];
   std::snprintf(buffer, sizeof(buffer), "%.2f", ms);
   return buffer;
+}
+
+// Truncating copy into one of SidecarStatus' fixed buffers. The status block
+// lives in shared memory, so nothing in it may be a pointer, and a name that
+// does not fit is better clipped than left as a dangling read.
+template <size_t N>
+void CopyInto(char (&destination)[N], const char* source) {
+  if (!source) source = "";
+  const size_t length = std::min(std::strlen(source), N - 1);
+  std::memcpy(destination, source, length);
+  std::memset(destination + length, 0, N - length);
 }
 
 // Same shape as the work target but in a caller-chosen format, for a pass that
@@ -91,6 +104,8 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
   std::unique_ptr<Pipeline> p(new Pipeline());
   p->config_ = config;
   p->gpu_ = gpu;
+  p->overlayVisible_.store(config.showOverlay, std::memory_order_release);
+  p->hudVisible_.store(config.showHud, std::memory_order_release);
   // A caller-supplied pass is device-free by construction -- that is the only
   // kind that can exist before this function runs. A pass named in config may
   // hold device resources, so it is built below, once the device does, and
@@ -153,6 +168,8 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
     ctx.width = w;
     ctx.height = h;
     ctx.arch = gpu.arch;
+    ctx.dlssPreset = config.dlssPreset;
+    ctx.syntheticDepth = config.syntheticDepth;
 
     std::vector<std::string> warnings;
     p->dev_.pass = MakeNeuralPass(config.neuralPass, ctx, warnings);
@@ -245,6 +262,53 @@ void Pipeline::FailAndHide(const char* reason) {
   GlobalLog().Error(reason);
   std::lock_guard<std::mutex> lock(errorMutex_);
   lastError_ = reason;
+}
+
+void Pipeline::PublishStatus(const HudModel& model, const FrameBudget& budget) {
+  if (!statusSink_) return;
+
+  SidecarStatus status;
+  status.fps = budget.fps;
+  status.captureFps = budget.captureFps;
+  status.idleMs = budget.idleMs;
+  status.recordMs = budget.recordMs;
+  status.presentWaitMs = budget.presentWaitMs;
+  status.gpuWaitMs = budget.gpuWaitMs;
+  status.overlayVisible = overlayVisible_.load(std::memory_order_acquire) ? 1u : 0u;
+  status.hudVisible = hudVisible_.load(std::memory_order_acquire) ? 1u : 0u;
+  status.width = dev_.bridge ? dev_.bridge->Width() : 0;
+  status.height = dev_.bridge ? dev_.bridge->Height() : 0;
+  status.p50Ms = model.p50Ms;
+  status.p99Ms = model.p99Ms;
+  status.frames = model.frames;
+  status.drops = model.drops;
+  CopyInto(status.passName, model.passName);
+  CopyInto(status.runtimeVariant, model.runtimeVariant);
+  {
+    std::lock_guard<std::mutex> lock(errorMutex_);
+    CopyInto(status.lastError, lastError_.c_str());
+  }
+  statusSink_(status);
+}
+
+void Pipeline::SetOverlayVisible(bool visible) {
+  overlayVisible_.store(visible, std::memory_order_release);
+  if (!dev_.overlay) return;
+  if (visible) {
+    dev_.overlay->Show();
+  } else {
+    dev_.overlay->Hide();
+  }
+}
+
+void Pipeline::SetHudVisible(bool visible) {
+  hudVisible_.store(visible, std::memory_order_release);
+  if (!dev_.hud) return;
+  if (visible) {
+    dev_.hud->Show();
+  } else {
+    dev_.hud->Hide();
+  }
 }
 
 void Pipeline::Panic() noexcept {
@@ -345,8 +409,10 @@ void Pipeline::Start() {
   stopRequested_.store(false, std::memory_order_release);
   running_.store(true, std::memory_order_release);
   dev_.source->Start();
-  if (config_.showOverlay) dev_.overlay->Show();
-  if (dev_.hud && config_.showHud) dev_.hud->Show();
+  // The visibility atomics, not the config: after a rebuild this has to restore
+  // what the operator last asked for, which may not be what the file says.
+  SetOverlayVisible(overlayVisible_.load(std::memory_order_acquire));
+  SetHudVisible(hudVisible_.load(std::memory_order_acquire));
   renderThread_ = std::thread([this] { RenderLoop(); });
 }
 
@@ -394,6 +460,16 @@ void Pipeline::RenderLoop() {
 
   uint64_t sinceHudUpdate = 0;
   uint64_t hudUpdates = 0;
+  // Accumulated across the reporting window rather than sampled, because the
+  // interesting question is where the frame budget goes on average, not what
+  // one arbitrary frame did.
+  double idleMs = 0.0;
+  double recordMs = 0.0;
+  double presentWaitMs = 0.0;
+  double gpuWaitMs = 0.0;
+  uint64_t framesThisWindow = 0;
+  uint64_t deliveredAtWindowStart = dev_.source ? dev_.source->FramesDelivered() : 0;
+  auto windowBegan = Clock::now();
   while (!stopRequested_.load(std::memory_order_acquire)) {
     if (panic_) panic_->Pump();
     if (panic_ && panic_->Triggered()) break;
@@ -415,9 +491,15 @@ void Pipeline::RenderLoop() {
       break;
     }
 
+    // Time spent here is time the pipeline had no work: the capture has not
+    // produced a new frame yet. It belongs in the breakdown because "starved by
+    // the game" and "too slow to keep up" look identical from a frame counter
+    // and have opposite fixes.
+    const auto beginAcquire = Clock::now();
     auto frame = dev_.bridge->AcquireLatest();
     if (!frame) {
       Sleep(1);
+      idleMs += std::chrono::duration<double, std::milli>(Clock::now() - beginAcquire).count();
       continue;
     }
 
@@ -608,8 +690,15 @@ void Pipeline::RenderLoop() {
 
     ID3D12CommandList* lists[] = {dev_.cmdList2.Get()};
     dev_.bridge->Queue()->ExecuteCommandLists(1, lists);
+    const auto afterRecord = Clock::now();
 
     dev_.overlay->Present(dev_.workTarget.Get(), frame->fenceValue);
+    recordMs += std::chrono::duration<double, std::milli>(afterRecord - begin).count();
+    {
+      const auto present = dev_.overlay->LastTiming();
+      presentWaitMs += present.latencyWaitMs;
+      gpuWaitMs += present.gpuWaitMs;
+    }
 
     // This frame's luminance becomes next frame's reference. Swapping rather
     // than copying keeps both textures alive and costs nothing.
@@ -620,15 +709,53 @@ void Pipeline::RenderLoop() {
 
     const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin);
     stats_.Record(elapsed.count());
+    ++framesThisWindow;
 
-    // Refresh roughly twice a second rather than every frame.
-    if (dev_.hud && ++sinceHudUpdate >= 30) {
+    // Refresh roughly twice a second rather than every frame. Not gated on the
+    // HUD existing: the manager's status pane rides the same cadence, and a
+    // failed HUD must not take the live numbers down with it.
+    if (++sinceHudUpdate >= 30) {
       sinceHudUpdate = 0;
+
       HudModel model;
       model.p50Ms = stats_.P50();
       model.p99Ms = stats_.P99();
       model.frames = stats_.Count();
       model.drops = stats_.Dropped();
+      model.passName = dev_.pass->Name();
+      model.runtimeVariant = dev_.runtimeVariant;
+      model.gpuName = dev_.gpuName.c_str();
+      if (dev_.hud) dev_.hud->Update(model);
+
+      // Averages over the window just ended. Frame rate is measured against the
+      // clock rather than derived from p50: the two differ by exactly the time
+      // the pipeline spent idle waiting for the game, and that difference is
+      // the whole diagnosis.
+      const auto now = Clock::now();
+      const double windowSeconds = std::chrono::duration<double>(now - windowBegan).count();
+      const double perFrame = static_cast<double>(framesThisWindow ? framesThisWindow : 1);
+
+      // How fast Windows Graphics Capture is actually handing us frames, as
+      // against how fast we present them. These are different questions and
+      // only one of them is ours: if capture is delivering 60 a second, no
+      // amount of pipeline work will present more than 60, and the frame budget
+      // below will show idle time rather than a cost to optimise.
+      const uint64_t delivered = dev_.source ? dev_.source->FramesDelivered() : 0;
+      const uint64_t deliveredThisWindow = delivered - deliveredAtWindowStart;
+      deliveredAtWindowStart = delivered;
+
+      FrameBudget budget;
+      budget.fps =
+          windowSeconds > 0.0 ? static_cast<double>(framesThisWindow) / windowSeconds : 0.0;
+      budget.captureFps = windowSeconds > 0.0
+                              ? static_cast<double>(deliveredThisWindow) / windowSeconds
+                              : 0.0;
+      budget.idleMs = idleMs / perFrame;
+      budget.recordMs = recordMs / perFrame;
+      budget.presentWaitMs = presentWaitMs / perFrame;
+      budget.gpuWaitMs = gpuWaitMs / perFrame;
+      PublishStatus(model, budget);
+
       // Periodically to the log as well, roughly every ten seconds. The HUD is
       // the operator's view, but a bug report needs numbers that survive being
       // pasted into a text box -- and it is the only way to read latency from a
@@ -639,11 +766,24 @@ void Pipeline::RenderLoop() {
                          std::to_string(stats_.Count()) + " frames, " +
                          std::to_string(stats_.Dropped()) + " dropped, pass " +
                          dev_.pass->Name());
+
+        // The breakdown, per frame over the window just ended. This is the line
+        // that says whether a low frame rate is our GPU work, our CPU work, the
+        // compositor pacing us, or the game simply not producing frames.
+        GlobalLog().Info(
+            "frame budget: " + FormatMs(budget.fps) + " fps presented, " +
+            FormatMs(budget.captureFps) + " fps captured, idle " +
+            FormatMs(budget.idleMs) + " ms, record " + FormatMs(budget.recordMs) +
+            " ms, present wait " + FormatMs(budget.presentWaitMs) + " ms, gpu wait " +
+            FormatMs(budget.gpuWaitMs) + " ms");
       }
-      model.passName = dev_.pass->Name();
-      model.runtimeVariant = dev_.runtimeVariant;
-      model.gpuName = dev_.gpuName.c_str();
-      dev_.hud->Update(model);
+
+      idleMs = 0.0;
+      recordMs = 0.0;
+      presentWaitMs = 0.0;
+      gpuWaitMs = 0.0;
+      framesThisWindow = 0;
+      windowBegan = now;
     }
   }
   // UnregisterHotKey must run on the thread that registered it.

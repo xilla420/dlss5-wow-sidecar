@@ -4,12 +4,14 @@
 #include <wrl/client.h>
 
 #include <atomic>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 
 #include "core/Config.h"
+#include "core/ControlChannel.h"
 #include "core/GpuProfile.h"
 #include "core/LatencyStats.h"
 #include "core/PanicSwitch.h"
@@ -48,6 +50,11 @@ struct PipelineConfig {
   // constructed before the device exists, and must be rebuilt with it after
   // device loss.
   std::string neuralPass = "passthrough";
+  // The DLSS render preset by name, and the constant filling the synthetic
+  // depth plane. Both are quality dials for the neural pass; neither can fail
+  // the pipeline.
+  std::string dlssPreset = "cnn-f";
+  float syntheticDepth = 0.5f;
   // Where nvngx_*.dll live. Defaults to the executable's own directory.
   std::filesystem::path runtimeDir;
 };
@@ -73,6 +80,24 @@ class Pipeline {
   const Hud* GetHud() const { return dev_.hud.get(); }
   std::string LastError() const;
 
+  // Show and hide either window without stopping capture, which is what makes
+  // an A/B comparison against the untouched game one keystroke rather than one
+  // restart. Call from the thread that called Start(): these move windows.
+  void SetOverlayVisible(bool visible);
+  void SetHudVisible(bool visible);
+  bool OverlayVisible() const { return overlayVisible_.load(std::memory_order_acquire); }
+  bool HudVisible() const { return hudVisible_.load(std::memory_order_acquire); }
+
+  // Where the manager's live numbers come from.
+  //
+  // Pushed from the render loop rather than pulled by a poller, because
+  // LatencyStats is written on the render thread without a lock -- reading it
+  // from anywhere else is a data race for a HUD's worth of benefit. The render
+  // loop already assembles these numbers for the HUD, so this rides along at
+  // the same cadence and costs a memcpy. Set before Start().
+  using StatusSink = std::function<void(const SidecarStatus&)>;
+  void SetStatusSink(StatusSink sink) { statusSink_ = std::move(sink); }
+
   // I13. Hides the overlay before anything else and asks the render loop to
   // stop. Safe to call from the hotkey callback.
   void Panic() noexcept;
@@ -93,6 +118,24 @@ class Pipeline {
   Pipeline() = default;
   void RenderLoop();
   void FailAndHide(const char* reason);
+
+  // One reporting window's worth of "where did the frame go", averaged per
+  // frame. Assembled by the render loop, which is the only place that can see
+  // all four costs.
+  struct FrameBudget {
+    double fps = 0.0;
+    // What Windows Graphics Capture delivered over the same window. When this
+    // is the lower of the two, the ceiling is the capture rate and nothing in
+    // the pipeline can raise it.
+    double captureFps = 0.0;
+    double idleMs = 0.0;
+    double recordMs = 0.0;
+    double presentWaitMs = 0.0;
+    double gpuWaitMs = 0.0;
+  };
+
+  // Copies one HUD refresh into the shared status block. Render thread only.
+  void PublishStatus(const HudModel& model, const FrameBudget& budget);
 
   // Recreates every device-derived object. Does not start anything; Start()
   // does that, so the two paths cannot drift apart.
@@ -173,6 +216,13 @@ class Pipeline {
   // The thread that called Start(), and therefore owns the windows.
   DWORD ownerThreadId_ = 0;
   LatencyStats stats_;
+
+  // What the two windows are meant to be doing. Kept outside DeviceState so a
+  // rebuild after device loss restores the operator's choice rather than
+  // reverting to the configured default.
+  std::atomic<bool> overlayVisible_{true};
+  std::atomic<bool> hudVisible_{true};
+  StatusSink statusSink_;
 
   mutable std::mutex errorMutex_;
   std::string lastError_;

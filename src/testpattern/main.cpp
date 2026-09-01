@@ -2,9 +2,11 @@
 // reports its current frame index in the window title. It stands in for WoW so
 // the capture and present path can be verified without the game.
 #include <windows.h>
+#include <shellapi.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <wrl/client.h>
+#include <cstdlib>
 #include <vector>
 #include <string>
 #include "Pattern.h"
@@ -14,7 +16,18 @@ using namespace sidecar::testpattern;
 
 namespace {
 
-constexpr uint32_t kW = 1280, kH = 720;
+// 720p by default, which is what the capture tests assume. An optional
+// "<width> <height>" on the command line exists so a performance measurement
+// can be taken at the resolution someone actually plays at -- the neural pass
+// costs what it costs per pixel, and a 720p reading says nothing useful about
+// a 1440p frame budget.
+constexpr uint32_t kDefaultW = 1280, kDefaultH = 720;
+// Sync interval for Present. Vsync by default, because the capture tests want a
+// steady, predictable source. A third argument of 0 unlocks it, which is the
+// only way to tell whether a frame-rate ceiling measured downstream belongs to
+// the sidecar or to this harness -- a vsync-locked stand-in caps the whole
+// chain and makes the sidecar look slow.
+UINT g_syncInterval = 1;
 UINT g_frame = 0;
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -25,6 +38,27 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
+  uint32_t kW = kDefaultW, kH = kDefaultH;
+  {
+    int argc = 0;
+    wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (argc >= 3) {
+      const long width = std::wcstol(argv[1], nullptr, 10);
+      const long height = std::wcstol(argv[2], nullptr, 10);
+      // Anything outside this is a typo rather than an intention, and a
+      // zero-sized swapchain fails in a much less obvious place.
+      if (width >= 256 && width <= 7680 && height >= 256 && height <= 4320) {
+        kW = static_cast<uint32_t>(width);
+        kH = static_cast<uint32_t>(height);
+      }
+    }
+    if (argc >= 4) {
+      const long sync = std::wcstol(argv[3], nullptr, 10);
+      if (sync >= 0 && sync <= 4) g_syncInterval = static_cast<UINT>(sync);
+    }
+    if (argv) LocalFree(argv);
+  }
+
   WNDCLASSEXW wc{sizeof(wc)};
   wc.lpfnWndProc = WndProc;
   wc.hInstance = inst;
@@ -93,7 +127,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     ComPtr<ID3D11Texture2D> back;
     sc->GetBuffer(0, IID_PPV_ARGS(&back));
     ctx->CopyResource(back.Get(), staging.Get());
-    sc->Present(1, 0);
+    sc->Present(g_syncInterval, 0);
 
     std::wstring title = L"Sidecar Test Pattern - frame " + std::to_wstring(g_frame);
     SetWindowTextW(hwnd, title.c_str());

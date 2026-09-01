@@ -223,6 +223,16 @@ bool ReshadeHostedPass::Evaluate(ID3D12GraphicsCommandList* cl,
     // DLAA: render size equals output size and there is no jitter. This sidecar
     // is not upscaling -- it is asking for the neural pass that rides along with
     // a DLSS evaluate, and the prior art feeds exactly this contract.
+    // Render size equals output size, and asking for anything else is pointless
+    // here -- measured, not assumed.
+    //
+    // A 0.667 render scale was tried on 2026-08-31 and changed the frame budget
+    // by nothing at all: 10.4-10.9 ms of GPU wait against 10.7-11.1 ms at full
+    // size, with p50 identical to two decimal places. The add-on substitutes its
+    // own neural-rendered output for our evaluate and does that at *output*
+    // resolution, so the render size we ask DLSS for never reaches the work that
+    // costs. There is therefore no upscaling lever on this route, and the frame
+    // cost of the neural pass is fixed by the capture resolution.
     desc.renderWidth = width_;
     desc.renderHeight = height_;
     desc.outputWidth = width_;

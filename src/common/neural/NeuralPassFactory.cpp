@@ -1,5 +1,6 @@
 #include "neural/NeuralPassFactory.h"
 
+#include "neural/NgxSession.h"
 #include "neural/PassthroughPass.h"
 #include "neural/ReshadeHostedPass.h"
 
@@ -22,6 +23,14 @@ std::unique_ptr<INeuralPass> MakeNeuralPass(std::string_view name,
     options.width = context.width;
     options.height = context.height;
     options.arch = context.arch;
+    options.syntheticDepth = context.syntheticDepth;
+    if (auto preset = DlssPresetFromName(context.dlssPreset)) {
+      options.preset = *preset;
+    } else {
+      warnings.emplace_back("dlss_preset \"" + context.dlssPreset +
+                            "\" is not a known preset; using \"" +
+                            DlssPresetName(options.preset) + "\"");
+    }
 
     std::string reason;
     if (auto pass = ReshadeHostedPass::Create(context.device, options, reason)) {

@@ -4,7 +4,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace sidecar {
 
@@ -25,6 +27,25 @@ enum class DlssPreset {
   TransformerJ = 10,
   TransformerK = 11,  // SDK default for DLAA
 };
+
+// Config files and the manager's UI carry a name, not an SDK number, so the
+// numbers stay an implementation detail of this header. Both directions are
+// pure and available whether or not the NGX SDK was present at configure time:
+// the manager has to populate a dropdown on a machine that may have no SDK.
+//
+// FromName returns nullopt for an unrecognised name rather than guessing, so
+// the caller can warn and fall back where it knows what the fallback is.
+std::optional<DlssPreset> DlssPresetFromName(std::string_view name);
+const char* DlssPresetName(DlssPreset preset);
+
+// Every preset, in the order a menu should offer them: safest for estimated
+// motion vectors first. Terminated by a null name.
+struct DlssPresetChoice {
+  const char* name;
+  const char* description;
+  DlssPreset value;
+};
+const DlssPresetChoice* DlssPresetChoices();
 
 struct DlssFeatureDesc {
   uint32_t renderWidth = 0;

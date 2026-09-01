@@ -15,10 +15,17 @@ class DeviceBridge;
 // A transparent, click-through, non-activating overlay presented through
 // DirectComposition.
 //
-// WS_EX_LAYERED cannot host a DXGI flip swapchain, so the window is created
-// WS_EX_NOREDIRECTIONBITMAP and composed by DirectComposition instead
-// (spec C2). WS_EX_NOACTIVATE keeps the game focused so it never drops to its
-// background frame limit.
+// The window is created WS_EX_NOREDIRECTIONBITMAP and composed by
+// DirectComposition rather than through a redirection surface (spec C2), and
+// WS_EX_NOACTIVATE keeps the game focused so it never drops to its background
+// frame limit.
+//
+// It is also WS_EX_LAYERED, which is what makes it click-through for the game.
+// Answering HTTRANSPARENT is not enough: that only falls through to windows on
+// the same thread, so it satisfies a same-thread test while every real click
+// stops dead at the overlay. WS_EX_LAYERED | WS_EX_TRANSPARENT is the
+// combination the system honours across processes. See DCompOverlay.cpp, and
+// tools/spike_clickthrough for the measurement.
 class DCompOverlay {
  public:
   static std::unique_ptr<DCompOverlay> Create(DeviceBridge& bridge,
@@ -39,6 +46,18 @@ class DCompOverlay {
   // DeviceBridge shared-fence value the queue must wait on first.
   void Present(ID3D12Resource* frame, uint64_t waitFenceValue);
 
+  // Where the last Present's wall time went. Three numbers, because they have
+  // three different causes and three different fixes: waiting on the
+  // compositor is pacing, recording is our own CPU cost, and waiting on the
+  // fence is the GPU being behind. Guessing which one dominates is how a
+  // throughput problem gets misdiagnosed as a quality one.
+  struct PresentTiming {
+    double latencyWaitMs = 0.0;
+    double recordMs = 0.0;
+    double gpuWaitMs = 0.0;
+  };
+  PresentTiming LastTiming() const { return timing_; }
+
  private:
   DCompOverlay() = default;
 
@@ -57,6 +76,7 @@ class DCompOverlay {
   Microsoft::WRL::ComPtr<ID3D12Fence> presentFence_;
   uint64_t presentFenceValue_ = 0;
   HANDLE frameLatencyWaitable_ = nullptr;
+  PresentTiming timing_;
 };
 
 }  // namespace sidecar
