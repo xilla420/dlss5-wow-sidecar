@@ -70,6 +70,10 @@ struct SidecarStatus {
   // neural pass unless you are told.
   uint32_t vramUsedMb = 0;
   uint32_t vramBudgetMb = 0;
+  // Video memory pushed out to system RAM. Non-zero means the card is full and
+  // frames are waiting on PCIe. This is the alarm worth watching; the budget
+  // above stays generous until contention actually bites.
+  uint32_t vramSpilledMb = 0;
   char passName[64] = {};
   char runtimeVariant[64] = {};
   char lastError[256] = {};

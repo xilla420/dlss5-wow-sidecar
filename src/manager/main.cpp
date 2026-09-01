@@ -506,6 +506,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
   bool confirmUninstall = false;
   bool uninstallGenerated = false;
 
+  // Which advisory the Status page is showing, held across frames rather than
+  // recomputed from a bare threshold each time. A frame rate hovering on a
+  // threshold would otherwise flip the message on and off several times a
+  // second; these are switched with hysteresis instead.
+  bool captureBound = false;
+  bool starving = false;
+
   const auto save = [&]() {
     if (SaveConfig(configPath, config)) {
       dirty = false;
@@ -707,10 +714,60 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         std::snprintf(captured, sizeof(captured), "%.0f", s.captureFps);
         StatCard("CAPTURED FPS", captured, cardWidth, Rgb(g_colors.parchment));
 
-        // The single most misread number in this tool. If Windows hands us 60
-        // frames a second there is no way to present more than 60, and every
-        // hour spent optimising the pipeline is wasted. Say so, in place.
-        if (s.captureFps > 0.0 && s.fps >= s.captureFps * 0.9) {
+        // The controls come before the diagnosis, and the diagnosis lives in a
+        // fixed-height box.
+        //
+        // These advisories appear and disappear as the numbers move across a
+        // threshold, and anything that changes height moves every control below
+        // it. With the buttons underneath, they slid out from under the cursor
+        // mid-click. Buttons first, then a region whose height never changes
+        // whatever it has to say.
+        ImGui::Dummy(ImVec2(0.0f, 10.0f));
+        const bool visible = s.overlayVisible != 0;
+        if (ImGui::Button(visible ? "Hide overlay (A/B compare)" : "Show overlay",
+                          ImVec2(230.0f, 34.0f))) {
+          control::Send(visible ? SidecarCommand::HideOverlay : SidecarCommand::ShowOverlay);
+        }
+        ImGui::SameLine();
+        const bool hudUp = s.hudVisible != 0;
+        if (ImGui::Button(hudUp ? "Hide HUD" : "Show HUD", ImVec2(150.0f, 34.0f))) {
+          control::Send(hudUp ? SidecarCommand::HideHud : SidecarCommand::ShowHud);
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("Hiding the overlay uncovers the untouched game without "
+                            "stopping capture.");
+
+        // Hysteresis, so an advisory does not strobe while the frame rate sits
+        // on its threshold. Each condition turns on and off at different values,
+        // and the gap between them is wide enough to cover the jitter.
+        if (s.captureFps > 0.0) {
+          const double share = s.fps / s.captureFps;
+          if (share >= 0.92) captureBound = true;
+          if (share < 0.86) captureBound = false;
+          if (share < 0.72) starving = true;
+          if (share >= 0.80) starving = false;
+        }
+        const bool spilling = s.vramSpilledMb > 0;
+        const bool overBudget = s.vramBudgetMb > 0 && s.vramUsedMb > s.vramBudgetMb;
+
+        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        ImGui::BeginChild("advice", ImVec2(0.0f, 132.0f), ImGuiChildFlags_Border);
+        ImGui::Dummy(ImVec2(0.0f, 2.0f));
+        ImGui::Indent(10.0f);
+        if (spilling || overBudget) {
+          // Memory first: when this is the problem every other reading is a
+          // consequence of it, including the GPU wait in the breakdown below.
+          ImGui::TextColored(Rgb(g_colors.fail),
+                             "Out of GPU memory -- %u MB pushed into system RAM.",
+                             s.vramSpilledMb);
+          Hint("The card is full, so the driver is moving resources to system "
+               "memory and every frame waits on the PCIe bus. It shows below as "
+               "a huge GPU wait with the GPU nearly idle, which is easy to "
+               "mistake for a slow neural pass.\n\n"
+               "Close what else is using the card -- browsers, streaming and "
+               "capture tools, anything compositing a second monitor -- and lower "
+               "the game's texture quality. Nothing in this tool can make room.");
+        } else if (captureBound) {
           ImGui::TextColored(Rgb(g_colors.warn),
                              "Windows is only capturing %.0f frames a second, so that is "
                              "the ceiling.", s.captureFps);
@@ -719,10 +776,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                "usually set by your monitor's refresh rate and, on a multi-monitor "
                "setup with mismatched refresh rates, by the slowest one. Nothing "
                "in this tool can raise it.");
-        } else if (s.captureFps > 0.0 && s.fps < s.captureFps * 0.75) {
-          // Falling short of the capture rate, with memory fine, means the game
-          // is taking the GPU. Worth naming, because the fix is counter-intuitive
-          // and lives in the game's own options rather than anywhere in here.
+        } else if (starving) {
           ImGui::TextColored(Rgb(g_colors.warn),
                              "Only presenting %.0f of the %.0f frames captured.", s.fps,
                              s.captureFps);
@@ -732,47 +786,40 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                "game throttles itself and hands the card back.\n\n"
                "Cap the game's frame rate. This costs nothing: the overlay can "
                "never show more than the capture rate above, so every frame the "
-               "game renders beyond that is discarded before it reaches here. "
-               "Setting World of Warcraft's Max Foreground FPS to around that "
-               "number gives the freed GPU time to the neural pass.");
+               "game renders beyond that is discarded before it reaches here.");
+        } else {
+          ImGui::TextColored(Rgb(g_colors.ok), "Keeping up with capture.");
+          Hint("The overlay is presenting close to every frame Windows hands it, "
+               "and there is memory to spare. Nothing to fix here.");
         }
+        ImGui::Unindent(10.0f);
+        ImGui::EndChild();
 
-        // Video memory, before the frame breakdown, because when this is the
-        // problem the breakdown below is a red herring: it shows a huge GPU
-        // wait that is not GPU work at all, but the driver paging evicted
-        // resources over PCIe. Diagnosing that from frame times alone is
-        // near-impossible, so it gets said outright.
+        // Memory, as a plain reading. The advisory above owns the alarm; this is
+        // just the number, and its height never changes.
         if (s.vramBudgetMb > 0) {
-          const bool over = s.vramUsedMb > s.vramBudgetMb;
           const float ratio = static_cast<float>(s.vramUsedMb) /
                               static_cast<float>(s.vramBudgetMb);
           ImGui::Dummy(ImVec2(0.0f, 12.0f));
           if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-          ImGui::TextDisabled("GPU MEMORY");
+          ImGui::TextDisabled("GPU MEMORY USED BY THE SIDECAR");
           if (g_fonts.caption) ImGui::PopFont();
           ImGui::PushStyleColor(ImGuiCol_PlotHistogram,
-                                over        ? Rgb(g_colors.fail)
-                                : ratio > 0.9f ? Rgb(g_colors.warn)
-                                               : Rgb(g_colors.accent));
-          char label[64];
-          std::snprintf(label, sizeof(label), "%u / %u MB", s.vramUsedMb, s.vramBudgetMb);
+                                (spilling || overBudget) ? Rgb(g_colors.fail)
+                                : ratio > 0.9f           ? Rgb(g_colors.warn)
+                                                         : Rgb(g_colors.accent));
+          char label[96];
+          std::snprintf(label, sizeof(label), "%u MB used  /  %u MB allowed%s",
+                        s.vramUsedMb, s.vramBudgetMb,
+                        spilling ? "  --  SPILLING" : "");
           ImGui::ProgressBar(ratio > 1.0f ? 1.0f : ratio, ImVec2(-1.0f, 20.0f), label);
           ImGui::PopStyleColor();
-          if (over || ratio > 0.92f) {
-            ImGui::TextColored(Rgb(over ? g_colors.fail : g_colors.warn),
-                               "%s", over
-                                   ? "Out of GPU memory. This is almost certainly why the "
-                                     "overlay is slow."
-                                   : "GPU memory is nearly full.");
-            Hint("Past the budget the driver moves resources to system memory "
-                 "and every frame waits on the PCIe bus. It shows up below as a "
-                 "huge GPU wait even though the GPU is nearly idle, so it is "
-                 "easy to mistake for a slow neural pass.\n\n"
-                 "Close what else is using the card -- browsers, streaming and "
-                 "capture tools, and anything compositing a second monitor -- "
-                 "and lower the game's texture quality. Nothing in this tool "
-                 "can make room.");
-          }
+          if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
+          ImGui::TextDisabled("This is the sidecar's own share, not the whole card. "
+                              "More of it would not be faster -- the pass allocates "
+                              "what it needs. The number that matters is whether any "
+                              "has spilled.");
+          if (g_fonts.caption) ImGui::PopFont();
         }
 
         // Where the frame went, as a stacked bar. A frame rate on its own tells
@@ -848,19 +895,6 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
           ImGui::TextWrapped("%s", s.lastError);
         }
 
-        ImGui::Dummy(ImVec2(0.0f, 14.0f));
-        const bool visible = s.overlayVisible != 0;
-        if (ImGui::Button(visible ? "Hide overlay (A/B compare)" : "Show overlay",
-                          ImVec2(230.0f, 34.0f))) {
-          control::Send(visible ? SidecarCommand::HideOverlay : SidecarCommand::ShowOverlay);
-        }
-        ImGui::SameLine();
-        const bool hudUp = s.hudVisible != 0;
-        if (ImGui::Button(hudUp ? "Hide HUD" : "Show HUD", ImVec2(150.0f, 34.0f))) {
-          control::Send(hudUp ? SidecarCommand::HideHud : SidecarCommand::ShowHud);
-        }
-        Hint("Hiding the overlay uncovers the untouched game without stopping "
-             "capture, so the comparison is one click rather than a restart.");
       } else if (live.overlayRunning) {
         ImGui::TextDisabled("The overlay is starting. Numbers appear after the first "
                             "few frames.");

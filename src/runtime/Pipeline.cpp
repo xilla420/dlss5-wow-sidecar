@@ -281,6 +281,7 @@ void Pipeline::PublishStatus(const HudModel& model, const FrameBudget& budget) {
   if (auto memory = QueryVideoMemory(gpu_.luid)) {
     status.vramUsedMb = static_cast<uint32_t>(memory->usedBytes / (1024 * 1024));
     status.vramBudgetMb = static_cast<uint32_t>(memory->budgetBytes / (1024 * 1024));
+    status.vramSpilledMb = static_cast<uint32_t>(memory->spilledBytes / (1024 * 1024));
   }
   status.p50Ms = model.p50Ms;
   status.p99Ms = model.p99Ms;
