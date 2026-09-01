@@ -54,24 +54,40 @@ TEST_CASE("existing keys are replaced rather than duplicated", "[unit]") {
   REQUIRE_FALSE(Contains(after, "NRIntensity=0.100000"));
 }
 
-TEST_CASE("sections we do not own survive untouched", "[unit]") {
+TEST_CASE("keys we do not own survive untouched", "[unit]") {
   // ReShade owns most of this file, and the operator may have set things
   // through its own overlay. Losing any of that to a slider move would be a
   // silent, confusing regression.
+  //
+  // The exceptions are the handful of keys this transform deliberately owns:
+  // the add-on's own section, AddonPath, and the two effect search paths. A
+  // ReShade shader directory found here is *supposed* to be overwritten -- see
+  // the effect-pipeline tests below.
   const std::string before =
       "[GENERAL]\r\n"
       "EffectSearchPaths=.\\reshade-shaders\\Shaders\r\n"
+      "PerformanceMode=1\r\n"
+      "PresetPath=.\\ReShadePreset.ini\r\n"
       "\r\n"
       "[OVERLAY]\r\n"
-      "TutorialProgress=4\r\n";
+      "TutorialProgress=4\r\n"
+      "\r\n"
+      "[SCREENSHOT]\r\n"
+      "JPEGQuality=90\r\n";
 
   const std::string after = ApplyNeuralSettings(before, NeuralSettings{});
 
   REQUIRE(Contains(after, "[GENERAL]"));
-  REQUIRE(Contains(after, "EffectSearchPaths=.\\reshade-shaders\\Shaders"));
+  REQUIRE(Contains(after, "PerformanceMode=1"));
+  REQUIRE(Contains(after, "PresetPath=.\\ReShadePreset.ini"));
   REQUIRE(Contains(after, "[OVERLAY]"));
   REQUIRE(Contains(after, "TutorialProgress=4"));
+  REQUIRE(Contains(after, "[SCREENSHOT]"));
+  REQUIRE(Contains(after, "JPEGQuality=90"));
   REQUIRE(Contains(after, "[RenoDX.DLSS5]"));
+
+  // And the one key we do take over.
+  REQUIRE_FALSE(Contains(after, "EffectSearchPaths=.\\reshade-shaders\\Shaders"));
 }
 
 TEST_CASE("a key added to an existing section lands inside it", "[unit]") {
@@ -122,6 +138,54 @@ TEST_CASE("unset strengths are omitted rather than guessed", "[unit]") {
   const std::string written = ApplyNeuralSettings("", settings);
   REQUIRE(Contains(written, "NRLocalStructure=0.500000"));
   REQUIRE_FALSE(Contains(written, "NRLocalTone"));
+}
+
+TEST_CASE("clearing a strength removes the key it previously wrote", "[unit]") {
+  // The bug this pins down: "unset" used to mean "skip", and skipping a key in
+  // a merge leaves whatever was there before. A value from an earlier session --
+  // or one the add-on's own overlay wrote, which ReShade persists on exit --
+  // then survived every later save, so the manager reported the setting as
+  // untouched while the add-on went on reading 1.29.
+  const std::string before =
+      "[RenoDX.DLSS5]\r\n"
+      "NRLocalStructure=1.290000\r\n"
+      "NRLocalTone=1.290000\r\n"
+      "NRSkinStructure=1.270000\r\n";
+
+  NeuralSettings settings;   // all three back to "leave the add-on alone"
+  const std::string after = ApplyNeuralSettings(before, settings);
+
+  REQUIRE_FALSE(Contains(after, "NRLocalStructure"));
+  REQUIRE_FALSE(Contains(after, "NRLocalTone"));
+  REQUIRE_FALSE(Contains(after, "NRSkinStructure"));
+  // The section itself survives, with the keys we do own still in it.
+  REQUIRE(Contains(after, "[RenoDX.DLSS5]"));
+  REQUIRE(Contains(after, "NRIntensity="));
+}
+
+TEST_CASE("the effect pipeline is pinned away from anything loadable", "[unit]") {
+  // ReShade is hosted here to load one add-on, not to run .fx shaders. Its own
+  // default points the effect search at the executable's directory, which is
+  // where this sidecar lives -- so anything dropped in beside it would be
+  // compiled and blended on top of the neural pass with nothing to say so.
+  const std::string ini = ApplyNeuralSettings("", NeuralSettings{});
+  REQUIRE(Contains(ini, "[GENERAL]"));
+  REQUIRE(Contains(ini, "EffectSearchPaths=.\\no-effects\\"));
+  REQUIRE(Contains(ini, "TextureSearchPaths=.\\no-effects\\"));
+}
+
+TEST_CASE("an existing effect search path is overwritten, not added to", "[unit]") {
+  const std::string before =
+      "[GENERAL]\r\n"
+      "EffectSearchPaths=.\\\r\n"
+      "TextureSearchPaths=.\\\r\n"
+      "PerformanceMode=0\r\n";
+
+  const std::string after = ApplyNeuralSettings(before, NeuralSettings{});
+  REQUIRE(CountOf(after, "EffectSearchPaths=") == 1);
+  REQUIRE_FALSE(Contains(after, "EffectSearchPaths=.\\\r\n"));
+  REQUIRE(Contains(after, "EffectSearchPaths=.\\no-effects\\"));
+  REQUIRE(Contains(after, "PerformanceMode=0"));   // untouched
 }
 
 TEST_CASE("applying twice changes nothing the second time", "[unit]") {

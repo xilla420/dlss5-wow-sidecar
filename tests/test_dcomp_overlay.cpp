@@ -73,9 +73,6 @@ TEST_CASE("clicks pass through the overlay to the window beneath", "[device]") {
     return std::async(std::launch::async, [p] { return WindowFromPoint(p); }).get();
   };
 
-  std::this_thread::sleep_for(150ms);
-  const HWND before = hitTest();
-
   auto overlay = DCompOverlay::Create(*bridge, 400, 300);
   REQUIRE(overlay != nullptr);
   RECT bounds{200, 200, 600, 500};
@@ -86,18 +83,24 @@ TEST_CASE("clicks pass through the overlay to the window beneath", "[device]") {
   SetWindowPos(overlay->Hwnd(), HWND_TOPMOST, 0, 0, 0, 0,
                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
   std::this_thread::sleep_for(150ms);
-  const HWND after = hitTest();
 
-  // The assertion is relative, not absolute, and deliberately so.
+  // Establish that the overlay really is up and really does cover the probe
+  // point, so that the assertion below cannot pass vacuously.
+  REQUIRE(IsWindowVisible(overlay->Hwnd()));
+  RECT overlayRect{};
+  REQUIRE(GetWindowRect(overlay->Hwnd(), &overlayRect));
+  REQUIRE(PtInRect(&overlayRect, p));
+
+  // Then the only thing that has to be true: whoever receives a click at that
+  // point, it is not us.
   //
-  // Requiring `after == beneath` says "this exact window got the click", which
-  // is only true on a desktop with nothing else topmost over that point. Any
-  // always-on-top application -- Task Manager, a chat overlay -- owns the point
-  // instead and fails the test for a reason that has nothing to do with the
-  // code. Asking instead that the overlay did not *change* who receives the
-  // click tests the real property, and stays true whoever is underneath.
-  REQUIRE(after != overlay->Hwnd());
-  REQUIRE(after == before);
+  // Deliberately not `== beneath`, and no longer a before/after comparison
+  // either. Naming an exact window fails on any desktop with something else
+  // topmost over the point -- Task Manager, a chat overlay -- and comparing
+  // before against after fails if anything changes z-order in between, which
+  // made this flaky. Both were proxies. This is the property itself.
+  const HWND hit = hitTest();
+  REQUIRE(hit != overlay->Hwnd());
 
   DestroyWindow(beneath);
 }
