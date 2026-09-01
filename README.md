@@ -20,15 +20,20 @@ Measured on an RTX 4080 at 2560×1440 against retail WoW: **p50 11.6 ms, p99
 
 ![DLSS 5 Neural Rendering, off and on](docs/screenshots/dlss-comparison.png)
 
-Retail WoW, RTX 4080, 2560×1440, shown at 2× on a patch of static geometry so
-the two halves line up pixel-for-pixel — the overlay was toggled between the two
-captures and nothing in the scene moved. Neural rendering softens aliasing along
-the plank edges and the metal fittings, and evens out the wood grain.
+Retail WoW, RTX 4080, 2560×1440, shown at 2×. The overlay was toggled between
+two captures a third of a second apart with the character parked, so the halves
+line up.
 
-**That is the size of the effect, and it is not dramatic.** It is presented at
-2× zoom for a reason. Judge it yourself with the one-click A/B in the app rather
-than from a screenshot; full frames are in
-[`docs/screenshots/`](docs/screenshots/) as `dlss-on.jpg` and `dlss-off.jpg`.
+Neural rendering smooths the hair and beard strands, softens the hard aliased
+outline around the model, and evens out the cloth. It also **darkens the image
+and flattens facial contrast** — look at the NPC's eyes and skin. That is a real
+side effect, not a compression artefact in this screenshot, and whether it is a
+fair trade is a matter of taste rather than something a README can settle.
+
+**It is presented at 2× zoom for a reason.** At 1:1, in motion, the effect is
+subtle. Judge it with the one-click A/B in the app rather than from a picture;
+full frames are in [`docs/screenshots/`](docs/screenshots/) as `dlss-on.jpg`
+and `dlss-off.jpg`.
 
 ![The manager's Status page](docs/screenshots/status.png)
 
@@ -159,6 +164,30 @@ beside **OVERLAY FPS** so you can see immediately which one is limiting you.
 If they are equal, you are capture-bound and no setting will help. It is worth
 checking whether a multi-monitor setup with mismatched refresh rates is dragging
 the compositor down to the slowest display.
+
+### Video memory is the thing that will actually ruin it
+
+Watch the **GPU MEMORY** bar on the Status page before you blame the neural
+pass. This is the failure that does not look like itself.
+
+Past the per-process budget the driver evicts resources to system memory and
+every frame waits on the PCIe bus. Frame times explode while the GPU sits
+*nearly idle* — on the development machine, measured within a single session:
+
+| GPU memory state | overlay | GPU wait |
+|---|---|---|
+| comfortable | 40 fps | 24 ms |
+| card ~91% full, 745 MB spilled to system RAM | **6.5 fps** | **153 ms** |
+
+Same build, same settings, same scene. Nothing about the pipeline changed. A
+process-level GPU utilisation counter showed the sidecar at *8.8%* while it was
+taking 153 ms a frame, which is the tell: that time is not compute.
+
+The card's memory is shared with everything else on the desktop, and the
+sidecar is rarely the biggest consumer — on the development machine the desktop
+compositor alone held 9.1 GB of 16. Close browsers, streaming and capture tools,
+and anything compositing a second monitor; lower the game's texture quality.
+**Nothing in this tool can make room**, which is exactly why it tells you.
 
 **Underneath that ceiling, two things were worth fixing:**
 

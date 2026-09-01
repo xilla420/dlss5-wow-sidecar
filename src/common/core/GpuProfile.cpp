@@ -110,4 +110,28 @@ std::optional<GpuInfo> DetectPrimaryGpu() {
   return std::nullopt;
 }
 
+std::optional<VideoMemory> QueryVideoMemory(LUID adapter) {
+  ComPtr<IDXGIFactory4> factory;
+  if (FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) return std::nullopt;
+
+  ComPtr<IDXGIAdapter1> adapter1;
+  if (FAILED(factory->EnumAdapterByLuid(adapter, IID_PPV_ARGS(&adapter1)))) {
+    return std::nullopt;
+  }
+  ComPtr<IDXGIAdapter3> adapter3;
+  if (FAILED(adapter1.As(&adapter3))) return std::nullopt;
+
+  // LOCAL is the memory on the card. NON_LOCAL is system memory the driver may
+  // fall back to, and falling back to it is precisely the condition worth
+  // reporting, so the local segment is the one to ask about.
+  DXGI_QUERY_VIDEO_MEMORY_INFO info{};
+  if (FAILED(adapter3->QueryVideoMemoryInfo(0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &info))) {
+    return std::nullopt;
+  }
+  VideoMemory out;
+  out.budgetBytes = info.Budget;
+  out.usedBytes = info.CurrentUsage;
+  return out;
+}
+
 }  // namespace sidecar
