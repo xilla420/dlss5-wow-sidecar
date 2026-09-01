@@ -36,7 +36,15 @@ GpuArch ArchitectureFromDeviceId(uint32_t vendorId, uint32_t deviceId);
 struct VideoMemory {
   uint64_t budgetBytes = 0;
   uint64_t usedBytes = 0;
+  // Video memory this process has been pushed out into system RAM. Any value
+  // here at all means the card is full and the driver is paging over PCIe,
+  // which is the condition that destroys frame times. It is a better alarm
+  // than the budget: Windows reports a generous per-process budget right up
+  // until contention actually bites, so usage rarely looks close to it even
+  // when the card is nearly full.
+  uint64_t spilledBytes = 0;
   bool OverBudget() const { return budgetBytes > 0 && usedBytes > budgetBytes; }
+  bool Spilling() const { return spilledBytes > 0; }
 };
 std::optional<VideoMemory> QueryVideoMemory(LUID adapter);
 
