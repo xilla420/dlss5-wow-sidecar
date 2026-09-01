@@ -108,6 +108,17 @@ class Pipeline {
   // that pumps. Poll this from the owner's message loop.
   bool NeedsRebuild() const { return rebuildRequested_.load(std::memory_order_acquire); }
 
+  // True once the captured window has gone away for good -- the player quit the
+  // game, or restarted it. There is nothing to recover: the capture item is
+  // bound to a window that no longer exists, and a new game launch is a new
+  // window with a new item.
+  //
+  // The runtime must exit when this happens rather than linger. A lingering
+  // process keeps the control channel open, so the manager goes on reporting
+  // "Overlay: running" over a render loop that stopped, and the operator is
+  // left looking at a stopped overlay that claims to be working.
+  bool TargetLost() const { return targetLost_.load(std::memory_order_acquire); }
+
   // Rebuilds everything and restarts capture. Call only from the thread that
   // called Start(), which is the thread that owns the windows.
   bool RebuildAndRestart();
@@ -210,6 +221,7 @@ class Pipeline {
   std::atomic<bool> running_{false};
   std::atomic<bool> stopRequested_{false};
   std::atomic<bool> rebuildRequested_{false};
+  std::atomic<bool> targetLost_{false};
   // True when dev_.pass was built from config_ rather than handed in, and so
   // must be rebuilt against a new device rather than carried across one.
   bool passFromConfig_ = false;

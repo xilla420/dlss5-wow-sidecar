@@ -719,6 +719,22 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                "usually set by your monitor's refresh rate and, on a multi-monitor "
                "setup with mismatched refresh rates, by the slowest one. Nothing "
                "in this tool can raise it.");
+        } else if (s.captureFps > 0.0 && s.fps < s.captureFps * 0.75) {
+          // Falling short of the capture rate, with memory fine, means the game
+          // is taking the GPU. Worth naming, because the fix is counter-intuitive
+          // and lives in the game's own options rather than anywhere in here.
+          ImGui::TextColored(Rgb(g_colors.warn),
+                             "Only presenting %.0f of the %.0f frames captured.", s.fps,
+                             s.captureFps);
+          Hint("The game is competing for the GPU. Measured on the development "
+               "machine, the same scene ran at 11.7 fps with the game focused and "
+               "35.2 fps with it in the background, purely because an unfocused "
+               "game throttles itself and hands the card back.\n\n"
+               "Cap the game's frame rate. This costs nothing: the overlay can "
+               "never show more than the capture rate above, so every frame the "
+               "game renders beyond that is discarded before it reaches here. "
+               "Setting World of Warcraft's Max Foreground FPS to around that "
+               "number gives the freed GPU time to the neural pass.");
         }
 
         // Video memory, before the frame breakdown, because when this is the

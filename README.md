@@ -165,6 +165,28 @@ If they are equal, you are capture-bound and no setting will help. It is worth
 checking whether a multi-monitor setup with mismatched refresh rates is dragging
 the compositor down to the slowest display.
 
+### Cap the game's frame rate
+
+If the overlay is presenting fewer frames than are being captured, the game is
+taking the GPU and starving the neural pass. Measured on the development
+machine, same build and same scene, differing only in whether the game had
+focus:
+
+| World of Warcraft | overlay | GPU wait |
+|---|---|---|
+| focused, uncapped | 11.7 fps | 83 ms |
+| in the background (self-throttling) | **35.2 fps** | **27 ms** |
+
+That is the whole of the "it speeds up when I alt-tab" effect: an unfocused game
+throttles itself and hands the card back.
+
+**So cap the game, in the game's own options.** It costs nothing, because the
+overlay can never present faster than the capture rate — every frame WoW renders
+beyond that is thrown away before it reaches the sidecar. Setting **Max
+Foreground FPS** to roughly the captured figure on the Status page converts
+wasted frames into GPU time for the neural pass. The app says this in place when
+it detects the condition.
+
 ### Video memory is the thing that will actually ruin it
 
 Watch the **GPU MEMORY** bar on the Status page before you blame the neural

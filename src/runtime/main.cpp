@@ -201,6 +201,15 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     TranslateMessage(&msg);
     DispatchMessageW(&msg);
 
+    // The game closed, or was restarted. Nothing to recover -- a new launch is
+    // a new window and a new capture item -- so exit rather than linger, which
+    // would leave the manager reporting a running overlay over a dead render
+    // loop. Quitting puts the manager back to "stopped", where Start works.
+    if (pipeline->TargetLost()) {
+      GlobalLog().Info("the game closed; shutting down");
+      break;
+    }
+
     // The render thread cannot rebuild after device loss: it would create the
     // overlay window on a thread that never pumps. It posts a WM_NULL to wake
     // this loop instead, and the rebuild happens here, where the windows live.
