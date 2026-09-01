@@ -1,1 +1,0 @@
-namespace sidecar { void KeepLibraryNonEmpty() {} }

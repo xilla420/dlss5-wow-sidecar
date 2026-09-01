@@ -47,7 +47,7 @@ std::unique_ptr<INeuralPass> MakeNeuralPass(std::string_view name,
     // Route A. The M3 spikes established that the neural-rendering runtime
     // refuses an NGX session set up by anyone but the NGX core, through both the
     // core's feature registry and the runtime's own exports, so there is nothing
-    // to build here. See docs/superpowers/spikes/2026-08-31-reshade-detour.md.
+    // to build here. See docs/spikes/2026-08-31-reshade-detour.md.
     warnings.emplace_back("neural_pass \"ngx\" is not reachable on any shipping "
                           "driver; using passthrough");
     return PassthroughPass::Create();
