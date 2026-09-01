@@ -18,20 +18,25 @@ Measured on an RTX 4080 at 2560×1440 against retail WoW: **p50 11.6 ms, p99
 
 ## What it actually looks like
 
-![DLSS 5 Neural Rendering, off and on](docs/screenshots/dlss-comparison.png)
+![DLSS 5 Neural Rendering on a character face, off and on](docs/screenshots/dlss-face-comparison.png)
 
-Retail WoW, RTX 4080, 2560×1440, shown at 2×. The overlay was toggled between
-two captures a third of a second apart with the character parked, so the halves
-line up.
+Retail WoW, RTX 4080, 2560×1440, shown at 2.4×, **with World of Warcraft's own
+anti-aliasing turned off** — so what you are looking at is the neural pass
+working on raw aliased edges rather than on top of the game's MSAA. The overlay
+was toggled between two captures a third of a second apart with the character
+standing still, so the halves line up.
 
-Neural rendering smooths the hair and beard strands, softens the hard aliased
-outline around the model, and evens out the cloth. It also **darkens the image
-and flattens facial contrast** — look at the NPC's eyes and skin. That is a real
-side effect, not a compression artefact in this screenshot, and whether it is a
-fair trade is a matter of taste rather than something a README can settle.
+Look at the hair spikes, the chains behind, and the railing on the right: the
+stair-stepping on the left is gone on the right. Skin and shading pick up depth
+too. It also **darkens the image and deepens facial shadow**, which is a real
+side effect and a matter of taste rather than something a README can settle.
 
-**It is presented at 2× zoom for a reason.** At 1:1, in motion, the effect is
-subtle. Judge it with the one-click A/B in the app rather than from a picture;
+A second comparison on a different scene, showing cloth and an NPC face:
+
+![A second comparison](docs/screenshots/dlss-comparison.png)
+
+**Both are zoomed for a reason.** At 1:1, in motion, the effect is subtler than
+this. Judge it with the one-click A/B in the app rather than from a picture;
 full frames are in [`docs/screenshots/`](docs/screenshots/) as `dlss-on.jpg`
 and `dlss-off.jpg`.
 
