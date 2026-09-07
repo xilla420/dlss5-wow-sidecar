@@ -36,6 +36,11 @@ struct NeuralPassContext {
   // The constant written into the synthetic depth plane. A dial, not a
   // measurement: there is no real depth buffer to capture.
   float syntheticDepth = 0.5f;
+
+  // How many times the neural filter runs over the frame. One pass is
+  // the default; more is the arrangement the public demonstrations use,
+  // and costs a full evaluate each.
+  uint32_t neuralPasses = 1;
 };
 
 // Builds the neural pass named in the config file.

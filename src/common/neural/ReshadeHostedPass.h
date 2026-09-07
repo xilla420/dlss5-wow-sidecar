@@ -52,6 +52,10 @@ class ReshadeHostedPass : public INeuralPass {
     DlssPreset preset = DlssPreset::CnnF;
     // Constant written into the synthetic depth plane.
     float syntheticDepth = 0.5f;
+    // How many times the neural filter is applied to its own output.
+    // One is the default and the only cost anyone should pay without
+    // asking for it: each extra pass is another full evaluate.
+    uint32_t passes = 1;
   };
 
   // Returns null when NGX is unavailable, so MakeNeuralPass can fall back to
@@ -102,6 +106,11 @@ class ReshadeHostedPass : public INeuralPass {
   uint32_t height_ = 0;
   uint32_t depthRowPitch_ = 0;
   DlssPreset preset_ = DlssPreset::CnnF;
+  uint32_t passes_ = 1;
+  // Somewhere for the middle of a multi-pass run to live. Created on
+  // first use and only when more than one pass is asked for, because it
+  // is the size of a full frame and most runs never need it.
+  Microsoft::WRL::ComPtr<ID3D12Resource> scratch_;
   RuntimeVariant variant_ = RuntimeVariant::None;
   bool depthUploaded_ = false;
   bool featureFailed_ = false;
