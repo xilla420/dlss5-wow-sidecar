@@ -1,0 +1,193 @@
+name: Release
+
+# A tag makes a release. Nothing else does -- an ordinary push must not publish
+# anything, which is why this is a separate workflow from ci.yml rather than a
+# branch of it.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build, e.g. v0.2.0. Must already exist.'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python dependencies
+        run: python -m pip install --disable-pip-version-check pefile pytest
+
+      # The tag and the VERSION in CMakeLists are the same number written in two
+      # places, and two places drift. This is where that is caught -- before a
+      # release goes out whose window title disagrees with its own tag.
+      - name: Check the tag against the project version
+        shell: pwsh
+        run: |
+          $ref = "${{ github.event.inputs.tag || github.ref_name }}"
+          $tag = $ref -replace '^refs/tags/', ''
+          $version = $tag.TrimStart('v')
+          $declared = (Select-String -Path CMakeLists.txt -Pattern 'project\(.*VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)').Matches[0].Groups[1].Value
+          Write-Output "tag $tag, CMakeLists says $declared"
+          if ($version -ne $declared) {
+            Write-Error "Tag $tag does not match the VERSION in CMakeLists.txt ($declared). One of them is wrong; the version lives in CMakeLists."
+            exit 1
+          }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # The notes were written when the change was made. Reading them back beats
+      # typing them a second time into the release form, where the two versions
+      # then disagree and the reader gets whichever they find first.
+      - name: Take the release notes from the changelog
+        shell: pwsh
+        run: python ci/release_notes.py $env:VERSION | Out-File -FilePath release-notes.md -Encoding utf8
+
+      # Public, and pinned. Cloned without the blobs and with only the two
+      # directories the build reads, because the repository carries the runtime
+      # DLLs as well and they are several hundred megabytes of nothing we need.
+      - name: Fetch the NVIDIA DLSS SDK
+        shell: pwsh
+        run: |
+          git clone --depth 1 --filter=blob:none --sparse https://github.com/NVIDIA/DLSS sdk-dlss
+          cd sdk-dlss
+          git sparse-checkout set include lib
+
+      # The Optical Flow SDK is not fully public: NVIDIA's GitHub repository
+      # carries the CUDA interface only, and this project needs the D3D12
+      # header, which ships in the download behind a developer account.
+      #
+      # So the URL of an archive holding NvOFInterface/ has to be supplied as a
+      # repository secret. Without it the job stops here rather than building
+      # something that cannot work: with no Optical Flow SDK there is no motion
+      # field, the neural pass is skipped for every frame, and the binaries look
+      # finished while doing nothing at all.
+      - name: Fetch the NVIDIA Optical Flow SDK
+        shell: pwsh
+        env:
+          NVOF_SDK_URL: ${{ secrets.NVOF_SDK_URL }}
+        run: |
+          if (-not $env:NVOF_SDK_URL) {
+            Write-Error @"
+          NVOF_SDK_URL is not set.
+
+          It has to point at an archive containing NvOFInterface/ from the NVIDIA
+          Optical Flow SDK. NVIDIA publishes only the CUDA headers on GitHub; the
+          D3D12 header this project includes comes with the download behind a
+          developer account, so it cannot be fetched here without one.
+
+          This job refuses to continue rather than publish a build without it. A
+          sidecar built with no Optical Flow SDK starts, reports a neural pass,
+          and never runs one -- there is no motion field, so every frame is
+          copied through untouched and nothing on screen says so.
+          "@
+            exit 1
+          }
+          Invoke-WebRequest -Uri $env:NVOF_SDK_URL -OutFile nvof.zip
+          Expand-Archive -Path nvof.zip -DestinationPath sdk-nvof -Force
+          $interface = Get-ChildItem -Path sdk-nvof -Recurse -Directory -Filter NvOFInterface | Select-Object -First 1
+          if (-not $interface) { Write-Error "The archive has no NvOFInterface directory."; exit 1 }
+          if (-not (Test-Path (Join-Path $interface.FullName 'nvOpticalFlowD3D12.h'))) {
+            Write-Error "NvOFInterface has no nvOpticalFlowD3D12.h; this is the CUDA-only copy."
+            exit 1
+          }
+          "NVOF_ROOT=$($interface.Parent.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # SIDECAR_REQUIRE_SDKS turns the "SDK not set" warnings into errors. A
+      # release is the one build where a missing SDK must not be survivable.
+      - name: Configure
+        run: >
+          cmake -S . -B build -A x64
+          -DSIDECAR_REQUIRE_SDKS=ON
+          -DDLSS_SDK_DIR=${{ github.workspace }}/sdk-dlss
+          -DNVOF_SDK_DIR=${{ env.NVOF_ROOT }}
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Unit tests
+        run: build\tests\Release\sidecar_tests.exe "[unit]"
+
+      - name: Test the checkers themselves
+        run: python -m pytest ci/test_check_imports.py ci/test_check_translations.py ci/test_release_notes.py -q
+
+      - name: Check the translation table against the sources
+        run: python ci/check_translations.py
+
+      # The same invariants ci.yml checks, against the binaries that are about
+      # to be published rather than against a debug build of them.
+      - name: Re-check the binaries against the safety invariants
+        run: python ci/check_imports.py build\Release\wowsidecar.exe build\Release\wowsidecar-manager.exe
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $stage = "dlss5-wow-sidecar"
+          New-Item -ItemType Directory -Path $stage | Out-Null
+          Copy-Item build\Release\wowsidecar.exe, build\Release\wowsidecar-manager.exe $stage
+          Copy-Item LICENSE, THIRD-PARTY-NOTICES.md $stage
+          $zip = "dlss5-wow-sidecar-$env:TAG.zip"
+          Compress-Archive -Path $stage -DestinationPath $zip
+          # Published beside the archive so anyone can check what they
+          # downloaded is what was built.
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $zip" | Out-File -FilePath SHA256SUMS.txt -Encoding ascii
+          "ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      # A draft, deliberately. Four third-party binaries belong in the bundle and
+      # none of them is ours to redistribute from a workflow -- the neural
+      # runtime is a patched build, and THIRD-PARTY-NOTICES.md explains why that
+      # is a decision a person makes rather than a job. So this job builds and
+      # verifies everything it can, and leaves the last step to a human who adds
+      # those files and presses publish.
+      - name: Draft the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = "release-notes.md"
+          @"
+
+          ---
+
+          ### Before publishing this draft
+
+          This archive holds the two executables built from this tag, and nothing
+          else. Four third-party files belong beside them and are not ours to
+          redistribute from a workflow:
+
+          - ``nvngx_dlssnr.dll`` — the neural rendering runtime
+          - ``nvngx_dlss.dll`` — the upscaling runtime, optional
+          - ``dxgi.dll`` — ReShade, the add-on-enabled build
+          - ``renodx-dlss5.addon64`` — the RenoDX DLSS 5 add-on
+
+          Add them to the archive, or leave them out and say so: the **Setup** tab
+          was built for the supply-your-own arrangement and names each missing
+          file, what it is for, and where it comes from.
+
+          Built with both NVIDIA SDKs present — the job refuses to run without
+          them, because a build missing either one reports a neural pass and
+          never runs one.
+
+          ``SHA256SUMS.txt`` covers the archive as built here.
+          "@ | Out-File -FilePath $notes -Append -Encoding utf8
+
+          gh release create $env:TAG $env:ZIP SHA256SUMS.txt `
+            --draft `
+            --title "$env:TAG - DLSS 5 Sidecar" `
+            --notes-file $notes
