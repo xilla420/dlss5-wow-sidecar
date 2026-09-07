@@ -78,3 +78,42 @@ TEST_CASE("a WoW folder that no longer exists is still loaded", "[unit]") {
   REQUIRE(warnings.empty());
   REQUIRE(cfg.wowDir == R"(Q:\gone\_retail_)");
 }
+
+// The interface language.
+
+TEST_CASE("the default language is English", "[unit]") {
+  std::vector<std::string> warnings;
+  const auto cfg = ParseConfig("", warnings);
+  REQUIRE(cfg.language == "en");
+  REQUIRE(warnings.empty());
+}
+
+TEST_CASE("a language tag round-trips", "[unit]") {
+  Config config;
+  config.language = "ru";
+
+  std::vector<std::string> warnings;
+  const auto reread = ParseConfig(SerializeConfig(config), warnings);
+
+  REQUIRE(warnings.empty());
+  REQUIRE(reread.language == "ru");
+}
+
+TEST_CASE("an unknown language tag warns and falls back to English", "[unit]") {
+  // Refusing to start over a typo in a preference would be the wrong trade in
+  // a tool that has to run in order to explain itself.
+  std::vector<std::string> warnings;
+  const auto cfg = ParseConfig("language = \"de\"\n", warnings);
+  REQUIRE(cfg.language == "en");
+  REQUIRE(warnings.size() == 1);
+  REQUIRE(warnings[0].find("language") != std::string::npos);
+  REQUIRE(warnings[0].find("unknown key") == std::string::npos);
+}
+
+TEST_CASE("a language of the wrong type warns rather than throwing", "[unit]") {
+  std::vector<std::string> warnings;
+  const auto cfg = ParseConfig("language = true\n", warnings);
+  REQUIRE(cfg.language == "en");
+  REQUIRE(warnings.size() == 1);
+  REQUIRE(warnings[0].find("language") != std::string::npos);
+}

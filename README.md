@@ -1,3 +1,5 @@
+**English** | [Русский](README.ru.md)
+
 # DLSS 5 Sidecar for World of Warcraft
 
 Runs NVIDIA's DLSS 5 Neural Rendering over a live World of Warcraft frame —
@@ -321,6 +323,29 @@ Two optional SDKs, neither vendored (I11), both manual downloads:
 Tests: `build\tests\Release\sidecar_tests.exe "[unit]"`. The `[device]` tests
 need a real NVIDIA GPU and are excluded from CI, because a skipped GPU test must
 not read as a pass.
+
+Translation table: `python ci/check_translations.py`. Translations are keyed
+by their English source text, so editing an English string orphans its
+translation silently — nothing fails to build and nothing looks wrong until
+somebody switches language. This check is what catches that, and it runs in CI.
+
+---
+
+## Interface language
+
+The app speaks English by default and Russian by choice. The switch is in the
+manager's header, left of the primary button, and is reachable before the
+first-run notice is accepted — somebody who cannot read the notice has to be
+able to change the language before agreeing to it.
+
+The choice is kept in `sidecar.toml` under `language` (`"en"` or `"ru"`). The
+Windows locale is deliberately not consulted: every screenshot in this document
+is English, and a first run that does not match them is a worse introduction
+than one in a second language.
+
+Log lines stay English in every interface language. The log is what travels
+back to the maintainer in a bug report, and a translated one makes that report
+harder to act on rather than easier.
 
 ---
 
