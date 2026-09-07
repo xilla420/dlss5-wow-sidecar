@@ -70,9 +70,29 @@ TEST_CASE("a degenerate capture size yields nothing", "[unit]") {
 
 constexpr uint32_t kNvidia = 0x10DE;
 
+// Every desktop RTX 50 part the NVIDIA display driver publishes, so the table
+// is checked against the whole shipped line rather than against the two cards
+// that happened to be to hand. The list is read off the driver's own INF; that
+// is what decides which ids exist, not this file.
 TEST_CASE("Blackwell device ids map to Blackwell", "[unit]") {
   REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2B85) == GpuArch::Blackwell);  // RTX 5090
+  REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2B87) == GpuArch::Blackwell);  // RTX 5090 D
+  REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2B8C) == GpuArch::Blackwell);  // RTX 5090 D v2
   REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2C02) == GpuArch::Blackwell);  // RTX 5080
+  REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2C05) == GpuArch::Blackwell);  // RTX 5070 Ti
+  REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2D04) == GpuArch::Blackwell);  // RTX 5060 Ti
+  REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2D05) == GpuArch::Blackwell);  // RTX 5060
+  REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2D83) == GpuArch::Blackwell);  // RTX 5050
+}
+
+// The RTX 5070 is the one part that does not continue the block its siblings
+// sit in: GB205 is 0x2F04, past the 0x2C00-0x2DFF range that holds everything
+// from the 5080 down to the 5050. The gap read as Unsupported, so the sidecar
+// refused to run on a card it was built for.
+TEST_CASE("the RTX 5070 is Blackwell despite sitting outside its siblings' block",
+          "[unit]") {
+  REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2F04) == GpuArch::Blackwell);
+  REQUIRE(DefaultInternalHeight(ArchitectureFromDeviceId(kNvidia, 0x2F04)) == 2160);
 }
 
 TEST_CASE("Ada device ids map to Ada", "[unit]") {
@@ -89,10 +109,19 @@ TEST_CASE("Ampere and Turing are recognised but not supported", "[unit]") {
 TEST_CASE("non-NVIDIA vendors are unsupported regardless of device id", "[unit]") {
   REQUIRE(ArchitectureFromDeviceId(0x1002, 0x744C) == GpuArch::Unsupported);  // AMD
   REQUIRE(ArchitectureFromDeviceId(0x8086, 0x56A0) == GpuArch::Unsupported);  // Intel
+  // The vendor check must still come first for the range added for GB205:
+  // another vendor reusing 0x2F04 is not an RTX 5070.
+  REQUIRE(ArchitectureFromDeviceId(0x1002, 0x2F04) == GpuArch::Unsupported);
 }
 
 TEST_CASE("unknown NVIDIA device ids are unsupported rather than guessed", "[unit]") {
   REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x0001) == GpuArch::Unsupported);
+  // 0x2E00-0x2EFF lies between the two Blackwell blocks and nothing published
+  // occupies it. Widening the table into it to close the hole would be exactly
+  // the guess the ranges are kept narrow to prevent, because a wrong guess
+  // selects the wrong neural runtime variant.
+  REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2E04) == GpuArch::Unsupported);
+  REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2A00) == GpuArch::Unsupported);
 }
 
 TEST_CASE("default internal height follows the spec GPU matrix", "[unit]") {
