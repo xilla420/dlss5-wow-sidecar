@@ -45,8 +45,14 @@ struct ThemeFonts {
   ImFont* mono = nullptr;
 };
 
-// Call once, after ImGui::CreateContext and before the backend builds its font
-// texture.
-ThemeFonts LoadThemeFonts();
+// Call after ImGui::CreateContext and before the backend builds its font
+// texture. `scale` multiplies every face: 1.0 is the design size, and the
+// manager derives it from the monitor's DPI and the operator's own setting.
+//
+// Callable again to change the scale, but the caller then owns the rest of the
+// dance -- clear the atlas, drop the backend's texture, and let it be rebuilt
+// on the next frame. Fonts are rasterised at their final size rather than
+// stretched, because stretched text at this size is visibly soft.
+ThemeFonts LoadThemeFonts(float scale);
 
 }  // namespace sidecar

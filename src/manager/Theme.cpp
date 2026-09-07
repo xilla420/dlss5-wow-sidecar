@@ -2,6 +2,8 @@
 
 #include "core/I18n.h"
 
+#include <cmath>
+
 #include <windows.h>
 #include <shlobj.h>
 
@@ -34,6 +36,28 @@ fs::path FontsDirectory() {
 // throwing when none does, and the caller then leaves ImGui on its built-in
 // face: a missing font is a cosmetic problem, not a reason for the manager to
 // refuse to open.
+// What the interface actually draws, which is more than any of ImGui's
+// prepared ranges. GetGlyphRangesCyrillic covers Latin-1 and Cyrillic and then
+// stops, so the em dash and the ellipsis -- both ordinary Russian punctuation,
+// and both used throughout the translated text -- fell outside the atlas and
+// rasterised as the fallback glyph. On screen that reads as a question mark in
+// the middle of a sentence, which looks like mojibake rather than like a
+// missing glyph and sends a reader looking for an encoding bug that is not
+// there.
+//
+// The guillemets are already inside Latin-1, so they were never the problem;
+// they are listed anyway so the range says what it is for.
+const ImWchar* InterfaceGlyphRanges() {
+  static const ImWchar ranges[] = {
+      0x0020, 0x00FF,   // Basic Latin and Latin-1, which includes « and »
+      0x0400, 0x052F,   // Cyrillic and Cyrillic Supplement
+      0x2010, 0x2027,   // dashes, the quotation marks, the ellipsis
+      0x2030, 0x203A,   // per-mille, primes, the single guillemets
+      0,
+  };
+  return ranges;
+}
+
 ImFont* LoadFirst(std::initializer_list<const wchar_t*> candidates, float size) {
   const fs::path directory = FontsDirectory();
   std::error_code ec;
@@ -41,9 +65,8 @@ ImFont* LoadFirst(std::initializer_list<const wchar_t*> candidates, float size) 
     const fs::path path = directory / name;
     if (!fs::exists(path, ec) || ec) continue;
     ImFontConfig config;
-    const ImWchar* ranges = ImGui::GetIO().Fonts->GetGlyphRangesCyrillic();
     if (ImFont* font = ImGui::GetIO().Fonts->AddFontFromFileTTF(
-            path.string().c_str(), size, &config, ranges)) {
+            path.string().c_str(), size, &config, InterfaceGlyphRanges())) {
       return font;
     }
   }
@@ -68,20 +91,29 @@ ThemeColors CurrentThemeColors(bool dark) {
                      0xC8AA6E, 0x7B2CB5, 0x2A2620};
 }
 
-ThemeFonts LoadThemeFonts() {
+ThemeFonts LoadThemeFonts(float scale) {
   ImGuiIO& io = ImGui::GetIO();
   ThemeFonts fonts;
 
+  // Rasterised at the size they will be drawn at, rather than drawn small and
+  // stretched. ImGui can scale a built atlas with FontGlobalScale, and the
+  // result is soft in a way that is obvious on text this small; rebuilding
+  // costs a few milliseconds and only happens when the scale changes.
+  //
+  // Rounded, because a fractional pixel size gives the rasteriser a baseline
+  // that lands between pixels and takes the crispness back.
+  const auto at = [scale](float size) { return std::round(size * scale); };
+
   // Body first, so it becomes ImGui's default face.
-  fonts.body = LoadFirst({L"segoeui.ttf", L"tahoma.ttf", L"arial.ttf"}, 17.0f);
+  fonts.body = LoadFirst({L"segoeui.ttf", L"tahoma.ttf", L"arial.ttf"}, at(17.0f));
 
   // Georgia stands in for Friz Quadrata: a Roman serif with the same weight in
   // the stems, and present on every Windows install.
-  fonts.heading = LoadFirst({L"georgiab.ttf", L"georgia.ttf", L"pala.ttf"}, 21.0f);
-  fonts.title = LoadFirst({L"georgiab.ttf", L"georgia.ttf", L"pala.ttf"}, 30.0f);
-  fonts.caption = LoadFirst({L"segoeui.ttf", L"tahoma.ttf", L"arial.ttf"}, 14.0f);
+  fonts.heading = LoadFirst({L"georgiab.ttf", L"georgia.ttf", L"pala.ttf"}, at(21.0f));
+  fonts.title = LoadFirst({L"georgiab.ttf", L"georgia.ttf", L"pala.ttf"}, at(30.0f));
+  fonts.caption = LoadFirst({L"segoeui.ttf", L"tahoma.ttf", L"arial.ttf"}, at(14.0f));
   // Numbers the operator compares against each other have to line up.
-  fonts.mono = LoadFirst({L"consola.ttf", L"cour.ttf"}, 16.0f);
+  fonts.mono = LoadFirst({L"consola.ttf", L"cour.ttf"}, at(16.0f));
 
   if (!fonts.body) io.Fonts->AddFontDefault();
   return fonts;
