@@ -33,8 +33,18 @@ jobs:
       - name: Test the invariant checker itself
         run: python -m pytest ci/test_check_imports.py -v
 
+      # No -G. The generator used to be pinned to "Visual Studio 17 2022",
+      # which stopped existing the day windows-latest became the VS 2026
+      # image: CMake reported "could not find any instance of Visual Studio"
+      # and every run failed at configure, thirty seconds in, so nothing
+      # downstream was checked at all.
+      #
+      # Letting CMake pick means CI builds with whatever Visual Studio the
+      # runner has, and keeps working the next time that moves. Local builds
+      # are unaffected -- the README still tells a contributor to pass the
+      # generator, and passing it is still correct on a machine that has it.
       - name: Configure
-        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+        run: cmake -S . -B build -A x64
 
       # The invariant check runs as a post-build step on every executable, so a
       # forbidden import fails this step rather than shipping.
