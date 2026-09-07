@@ -28,8 +28,12 @@ add_executable(sidecar_tests
   test_probes.cpp
   test_neural_pass_factory.cpp
   test_panic_switch.cpp
+  test_wow_install.cpp
+  test_utf8.cpp
+  test_config_paths.cpp
   ../src/manager/Install.cpp
   ../src/manager/Probes.cpp
+  ../src/manager/WowInstall.cpp
   ../src/runtime/Pipeline.cpp
   ../src/testpattern/Pattern.cpp)
 target_include_directories(sidecar_tests PRIVATE ../src)
