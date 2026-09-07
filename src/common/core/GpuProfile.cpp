@@ -28,6 +28,15 @@ constexpr Range kRanges[] = {
     {0x2780, 0x28FF, GpuArch::Ada},
     {0x2B00, 0x2BFF, GpuArch::Blackwell},
     {0x2C00, 0x2DFF, GpuArch::Blackwell},
+    // GB205 sits apart from the rest of Blackwell rather than continuing the
+    // block above, so a contiguous table misses it: the RTX 5070 is 0x2F04
+    // while every other desktop RTX 50 part lands below 0x2E00. Leaving the
+    // gap reported an RTX 50 card as Unsupported and refused to run on it.
+    //
+    // 0x2E00-0x2EFF stays out on purpose. Nothing published occupies it, and
+    // paving over the hole to make one range would be the guess this table
+    // exists to avoid.
+    {0x2F00, 0x2FFF, GpuArch::Blackwell},
 };
 
 }  // namespace
