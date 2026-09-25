@@ -83,6 +83,10 @@ TEST_CASE("Blackwell device ids map to Blackwell", "[unit]") {
   REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2D04) == GpuArch::Blackwell);  // RTX 5060 Ti
   REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2D05) == GpuArch::Blackwell);  // RTX 5060
   REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2D83) == GpuArch::Blackwell);  // RTX 5050
+  // A second RTX 5060 part, and the one the bug report's table left out: it
+  // sits in the same block as the 5070 rather than beside the other 5060, so
+  // it was falling through to Unsupported as well.
+  REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2F06) == GpuArch::Blackwell);  // RTX 5060
 }
 
 // The RTX 5070 is the one part that does not continue the block its siblings
@@ -93,6 +97,13 @@ TEST_CASE("the RTX 5070 is Blackwell despite sitting outside its siblings' block
           "[unit]") {
   REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2F04) == GpuArch::Blackwell);
   REQUIRE(DefaultInternalHeight(ArchitectureFromDeviceId(kNvidia, 0x2F04)) == 2160);
+
+  // Two cards live in that block, not one. The report that found this named
+  // only the 5070 and called it the sole missing part; the driver's own INF
+  // lists 0x2F06 there too. Both were refused, and a fix checked against the
+  // report alone would have been tested one card short.
+  REQUIRE(ArchitectureFromDeviceId(kNvidia, 0x2F06) == GpuArch::Blackwell);
+  REQUIRE(DefaultInternalHeight(ArchitectureFromDeviceId(kNvidia, 0x2F06)) == 2160);
 }
 
 TEST_CASE("Ada device ids map to Ada", "[unit]") {
