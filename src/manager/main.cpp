@@ -410,6 +410,11 @@ void DrawBoard(const std::vector<ProbeResult>& results) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
+  // Before any window exists or any size is asked for. Without this the manager
+  // is fed virtualised coordinates on a scaled display and reports the game's
+  // resolution as, say, 2048x1152 when it is really 2560x1440 -- the same lie
+  // that made the runtime present a black overlay.
+  SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
   PinSystemGraphicsDlls();
 
   WNDCLASSEXW wc{sizeof(wc)};
@@ -449,13 +454,24 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     DwmSetWindowAttribute(hwnd, 36 /* TEXT_COLOR */, &text, sizeof(text));
     DwmSetWindowAttribute(hwnd, 34 /* BORDER_COLOR */, &border, sizeof(border));
   }
+  // Now that there is a window, ask which display it is on and how scaled that
+  // display is. The process is DPI-aware, so Windows hands over real pixels and
+  // no longer magnifies anything on our behalf -- which is the point, but it
+  // means the interface has to be scaled here or it comes out physically
+  // smaller on a 125% display than on a 100% one.
+  const float dpiScale = static_cast<float>(GetDpiForWindow(hwnd)) / 96.0f;
+  if (dpiScale != 1.0f) {
+    SetWindowPos(hwnd, nullptr, 0, 0, static_cast<int>(kWindowWidth * dpiScale),
+                 static_cast<int>(kWindowHeight * dpiScale),
+                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+  }
   ShowWindow(hwnd, show);
 
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGui::GetIO().IniFilename = nullptr;   // no state file next to the binary
-  g_fonts = LoadThemeFonts();             // before the backend builds its atlas
-  ApplySidecarTheme(true);
+  g_fonts = LoadThemeFonts(dpiScale);     // before the backend builds its atlas
+  ApplySidecarTheme(true, dpiScale);
   g_colors = CurrentThemeColors(true);
   ImGui_ImplWin32_Init(hwnd);
   ImGui_ImplDX11_Init(g_device.Get(), g_context.Get());

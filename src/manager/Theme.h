@@ -17,7 +17,11 @@ namespace sidecar {
 // rule between them, parchment-toned text, and item-quality colours carrying
 // status, because every WoW player already reads green/orange/red without a
 // legend.
-void ApplySidecarTheme(bool dark);
+// scale is the display's DPI factor (1.0 at 100%, 1.25 at 125%). The process
+// is DPI-aware, so Windows no longer magnifies the interface for us and every
+// fixed pixel size here has to be multiplied by it or the panel comes out
+// physically smaller on a scaled display than on an unscaled one.
+void ApplySidecarTheme(bool dark, float scale = 1.0f);
 
 struct ThemeColors {
   unsigned int accent;      // bronze-gold, the interface's one accent
@@ -47,6 +51,6 @@ struct ThemeFonts {
 
 // Call once, after ImGui::CreateContext and before the backend builds its font
 // texture.
-ThemeFonts LoadThemeFonts();
+ThemeFonts LoadThemeFonts(float scale = 1.0f);
 
 }  // namespace sidecar
