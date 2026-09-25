@@ -1,5 +1,7 @@
 [English](README.md) | **Русский**
 
+[История изменений](CHANGELOG.ru.md)
+
 # DLSS 5 Sidecar для World of Warcraft
 
 Выполняет нейронный рендеринг NVIDIA DLSS 5 поверх живого кадра World of

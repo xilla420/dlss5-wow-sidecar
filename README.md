@@ -1,5 +1,7 @@
 **English** | [Русский](README.ru.md)
 
+[Changelog](CHANGELOG.md)
+
 # DLSS 5 Sidecar for World of Warcraft
 
 Runs NVIDIA's DLSS 5 Neural Rendering over a live World of Warcraft frame —
