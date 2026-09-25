@@ -82,11 +82,28 @@ def literals_in_sources() -> set[str]:
     return found
 
 
-def check() -> list[str]:
-    problems: list[str] = []
+def check() -> list[tuple[str, str]]:
+    """Returns (severity, message) pairs, where severity is "error" or "warning".
+
+    The split is by what the problem does at runtime, not by how untidy it is.
+
+    A stale, empty, duplicated or copy-pasted translation degrades gracefully:
+    Translate() returns the English it was handed when a key does not resolve,
+    so the worst case is one sentence in the wrong language in a panel that
+    otherwise works. Failing a build over that taxes every English string edit
+    for a defect nobody can see, in a language the maintainer does not read.
+
+    A format-specifier mismatch does not degrade. These strings reach printf
+    and TextOut; a translation that drops a %s or reorders two against the
+    arguments they consume reads a pointer that was never passed. That is a
+    crash, and it still fails the build.
+    """
+    problems: list[tuple[str, str]] = []
     pairs = table_pairs(TABLE.read_text(encoding="utf-8"))
     if not pairs:
-        return [f"{TABLE.name}: no translation rows found -- has the file moved?"]
+        # Not a translation problem: the checker cannot see what it is meant to
+        # check, so it is not reporting anything trustworthy.
+        return [("error", f"{TABLE.name}: no translation rows found -- has the file moved?")]
 
     known = literals_in_sources()
 
@@ -95,45 +112,77 @@ def check() -> list[str]:
         where = f"row {index}"
 
         if english in seen:
-            problems.append(
-                f"{where}: duplicate key, already at row {seen[english]}: {english[:60]!r}"
-            )
+            problems.append((
+                "warning",
+                f"{where}: duplicate key, already at row {seen[english]}: {english[:60]!r}",
+            ))
         seen[english] = index
 
         if not russian.strip():
-            problems.append(f"{where}: empty translation for {english[:60]!r}")
+            problems.append(("warning", f"{where}: empty translation for {english[:60]!r}"))
         elif russian == english:
-            problems.append(
-                f"{where}: translation is identical to the key: {english[:60]!r}"
-            )
+            problems.append((
+                "warning",
+                f"{where}: translation is identical to the key: {english[:60]!r}",
+            ))
 
         if english not in known:
-            problems.append(
+            problems.append((
+                "warning",
                 f"{where}: key appears in no source file, so it can never be "
-                f"looked up: {english[:70]!r}"
-            )
+                f"looked up: {english[:70]!r}",
+            ))
 
         source_specifiers = SPECIFIER.findall(english)
         target_specifiers = SPECIFIER.findall(russian)
         if source_specifiers != target_specifiers:
-            problems.append(
+            problems.append((
+                "error",
                 f"{where}: format specifiers differ -- {source_specifiers} in the "
-                f"key, {target_specifiers} in the translation: {english[:50]!r}"
-            )
+                f"key, {target_specifiers} in the translation: {english[:50]!r}",
+            ))
 
     return problems
 
 
+def table_name() -> str:
+    """The table's path for display, repo-relative where that makes sense.
+
+    relative_to raises when the table is not under the repository, which is the
+    normal case in this script's own tests -- so main() could not be called
+    from them at all until this stopped assuming.
+    """
+    try:
+        return TABLE.relative_to(REPO).as_posix()
+    except ValueError:
+        return TABLE.name
+
+
 def main() -> int:
     problems = check()
-    if problems:
-        print(f"FAIL {TABLE.relative_to(REPO)}: {len(problems)} problem(s)")
-        for problem in problems:
-            print(f"  {problem}")
-        return 1
+    errors = [message for severity, message in problems if severity == "error"]
+    warnings = [message for severity, message in problems if severity == "warning"]
+    name = table_name()
+
+    # GitHub Actions renders ::warning:: in the run summary without failing the
+    # job, so a stale translation is visible to whoever can fix it rather than
+    # blocking whoever cannot.
+    for message in warnings:
+        print(f"::warning file={name}::{message}")
+    for message in errors:
+        print(f"::error file={name}::{message}")
+
     pairs = table_pairs(TABLE.read_text(encoding="utf-8"))
+    if errors:
+        print(f"FAIL {name}: {len(errors)} error(s), "
+              f"{len(warnings)} warning(s)")
+        return 1
+    if warnings:
+        print(f"ok   {name}: {len(pairs)} translations, "
+              f"{len(warnings)} stale -- warned, not fatal")
+        return 0
     print(
-        f"ok   {TABLE.relative_to(REPO)}: {len(pairs)} translations, all keys present"
+        f"ok   {name}: {len(pairs)} translations, all keys present"
     )
     return 0
 
