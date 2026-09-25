@@ -2,6 +2,8 @@
 
 #include <toml++/toml.h>
 
+#include "core/I18n.h"
+
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -14,10 +16,10 @@ namespace {
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
-constexpr std::array<std::string_view, 10> kKnownKeys = {
+constexpr std::array<std::string_view, 11> kKnownKeys = {
     "show_hud",     "show_overlay",   "flow_grid_size", "neural_pass",
     "dlss_preset",  "synthetic_depth", "ui_mask",       "ui_mask_feather",
-    "neural",       "wow_dir"};
+    "neural",       "wow_dir",       "language"};
 
 bool IsKnown(std::string_view key) {
   return std::find(kKnownKeys.begin(), kKnownKeys.end(), key) != kKnownKeys.end();
@@ -164,6 +166,22 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
     }
   }
 
+  // Validated here rather than where it is used, so a typo produces one
+  // warning at load instead of silently drawing English forever.
+  if (const auto node = root.get("language")) {
+    if (auto value = node->value<std::string>()) {
+      Language parsed = Language::English;
+      if (ParseLanguageTag(*value, parsed)) {
+        config.language = *value;
+      } else {
+        warnings.emplace_back("language: unknown tag \"" + *value +
+                              "\"; falling back to English");
+      }
+    } else {
+      warnings.emplace_back("language: expected a string; using English");
+    }
+  }
+
   // Not checked for existence here. A folder that has gone away is something to
   // report on the checks board, where it can be re-pointed, rather than a
   // reason to drop the setting on load and make the operator find it again.
@@ -249,6 +267,7 @@ std::string SerializeConfig(const Config& config) {
   out << "# DLSS 5 sidecar. Written by the manager; hand edits are read back on\n"
          "# the next launch and overwritten on the next save.\n\n";
 
+  out << "language = " << TomlString(config.language) << "\n";
   out << "neural_pass = \"" << config.neuralPass << "\"\n";
   out << "dlss_preset = \"" << config.dlssPreset << "\"\n";
   out << "show_hud = " << Boolean(config.showHud) << "\n";

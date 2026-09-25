@@ -77,6 +77,8 @@ target_sources(sidecar_common PRIVATE
   src/common/core/Sha256.cpp
   src/common/core/PanicSwitch.cpp
   src/common/core/Utf8.cpp
+  src/common/core/I18n.cpp
+  src/common/core/I18nRu.cpp
   src/common/gpu/DeviceBridge.cpp
   src/common/gpu/FormatNormalize.cpp
   src/common/gpu/Luminance.cpp

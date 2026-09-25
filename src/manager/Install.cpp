@@ -1,5 +1,7 @@
 #include "manager/Install.h"
 
+#include "core/I18n.h"
+
 #include <algorithm>
 #include <cctype>
 #include <system_error>
@@ -92,10 +94,10 @@ InstallResult InstallComponent(const Component& component, const fs::path& sourc
                                const fs::path& sidecarDir) {
   std::error_code ec;
   if (!fs::exists(source, ec) || ec) {
-    return {false, "That file no longer exists."};
+    return {false, Tr("That file no longer exists.")};
   }
   if (!fs::is_regular_file(source, ec) || ec) {
-    return {false, "That is not a file."};
+    return {false, Tr("That is not a file.")};
   }
 
   const fs::path destination = sidecarDir / std::string(component.installedAs);
@@ -103,14 +105,14 @@ InstallResult InstallComponent(const Component& component, const fs::path& sourc
   // A source that is already the destination is not an error worth a copy: the
   // filesystem would happily truncate the file to zero on the way through.
   if (fs::exists(destination, ec) && !ec && fs::equivalent(source, destination, ec) && !ec) {
-    return {true, "Already installed."};
+    return {true, Tr("Already installed.")};
   }
 
   fs::copy_file(source, destination, fs::copy_options::overwrite_existing, ec);
   if (ec) {
-    return {false, "Could not copy it in: " + ec.message()};
+    return {false, Tr("Could not copy it in: ") + ec.message()};
   }
-  return {true, "Installed " + std::string(component.installedAs) + "."};
+  return {true, Tr("Installed ") + std::string(component.installedAs) + "."};
 }
 
 std::vector<fs::path> UninstallPlan(const fs::path& sidecarDir, bool includeGeneratedFiles) {
@@ -136,12 +138,12 @@ InstallResult RemoveAll(const std::vector<fs::path>& plan) {
     if (!fs::remove(path, ec) || ec) {
       // Almost always a file still mapped into a running process, which is
       // worth saying rather than reporting a bare failure.
-      return {false, "Could not remove " + path.filename().string() +
-                         ". Stop the overlay and close anything using it, then try again."};
+      return {false, Tr("Could not remove ") + path.filename().string() +
+                         Tr(". Stop the overlay and close anything using it, then try again.")};
     }
     ++removed;
   }
-  return {true, "Removed " + std::to_string(removed) + " file(s)."};
+  return {true, Tr("Removed ") + std::to_string(removed) + Tr(" file(s).")};
 }
 
 }  // namespace sidecar

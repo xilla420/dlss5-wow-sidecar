@@ -29,6 +29,7 @@
 
 #include "core/Config.h"
 #include "core/ControlChannel.h"
+#include "core/I18n.h"
 #include "core/Log.h"
 #include "core/Utf8.h"
 #include "manager/Install.h"
@@ -63,6 +64,8 @@ ComPtr<ID3D11RenderTargetView> g_backBufferRtv;
 // Wording is fixed by the spec; it is the honest version of the safety claim,
 // not a disclaimer.
 constexpr const char* kFirstRunTitle = "Before you use this";
+// Translated where it is drawn rather than here, because a constexpr pointer
+// cannot hold the result of a lookup.
 constexpr const char* kFirstRunBody =
     "This sidecar never loads code into Wow.exe. That is what makes it safe, "
     "and it is checked automatically every time it is built.\n\n"
@@ -165,9 +168,9 @@ ImVec4 Rgb(unsigned int hex, float alpha = 1.0f) {
 
 const char* StateLabel(ProbeState state) {
   switch (state) {
-    case ProbeState::Ok:   return "READY";
-    case ProbeState::Warn: return "CHECK";
-    default:               return "BLOCKED";
+    case ProbeState::Ok:   return Tr("READY");
+    case ProbeState::Warn: return Tr("CHECK");
+    default:               return Tr("BLOCKED");
   }
 }
 
@@ -193,7 +196,7 @@ void GoldRule(float alpha = 0.45f, float padBelow = 10.0f) {
 
 void SectionHeading(const char* text) {
   if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
-  ImGui::TextColored(Rgb(g_colors.goldBright), "%s", text);
+  ImGui::TextColored(Rgb(g_colors.goldBright), "%s", Tr(text));
   if (g_fonts.heading) ImGui::PopFont();
   GoldRule(0.35f, 8.0f);
 }
@@ -202,7 +205,7 @@ void SectionHeading(const char* text) {
 void Hint(const char* text) {
   if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
   ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-  ImGui::TextWrapped("%s", text);
+  ImGui::TextWrapped("%s", Tr(text));
   ImGui::PopStyleColor();
   if (g_fonts.caption) ImGui::PopFont();
 }
@@ -219,7 +222,7 @@ void Dot(bool good, const char* label, bool warnNotFail = true) {
                         radius, colour);
   ImGui::Dummy(ImVec2(radius * 2.0f + 8.0f, 0.0f));
   ImGui::SameLine(0.0f, 0.0f);
-  ImGui::TextUnformatted(label);
+  ImGui::TextUnformatted(Tr(label));
 }
 
 // One number, labelled, in a bordered slot. The game shows statistics like
@@ -229,7 +232,7 @@ void StatCard(const char* label, const char* value, float width, ImVec4 valueCol
   ImGui::Dummy(ImVec2(0.0f, 2.0f));
   ImGui::Indent(12.0f);
   if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-  ImGui::TextDisabled("%s", label);
+  ImGui::TextDisabled("%s", Tr(label));
   if (g_fonts.caption) ImGui::PopFont();
   if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
   ImGui::TextColored(valueColor, "%s", value);
@@ -418,7 +421,12 @@ size_t MatchingPreset(const Config& config) {
   return static_cast<size_t>(-1);
 }
 
-const char* SectionName(Section section) {
+// The page's identity, in English, always. This is what the optional
+// command-line argument is matched against, so translating it would break
+// `wowsidecar-manager.exe Checks` in every language but one -- and that
+// argument exists so the README's screenshots can be captured without driving
+// the mouse.
+const char* SectionId(Section section) {
   switch (section) {
     case Section::Status: return "Status";
     case Section::Setup:  return "Setup";
@@ -427,6 +435,9 @@ const char* SectionName(Section section) {
     default:              return "Log";
   }
 }
+
+// What the nav rail shows. Separate from the identity above on purpose.
+const char* SectionLabel(Section section) { return Tr(SectionId(section)); }
 
 bool AnyBlockingFailure(const std::vector<ProbeResult>& results) {
   for (const auto& r : results) {
@@ -560,6 +571,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     }
   }
 
+  {
+    Language stored = Language::English;
+    if (ParseLanguageTag(config.language, stored)) SetLanguage(stored);
+  }
+
   auto results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
 
   // Which page opens first. An optional command-line argument names it, which
@@ -573,8 +589,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     if (argc >= 2) {
       for (int i = 0; i < static_cast<int>(Section::Count); ++i) {
         const auto candidate = static_cast<Section>(i);
-        if (_wcsicmp(argv[1], std::wstring(SectionName(candidate), SectionName(candidate) +
-                                                                      strlen(SectionName(candidate)))
+        if (_wcsicmp(argv[1], std::wstring(SectionId(candidate), SectionId(candidate) +
+                                                                    strlen(SectionId(candidate)))
                                   .c_str()) == 0) {
           section = candidate;
         }
@@ -659,7 +675,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     if (g_fonts.title) ImGui::PopFont();
 
     if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-    ImGui::TextDisabled("Neural rendering for World of Warcraft, from outside the game process");
+    ImGui::TextDisabled(Tr("Neural rendering for World of Warcraft, from outside the game process"));
     if (g_fonts.caption) ImGui::PopFont();
 
     // The primary action lives in the header and never moves, so it is in the
@@ -674,7 +690,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       ImGui::PushStyleColor(ImGuiCol_Button, Rgb(g_colors.fail, 0.20f));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Rgb(g_colors.fail, 0.36f));
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, Rgb(g_colors.fail, 0.50f));
-      if (ImGui::Button("Stop overlay", ImVec2(buttonWidth, 42.0f))) {
+      if (ImGui::Button(Tr("Stop overlay"), ImVec2(buttonWidth, 42.0f))) {
         if (!control::Send(SidecarCommand::Stop)) {
           GlobalLog().Warn("the overlay did not answer; it may already be closing");
         }
@@ -687,11 +703,31 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Rgb(g_colors.accent, 0.42f));
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, Rgb(g_colors.goldBright, 0.55f));
       ImGui::PushStyleColor(ImGuiCol_Text, Rgb(g_colors.goldBright));
-      if (ImGui::Button("Start overlay", ImVec2(buttonWidth, 42.0f))) startOverlay();
+      if (ImGui::Button(Tr("Start overlay"), ImVec2(buttonWidth, 42.0f))) startOverlay();
       ImGui::PopStyleColor(4);
       if (!canStart) ImGui::EndDisabled();
     }
     if (!noticeAcknowledged) ImGui::EndDisabled();
+
+    // Left of the primary action, and outside the notice's disabled block: a
+    // person who cannot read the notice has to be able to change the language
+    // before agreeing to it.
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth - kPad - 130.0f);
+    ImGui::SetCursorPosY(36.0f);
+    ImGui::SetNextItemWidth(112.0f);
+    int languageIndex = CurrentLanguage() == Language::Russian ? 1 : 0;
+    // Each language names itself. "Russian" in an English list is no help
+    // to someone who cannot read the list.
+    const char* languageNames[] = {"English", "Русский"};
+    if (ImGui::Combo("##language", &languageIndex, languageNames, 2)) {
+      const Language chosen = languageIndex == 1 ? Language::Russian : Language::English;
+      SetLanguage(chosen);
+      config.language = TagForLanguage(chosen);
+      // Saved immediately rather than left to the Save button on another page:
+      // this is a preference about the tool, not a setting for the pipeline,
+      // and losing it on exit would make the switch look broken.
+      save();
+    }
 
     ImGui::Unindent(kPad);
     ImGui::EndChild();
@@ -712,7 +748,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       const bool selected = candidate == section;
       if (selected) ImGui::PushStyleColor(ImGuiCol_Text, Rgb(g_colors.goldBright));
       const ImVec2 rowAt = ImGui::GetCursorScreenPos();
-      if (ImGui::Selectable(SectionName(candidate), selected,
+      ImGui::PushID(SectionId(candidate));
+      if (ImGui::Selectable(SectionLabel(candidate), selected,
                             ImGuiSelectableFlags_None, ImVec2(0.0f, 34.0f))) {
         section = candidate;
       }
@@ -747,6 +784,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         ImGui::SetCursorPosX(kNavWidth - 26.0f);
         ImGui::TextColored(badgeColor, "%s", badge);
       }
+      ImGui::PopID();
     }
 
     // The rail's foot is where the live state belongs: it is true regardless of
@@ -806,18 +844,18 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         // whatever it has to say.
         ImGui::Dummy(ImVec2(0.0f, 10.0f));
         const bool visible = s.overlayVisible != 0;
-        if (ImGui::Button(visible ? "Hide overlay (A/B compare)" : "Show overlay",
+        if (ImGui::Button(visible ? Tr("Hide overlay (A/B compare)") : Tr("Show overlay"),
                           ImVec2(230.0f, 34.0f))) {
           control::Send(visible ? SidecarCommand::HideOverlay : SidecarCommand::ShowOverlay);
         }
         ImGui::SameLine();
         const bool hudUp = s.hudVisible != 0;
-        if (ImGui::Button(hudUp ? "Hide HUD" : "Show HUD", ImVec2(150.0f, 34.0f))) {
+        if (ImGui::Button(hudUp ? Tr("Hide HUD") : Tr("Show HUD"), ImVec2(150.0f, 34.0f))) {
           control::Send(hudUp ? SidecarCommand::HideHud : SidecarCommand::ShowHud);
         }
         ImGui::SameLine();
-        ImGui::TextDisabled("Hiding the overlay uncovers the untouched game without "
-                            "stopping capture.");
+        ImGui::TextDisabled(Tr("Hiding the overlay uncovers the untouched game without "
+                            "stopping capture."));
 
         // Hysteresis, so an advisory does not strobe while the frame rate sits
         // on its threshold. Each condition turns on and off at different values,
@@ -884,7 +922,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                               static_cast<float>(s.vramBudgetMb);
           ImGui::Dummy(ImVec2(0.0f, 12.0f));
           if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-          ImGui::TextDisabled("GPU MEMORY USED BY THE SIDECAR");
+          ImGui::TextDisabled(Tr("GPU MEMORY USED BY THE SIDECAR"));
           if (g_fonts.caption) ImGui::PopFont();
           ImGui::PushStyleColor(ImGuiCol_PlotHistogram,
                                 (spilling || overBudget) ? Rgb(g_colors.fail)
@@ -893,14 +931,14 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
           char label[96];
           std::snprintf(label, sizeof(label), "%u MB used  /  %u MB allowed%s",
                         s.vramUsedMb, s.vramBudgetMb,
-                        spilling ? "  --  SPILLING" : "");
+                        spilling ? Tr("  --  SPILLING") : "");
           ImGui::ProgressBar(ratio > 1.0f ? 1.0f : ratio, ImVec2(-1.0f, 20.0f), label);
           ImGui::PopStyleColor();
           if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-          ImGui::TextDisabled("This is the sidecar's own share, not the whole card. "
+          ImGui::TextDisabled(Tr("This is the sidecar's own share, not the whole card. "
                               "More of it would not be faster -- the pass allocates "
                               "what it needs. The number that matters is whether any "
-                              "has spilled.");
+                              "has spilled."));
           if (g_fonts.caption) ImGui::PopFont();
         }
 
@@ -909,7 +947,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         // it is, and they have four different answers.
         ImGui::Dummy(ImVec2(0.0f, 12.0f));
         if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-        ImGui::TextDisabled("WHERE THE FRAME GOES");
+        ImGui::TextDisabled(Tr("WHERE THE FRAME GOES"));
         if (g_fonts.caption) ImGui::PopFont();
 
         const double total = s.idleMs + s.recordMs + s.presentWaitMs + s.gpuWaitMs;
@@ -943,33 +981,33 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                                 ImGui::GetColorU32(Rgb(part.colour)));
             ImGui::Dummy(ImVec2(size + 8.0f, 0.0f));
             ImGui::SameLine(0.0f, 0.0f);
-            ImGui::Text("%-24s %5.2f ms", part.label, part.ms);
+            ImGui::Text(Tr("%-24s %5.2f ms"), part.label, part.ms);
           }
           if (g_fonts.caption) ImGui::PopFont();
         }
 
         ImGui::Dummy(ImVec2(0.0f, 12.0f));
         const bool neural = std::string(s.passName).find("reshade") != std::string::npos;
-        ImGui::TextUnformatted("Frames");
+        ImGui::TextUnformatted(Tr("Frames"));
         ImGui::SameLine(120.0f);
-        ImGui::Text("%llu presented, %llu dropped",
+        ImGui::Text(Tr("%llu presented, %llu dropped"),
                     static_cast<unsigned long long>(s.frames),
                     static_cast<unsigned long long>(s.drops));
-        ImGui::TextUnformatted("Pass");
+        ImGui::TextUnformatted(Tr("Pass"));
         ImGui::SameLine(120.0f);
         ImGui::TextColored(neural ? Rgb(g_colors.epic) : Rgb(g_colors.parchment), "%s",
                            s.passName);
         if (*s.runtimeVariant) {
-          ImGui::TextUnformatted("Runtime");
+          ImGui::TextUnformatted(Tr("Runtime"));
           ImGui::SameLine(120.0f);
           ImGui::TextUnformatted(s.runtimeVariant);
         }
-        ImGui::TextUnformatted("Verdict");
+        ImGui::TextUnformatted(Tr("Verdict"));
         ImGui::SameLine(120.0f);
         ImGui::TextColored(StateColor(asState, g_colors), "%s",
-                           verdict == GateVerdict::Playable   ? "playable"
-                           : verdict == GateVerdict::Marginal ? "marginal"
-                                                              : "too slow");
+                           verdict == GateVerdict::Playable   ? Tr("playable")
+                           : verdict == GateVerdict::Marginal ? Tr("marginal")
+                                                              : Tr("too slow"));
 
         if (*s.lastError) {
           ImGui::Dummy(ImVec2(0.0f, 10.0f));
@@ -978,10 +1016,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         }
 
       } else if (live.overlayRunning) {
-        ImGui::TextDisabled("The overlay is starting. Numbers appear after the first "
-                            "few frames.");
+        ImGui::TextDisabled(Tr("The overlay is starting. Numbers appear after the first "
+                            "few frames."));
       } else {
-        ImGui::TextDisabled("Nothing running.");
+        ImGui::TextDisabled(Tr("Nothing running."));
         Hint(blocked      ? "Some checks are failing. Open Checks to see what."
              : missingComponents > 0
                  ? "Files are missing. Open Setup to install them."
@@ -1026,19 +1064,19 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         ImGui::TextColored(present ? Rgb(g_colors.ok)
                            : component.required ? Rgb(g_colors.fail)
                                                 : Rgb(g_colors.warn),
-                           "  %s", present            ? "INSTALLED"
-                                   : component.required ? "MISSING"
-                                                        : "OPTIONAL");
+                           "  %s", present            ? Tr("INSTALLED")
+                                   : component.required ? Tr("MISSING")
+                                                        : Tr("OPTIONAL"));
         if (g_fonts.caption) ImGui::PopFont();
 
         Hint(std::string(component.purpose).c_str());
         if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-        ImGui::TextDisabled("Wanted as %s   |   Source: %s",
+        ImGui::TextDisabled(Tr("Wanted as %s   |   Source: %s"),
                             std::string(component.installedAs).c_str(),
                             std::string(component.source).c_str());
         if (g_fonts.caption) ImGui::PopFont();
 
-        if (ImGui::Button(present ? "Replace..." : "Choose file...", ImVec2(150.0f, 0.0f))) {
+        if (ImGui::Button(present ? Tr("Replace...") : Tr("Choose file..."), ImVec2(150.0f, 0.0f))) {
           const fs::path picked =
               AskForFile(hwnd, L"DLL and add-on files\0*.dll;*.addon64\0All files\0*.*\0\0",
                          L"Choose the file to install");
@@ -1074,12 +1112,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       Hint("Deletes the files listed above from this folder, and nothing else. "
            "It never touches a WoW installation. The sidecar's own two "
            "executables stay; delete the folder to be rid of them.");
-      ImGui::Checkbox("Also remove settings and logs", &uninstallGenerated);
-      ImGui::Checkbox("Yes, remove them", &confirmUninstall);
+      ImGui::Checkbox(Tr("Also remove settings and logs"), &uninstallGenerated);
+      ImGui::Checkbox(Tr("Yes, remove them"), &confirmUninstall);
       const auto plan = UninstallPlan(sidecarDir, uninstallGenerated);
       const bool canRemove = confirmUninstall && !plan.empty() && !live.overlayRunning;
       if (!canRemove) ImGui::BeginDisabled();
-      if (ImGui::Button("Remove installed files", ImVec2(210.0f, 0.0f))) {
+      if (ImGui::Button(Tr("Remove installed files"), ImVec2(210.0f, 0.0f))) {
         const auto result = RemoveAll(plan);
         setupMessage = result.message;
         setupMessageIsError = !result.ok;
@@ -1090,9 +1128,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       if (!canRemove) ImGui::EndDisabled();
       ImGui::SameLine();
       if (live.overlayRunning) {
-        ImGui::TextDisabled("Stop the overlay first -- the files are in use.");
+        ImGui::TextDisabled(Tr("Stop the overlay first -- the files are in use."));
       } else if (!plan.empty()) {
-        ImGui::TextDisabled("%zu file(s) would go.", plan.size());
+        ImGui::TextDisabled(Tr("%zu file(s) would go."), plan.size());
       }
     }
 
@@ -1102,14 +1140,14 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
            "import table of every binary is checked against that claim at "
            "build time.");
       ImGui::Dummy(ImVec2(0.0f, 8.0f));
-      ImGui::TextUnformatted("WoW folder (used only to scan filenames for injectors)");
+      ImGui::TextUnformatted(Tr("WoW folder (used only to scan filenames for injectors)"));
       ImGui::SetNextItemWidth(-260.0f);
       // Bound to the std::string itself, which grows as needed. The fixed
       // buffer this replaced silently truncated anything past its length, and a
       // path that has been cut short is a path that scans the wrong folder.
       if (ImGui::InputText("##wowdir", &config.wowDir)) dirty = true;
       ImGui::SameLine();
-      if (ImGui::Button("Browse...", ImVec2(110.0f, 0.0f))) {
+      if (ImGui::Button(Tr("Browse..."), ImVec2(110.0f, 0.0f))) {
         const fs::path picked =
             AskForFolder(hwnd, L"Select the folder that holds Wow.exe",
                          PathFromUtf8(config.wowDir));
@@ -1120,7 +1158,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         }
       }
       ImGui::SameLine();
-      if (ImGui::Button("Detect", ImVec2(90.0f, 0.0f))) {
+      if (ImGui::Button(Tr("Detect"), ImVec2(90.0f, 0.0f))) {
         if (const auto detected = DetectWowFolder()) {
           config.wowDir = Utf8FromPath(*detected);
           save();
@@ -1136,7 +1174,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
            "folder Wow.exe sits in, not its parent: an injector has to be next "
            "to the executable to be loaded by it. Nothing inside is opened -- "
            "only the file names are read.");
-      if (ImGui::Button("Re-run checks", ImVec2(160.0f, 0.0f))) {
+      if (ImGui::Button(Tr("Re-run checks"), ImVec2(160.0f, 0.0f))) {
         results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
         int failures = 0;
         for (const auto& r : results) {
@@ -1177,9 +1215,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         }
         if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
         ImGui::TextColored(selected ? Rgb(g_colors.goldBright) : Rgb(g_colors.parchment),
-                           "%s", kPresets[i].name);
+                           "%s", Tr(kPresets[i].name));
         if (g_fonts.heading) ImGui::PopFont();
-        ImGui::TextUnformatted(kPresets[i].summary);
+        ImGui::TextUnformatted(Tr(kPresets[i].summary));
         Hint(kPresets[i].detail);
 
         ImGui::Unindent(12.0f);
@@ -1198,18 +1236,18 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       ImGui::Dummy(ImVec2(0.0f, 14.0f));
       if (!dirty) ImGui::BeginDisabled();
       ImGui::PushStyleColor(ImGuiCol_Text, Rgb(g_colors.goldBright));
-      if (ImGui::Button("Save settings", ImVec2(170.0f, 34.0f))) save();
+      if (ImGui::Button(Tr("Save settings"), ImVec2(170.0f, 34.0f))) save();
       ImGui::PopStyleColor();
       if (!dirty) ImGui::EndDisabled();
       ImGui::SameLine();
       if (dirty) {
-        ImGui::TextColored(Rgb(g_colors.warn), "Unsaved changes.");
+        ImGui::TextColored(Rgb(g_colors.warn), "%s", Tr("Unsaved changes."));
       } else if (live.overlayRunning) {
-        ImGui::TextDisabled("Restart the overlay to apply.");
+        ImGui::TextDisabled(Tr("Restart the overlay to apply."));
       }
 
       ImGui::Dummy(ImVec2(0.0f, 16.0f));
-      if (!ImGui::TreeNode("Every individual setting")) {
+      if (!ImGui::TreeNode(Tr("Every individual setting"))) {
         Hint("Nothing in here is needed for normal use.");
       } else {
       SectionHeading("Pipeline");
@@ -1221,10 +1259,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
       {
         int passIndex = config.neuralPass == "reshade" ? 1 : 0;
-        const char* passes[] = {"passthrough -- capture and present, untouched",
-                                "reshade -- DLSS 5 neural rendering"};
+        const char* passes[] = {Tr("passthrough -- capture and present, untouched"),
+                                Tr("reshade -- DLSS 5 neural rendering")};
         ImGui::SetNextItemWidth(440.0f);
-        if (ImGui::Combo("Neural pass", &passIndex, passes, 2)) {
+        if (ImGui::Combo(Tr("Neural pass"), &passIndex, passes, 2)) {
           config.neuralPass = passIndex == 1 ? "reshade" : "passthrough";
           dirty = true;
         }
@@ -1244,7 +1282,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
           descriptions.push_back(choice->description);
         }
         ImGui::SetNextItemWidth(440.0f);
-        if (ImGui::Combo("DLSS preset", &current, names.data(),
+        if (ImGui::Combo(Tr("DLSS preset"), &current, names.data(),
                          static_cast<int>(names.size()))) {
           config.dlssPreset = names[static_cast<size_t>(current)];
           dirty = true;
@@ -1253,10 +1291,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       }
 
       {
-        const char* grids[] = {"1 -- finest, most expensive", "2", "4 -- default"};
+        const char* grids[] = {Tr("1 -- finest, most expensive"), "2", Tr("4 -- default")};
         int index = config.flowGridSize == 1 ? 0 : config.flowGridSize == 2 ? 1 : 2;
         ImGui::SetNextItemWidth(440.0f);
-        if (ImGui::Combo("Optical flow grid", &index, grids, 3)) {
+        if (ImGui::Combo(Tr("Optical flow grid"), &index, grids, 3)) {
           config.flowGridSize = index == 0 ? 1u : index == 1 ? 2u : 4u;
           dirty = true;
         }
@@ -1266,7 +1304,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       }
 
       ImGui::SetNextItemWidth(440.0f);
-      if (ImGui::SliderFloat("Synthetic depth", &config.syntheticDepth, 0.0f, 1.0f,
+      if (ImGui::SliderFloat(Tr("Synthetic depth"), &config.syntheticDepth, 0.0f, 1.0f,
                              "%.2f")) {
         dirty = true;
       }
@@ -1283,28 +1321,28 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
       auto& n = config.neural;
       ImGui::SetNextItemWidth(440.0f);
-      if (ImGui::SliderFloat("Intensity", &n.intensity, 0.0f, 1.0f, "%.2f")) dirty = true;
+      if (ImGui::SliderFloat(Tr("Intensity"), &n.intensity, 0.0f, 1.0f, "%.2f")) dirty = true;
       Hint("How much of the neural result is mixed in. Start here.");
 
       ImGui::SetNextItemWidth(440.0f);
-      if (ImGui::SliderInt("Add-on preset", &n.preset, 0, 3)) dirty = true;
+      if (ImGui::SliderInt(Tr("Add-on preset"), &n.preset, 0, 3)) dirty = true;
       ImGui::SetNextItemWidth(440.0f);
-      if (ImGui::SliderInt("Style", &n.style, 0, 3)) dirty = true;
+      if (ImGui::SliderInt(Tr("Style"), &n.style, 0, 3)) dirty = true;
 
       ImGui::SetNextItemWidth(440.0f);
-      if (ImGui::SliderFloat("Colour strength", &n.colorStrength, 0.0f, 1.0f, "%.2f")) {
+      if (ImGui::SliderFloat(Tr("Colour strength"), &n.colorStrength, 0.0f, 1.0f, "%.2f")) {
         dirty = true;
       }
       Hint("At zero the add-on's colour handling collapses to black, so this is "
            "not a subtle dial.");
 
       ImGui::SetNextItemWidth(440.0f);
-      if (ImGui::SliderFloat("HDR transfer strength", &n.transferStrength, 0.0f, 1.0f,
+      if (ImGui::SliderFloat(Tr("HDR transfer strength"), &n.transferStrength, 0.0f, 1.0f,
                              "%.2f")) {
         dirty = true;
       }
       ImGui::SetNextItemWidth(440.0f);
-      if (ImGui::SliderFloat("Paper-white scale", &n.paperWhiteScale, 0.0f, 4.0f, "%.2f")) {
+      if (ImGui::SliderFloat(Tr("Paper-white scale"), &n.paperWhiteScale, 0.0f, 4.0f, "%.2f")) {
         dirty = true;
       }
       Hint("Both only matter on an HDR display. The sidecar captures SDR today, "
@@ -1338,7 +1376,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         optional("Skin structure", n.skinStructure);
 
         ImGui::Dummy(ImVec2(0.0f, 6.0f));
-        if (ImGui::Checkbox("Enable the add-on's upscaling (work in progress)",
+        if (ImGui::Checkbox(Tr("Enable the add-on's upscaling (work in progress)"),
                             &n.upscaling)) {
           dirty = true;
         }
@@ -1347,7 +1385,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
              "fell back to native. Off is the tested path.");
 
         ImGui::SetNextItemWidth(390.0f);
-        if (ImGui::SliderInt("Hook mode", &n.enableHooks, 0, 2)) dirty = true;
+        if (ImGui::SliderInt(Tr("Hook mode"), &n.enableHooks, 0, 2)) dirty = true;
         Hint("0 turns neural rendering off entirely, 1 adds Streamline hooks, 2 "
              "is NGX only. Two is what this sidecar wants: it makes the NGX "
              "calls itself and there is no Streamline in the process.");
@@ -1356,11 +1394,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
       ImGui::Dummy(ImVec2(0.0f, 16.0f));
       SectionHeading("Overlay");
-      if (ImGui::Checkbox("Show the HUD", &config.showHud)) dirty = true;
-      if (ImGui::Checkbox("Show the overlay on start", &config.showOverlay)) dirty = true;
+      if (ImGui::Checkbox(Tr("Show the HUD"), &config.showHud)) dirty = true;
+      if (ImGui::Checkbox(Tr("Show the overlay on start"), &config.showOverlay)) dirty = true;
 
       ImGui::Dummy(ImVec2(0.0f, 12.0f));
-      if (ImGui::Button("Reset to defaults", ImVec2(170.0f, 30.0f))) {
+      if (ImGui::Button(Tr("Reset to defaults"), ImVec2(170.0f, 30.0f))) {
         const auto mask = config.uiMaskRects;   // calibration is not a setting
         config = Config{};
         config.uiMaskRects = mask;
@@ -1387,7 +1425,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       ImGui::EndChild();
       const uint64_t dropped = GlobalLog().Dropped();
       if (dropped > 0) {
-        ImGui::TextDisabled("%llu earlier line(s) dropped",
+        ImGui::TextDisabled(Tr("%llu earlier line(s) dropped"),
                             static_cast<unsigned long long>(dropped));
       }
     }
@@ -1410,13 +1448,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                                      ImGuiWindowFlags_NoSavedSettings |
                                      ImGuiWindowFlags_NoTitleBar)) {
         if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
-        ImGui::TextColored(Rgb(g_colors.goldBright), "Before you use this");
+        ImGui::TextColored(Rgb(g_colors.goldBright), "%s", Tr(kFirstRunTitle));
         if (g_fonts.heading) ImGui::PopFont();
         GoldRule(0.45f, 10.0f);
-        ImGui::TextWrapped("%s", kFirstRunBody);
+        ImGui::TextWrapped("%s", Tr(kFirstRunBody));
         ImGui::Dummy(ImVec2(0.0f, 12.0f));
         ImGui::PushStyleColor(ImGuiCol_Text, Rgb(g_colors.goldBright));
-        if (ImGui::Button("I understand", ImVec2(170.0f, 34.0f))) {
+        if (ImGui::Button(Tr("I understand"), ImVec2(170.0f, 34.0f))) {
           noticeAcknowledged = true;
           // The config file's existence is what records the acknowledgement, so
           // write it here. It lives beside the manager, never in WoW's

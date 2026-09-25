@@ -1,5 +1,8 @@
 #include "present/Hud.h"
 
+#include "core/I18n.h"
+#include "core/Utf8.h"
+
 #include <cstdio>
 
 namespace sidecar {
@@ -10,9 +13,9 @@ Hud* g_activeHud = nullptr;
 
 const char* VerdictWord(GateVerdict v) {
   switch (v) {
-    case GateVerdict::Playable: return "playable";
-    case GateVerdict::Marginal: return "marginal";
-    default:                    return "too slow";
+    case GateVerdict::Playable: return Tr("playable");
+    case GateVerdict::Marginal: return Tr("marginal");
+    default:                    return Tr("too slow");
   }
 }
 
@@ -63,9 +66,11 @@ LRESULT CALLBACK HudProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                              CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
                              FIXED_PITCH | FF_MODERN, L"Consolas");
     HGDIOBJ previous = SelectObject(dc, font);
-    // Text is ASCII-only by construction in FormatHud.
-    TextOutA(dc, 8, 6, g_activeHud->TextForPaint().c_str(),
-             static_cast<int>(g_activeHud->TextForPaint().size()));
+    // The verdict inside this line is translated, so the text is UTF-8 rather
+    // than ASCII. TextOutA would push it through the active code page and draw
+    // mojibake for anything outside it.
+    const std::wstring line = WideFromUtf8(g_activeHud->TextForPaint());
+    TextOutW(dc, 8, 6, line.c_str(), static_cast<int>(line.size()));
     SelectObject(dc, previous);
     DeleteObject(font);
     EndPaint(hwnd, &ps);

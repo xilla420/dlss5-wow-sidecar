@@ -1,5 +1,7 @@
 #include "manager/Theme.h"
 
+#include "core/I18n.h"
+
 #include <windows.h>
 #include <shlobj.h>
 
@@ -38,8 +40,10 @@ ImFont* LoadFirst(std::initializer_list<const wchar_t*> candidates, float size) 
   for (const wchar_t* name : candidates) {
     const fs::path path = directory / name;
     if (!fs::exists(path, ec) || ec) continue;
+    ImFontConfig config;
+    const ImWchar* ranges = ImGui::GetIO().Fonts->GetGlyphRangesCyrillic();
     if (ImFont* font = ImGui::GetIO().Fonts->AddFontFromFileTTF(
-            path.string().c_str(), size)) {
+            path.string().c_str(), size, &config, ranges)) {
       return font;
     }
   }

@@ -31,6 +31,7 @@ add_executable(sidecar_tests
   test_wow_install.cpp
   test_utf8.cpp
   test_config_paths.cpp
+  test_i18n.cpp
   ../src/manager/Install.cpp
   ../src/manager/Probes.cpp
   ../src/manager/WowInstall.cpp

@@ -1,5 +1,7 @@
 #include "neural/RuntimeManifest.h"
 
+#include "core/I18n.h"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -62,15 +64,15 @@ std::optional<RuntimeEntry> LookupRuntime(std::string_view sha256Hex) {
 std::string DescribeRuntime(std::string_view filePath, std::string_view sha256Hex) {
   const auto entry = LookupRuntime(sha256Hex);
   if (entry) {
-    return std::string(filePath) + " is the " + ToString(entry->variant) +
-           " runtime, version " + entry->version + ".";
+    return std::string(filePath) + Tr(" is the ") + ToString(entry->variant) +
+           Tr(" runtime, version ") + entry->version + ".";
   }
   if (sha256Hex.empty()) {
-    return std::string(filePath) + " could not be read, so it has no digest.";
+    return std::string(filePath) + Tr(" could not be read, so it has no digest.");
   }
-  return std::string(filePath) + " is not a build this manifest knows. Its "
-         "SHA-256 is " + std::string(sha256Hex) +
-         " -- quote that when reporting it.";
+  return std::string(filePath) +
+         Tr(" is not a build this manifest knows. Its SHA-256 is ") +
+         std::string(sha256Hex) + Tr(" -- quote that when reporting it.");
 }
 
 RuntimeVariant VariantForArchitecture(GpuArch arch) {
@@ -105,21 +107,21 @@ std::string DescribeCompatibility(GpuArch arch, RuntimeVariant variant) {
     case RuntimeCompatibility::Ok:
       return {};
     case RuntimeCompatibility::UnsupportedArchitecture:
-      return std::string("This GPU (") + ToString(arch) +
-             ") is outside the supported matrix; neural rendering needs Ada or "
-             "Blackwell.";
+      return std::string(Tr("This GPU (")) + ToString(arch) +
+             Tr(") is outside the supported matrix; neural rendering needs Ada or "
+                "Blackwell.");
     case RuntimeCompatibility::WrongVariant:
     default:
       if (arch == GpuArch::Ada && variant == RuntimeVariant::Stock) {
         // The specific case worth spelling out, because the symptom is a bare
         // failure code at feature creation and nothing else says why.
-        return "This is the stock runtime, which is built for Blackwell. On an "
-               "Ada card neural-rendering feature creation fails with no "
-               "explanation. An Ada-compatible build of nvngx_dlssnr.dll is "
-               "required.";
+        return Tr("This is the stock runtime, which is built for Blackwell. On an "
+                  "Ada card neural-rendering feature creation fails with no "
+                  "explanation. An Ada-compatible build of nvngx_dlssnr.dll is "
+                  "required.");
       }
-      return std::string("The ") + ToString(variant) + " runtime does not run on " +
-             ToString(arch) + ".";
+      return std::string(Tr("The ")) + ToString(variant) +
+             Tr(" runtime does not run on ") + ToString(arch) + ".";
   }
 }
 

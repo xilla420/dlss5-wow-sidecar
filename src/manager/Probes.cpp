@@ -1,5 +1,6 @@
 #include "manager/Probes.h"
 
+#include "core/I18n.h"
 #include "core/Sha256.h"
 #include "neural/RuntimeManifest.h"
 
@@ -77,13 +78,13 @@ std::vector<std::string> FindInjectorLoaders(const std::vector<std::string>& fil
 
 ProbeResult ProbeGpu() {
   ProbeResult r;
-  r.title = "Graphics adapter";
+  r.title = Tr("Graphics adapter");
 
   const auto gpu = DetectPrimaryGpu();
   if (!gpu) {
     r.state = ProbeState::Fail;
-    r.detail = "No NVIDIA adapter found.";
-    r.remedy = "This sidecar needs an NVIDIA RTX 40 or RTX 50 card.";
+    r.detail = Tr("No NVIDIA adapter found.");
+    r.remedy = Tr("This sidecar needs an NVIDIA RTX 40 or RTX 50 card.");
     return r;
   }
 
@@ -98,20 +99,20 @@ ProbeResult ProbeGpu() {
     return r;
   }
   r.state = ProbeState::Fail;
-  r.remedy = "RTX 40 (Ada) or RTX 50 (Blackwell) is required. Older cards are "
-             "refused rather than run badly.";
+  r.remedy = Tr("RTX 40 (Ada) or RTX 50 (Blackwell) is required. Older cards are "
+             "refused rather than run badly.");
   return r;
 }
 
 ProbeResult ProbeDriver() {
   ProbeResult r;
-  r.title = "Display driver";
+  r.title = Tr("Display driver");
 
   const auto gpu = DetectPrimaryGpu();
   if (!gpu) {
     r.state = ProbeState::Fail;
-    r.detail = "No NVIDIA adapter to query.";
-    r.remedy = "Install an NVIDIA RTX 40 or RTX 50 card.";
+    r.detail = Tr("No NVIDIA adapter to query.");
+    r.remedy = Tr("Install an NVIDIA RTX 40 or RTX 50 card.");
     return r;
   }
 
@@ -126,20 +127,20 @@ ProbeResult ProbeDriver() {
     const uint64_t version = static_cast<uint64_t>(umd.QuadPart);
     const unsigned product = static_cast<unsigned>((version >> 16) & 0xFFFF);
     const unsigned build = static_cast<unsigned>(version & 0xFFFF);
-    r.detail = "User-mode driver " + std::to_string(product) + "." + std::to_string(build);
+    r.detail = Tr("User-mode driver ") + std::to_string(product) + "." + std::to_string(build);
     r.state = ProbeState::Ok;
     return r;
   }
 
   r.state = ProbeState::Warn;
-  r.detail = "Could not read the driver version.";
-  r.remedy = "Not fatal. Update to a current NVIDIA driver if capture misbehaves.";
+  r.detail = Tr("Could not read the driver version.");
+  r.remedy = Tr("Not fatal. Update to a current NVIDIA driver if capture misbehaves.");
   return r;
 }
 
 ProbeResult ProbeWindows() {
   ProbeResult r;
-  r.title = "Windows version";
+  r.title = Tr("Windows version");
 
   RTL_OSVERSIONINFOW info{};
   info.dwOSVersionInfoSize = sizeof(info);
@@ -155,32 +156,32 @@ ProbeResult ProbeWindows() {
 
   if (!queried) {
     r.state = ProbeState::Warn;
-    r.detail = "Could not read the Windows build number.";
-    r.remedy = "Not fatal, but this project is only supported on Windows 11.";
+    r.detail = Tr("Could not read the Windows build number.");
+    r.remedy = Tr("Not fatal, but this project is only supported on Windows 11.");
     return r;
   }
 
-  r.detail = "Build " + std::to_string(info.dwBuildNumber);
+  r.detail = Tr("Build ") + std::to_string(info.dwBuildNumber);
   if (info.dwBuildNumber >= 22000) {
     r.state = ProbeState::Ok;
     return r;
   }
   r.state = ProbeState::Fail;
-  r.remedy = "Windows 11 is required: the overlay depends on compositor "
-             "behaviour that Windows 10 does not provide.";
+  r.remedy = Tr("Windows 11 is required: the overlay depends on compositor "
+             "behaviour that Windows 10 does not provide.");
   return r;
 }
 
 ProbeResult ProbeRefreshRate() {
   ProbeResult r;
-  r.title = "Display refresh rate";
+  r.title = Tr("Display refresh rate");
 
   DEVMODEW mode{};
   mode.dmSize = sizeof(mode);
   if (!EnumDisplaySettingsW(nullptr, ENUM_CURRENT_SETTINGS, &mode)) {
     r.state = ProbeState::Warn;
-    r.detail = "Could not read the current display mode.";
-    r.remedy = "Not fatal. Check your monitor settings if pacing looks wrong.";
+    r.detail = Tr("Could not read the current display mode.");
+    r.remedy = Tr("Not fatal. Check your monitor settings if pacing looks wrong.");
     return r;
   }
 
@@ -190,22 +191,22 @@ ProbeResult ProbeRefreshRate() {
     return r;
   }
   r.state = ProbeState::Warn;
-  r.remedy = "Below 120 Hz the overlay's added latency is a larger share of the "
-             "frame. It will still run.";
+  r.remedy = Tr("Below 120 Hz the overlay's added latency is a larger share of the "
+             "frame. It will still run.");
   return r;
 }
 
 ProbeResult ProbeNeuralRuntime(const fs::path& sidecarDir) {
   ProbeResult r;
-  r.title = "Neural runtime";
+  r.title = Tr("Neural runtime");
 
   std::error_code ec;
   const fs::path dll = sidecarDir / "nvngx_dlssnr.dll";
   if (!fs::exists(dll, ec) || ec) {
     r.state = ProbeState::Warn;
-    r.detail = "nvngx_dlssnr.dll not found next to the sidecar.";
-    r.remedy = "Optional until the neural pass ships. Without it the pipeline "
-               "runs the passthrough pass.";
+    r.detail = Tr("nvngx_dlssnr.dll not found next to the sidecar.");
+    r.remedy = Tr("Optional until the neural pass ships. Without it the pipeline "
+               "runs the passthrough pass.");
     return r;
   }
 
@@ -220,13 +221,13 @@ ProbeResult ProbeNeuralRuntime(const fs::path& sidecarDir) {
 ProbeResult NeuralRuntimeVerdict(std::string_view fileName,
                                  std::string_view sha256Hex, GpuArch arch) {
   ProbeResult r;
-  r.title = "Neural runtime";
+  r.title = Tr("Neural runtime");
 
   if (sha256Hex.empty()) {
     r.state = ProbeState::Warn;
     r.detail = std::string(fileName) + " is present but could not be read.";
-    r.remedy = "Check the file is not locked by another process, and that the "
-               "sidecar has permission to read it.";
+    r.remedy = Tr("Check the file is not locked by another process, and that the "
+               "sidecar has permission to read it.");
     return r;
   }
 
@@ -242,22 +243,22 @@ ProbeResult NeuralRuntimeVerdict(std::string_view fileName,
     }
     r.state = ProbeState::Warn;
     r.detail += " " + mismatch;
-    r.remedy = "Supply a runtime built for this GPU, or the neural pass will "
-               "fall back to passthrough.";
+    r.remedy = Tr("Supply a runtime built for this GPU, or the neural pass will "
+               "fall back to passthrough.");
     return r;
   }
 
   // Amber, not red. A newer runtime than this manifest knows is a legitimate
   // thing for an operator to have, and refusing it outright would age badly.
   r.state = ProbeState::Warn;
-  r.remedy = "The pass will still try this build. If it fails, quote the "
-             "SHA-256 above when reporting it.";
+  r.remedy = Tr("The pass will still try this build. If it fails, quote the "
+             "SHA-256 above when reporting it.");
   return r;
 }
 
 ProbeResult ProbeReshade(const fs::path& sidecarDir) {
   ProbeResult r;
-  r.title = "ReShade host (optional)";
+  r.title = Tr("ReShade host (optional)");
 
   // ReShade installs itself as a proxy DLL named after the API the host imports,
   // not as ReShade64.dll -- which is what this probe used to look for, so it
@@ -278,22 +279,22 @@ ProbeResult ProbeReshade(const fs::path& sidecarDir) {
   }
 
   r.state = ProbeState::Warn;
-  r.detail = "No ReShade host alongside the sidecar.";
-  r.remedy = "Only needed for the ReShade-hosted neural pass. Install ReShade "
+  r.detail = Tr("No ReShade host alongside the sidecar.");
+  r.remedy = Tr("Only needed for the ReShade-hosted neural pass. Install ReShade "
              "against the sidecar so it lands as dxgi.dll. Never place ReShade "
-             "next to Wow.exe.";
+             "next to Wow.exe.");
   return r;
 }
 
 ProbeResult ProbeWowWindow() {
   ProbeResult r;
-  r.title = "World of Warcraft window";
+  r.title = Tr("World of Warcraft window");
 
   const auto wow = FindWowWindow();
   if (!wow) {
     r.state = ProbeState::Warn;
-    r.detail = "WoW is not running.";
-    r.remedy = "Start the game, then run the probes again.";
+    r.detail = Tr("WoW is not running.");
+    r.remedy = Tr("Start the game, then run the probes again.");
     return r;
   }
 
@@ -303,26 +304,26 @@ ProbeResult ProbeWowWindow() {
 
   if (wow->borderless) {
     r.state = ProbeState::Ok;
-    r.detail += " borderless windowed";
+    r.detail += Tr(" borderless windowed");
     return r;
   }
   r.state = ProbeState::Fail;
-  r.detail += " windowed with a border, or exclusive fullscreen";
-  r.remedy = "Set WoW to borderless windowed. Exclusive fullscreen has no "
-             "compositor surface to capture and yields black frames.";
+  r.detail += Tr(" windowed with a border, or exclusive fullscreen");
+  r.remedy = Tr("Set WoW to borderless windowed. Exclusive fullscreen has no "
+             "compositor surface to capture and yields black frames.");
   return r;
 }
 
 ProbeResult ProbeInjectorScan(const fs::path& wowDir) {
   ProbeResult r;
-  r.title = "Injector scan of the WoW folder";
+  r.title = Tr("Injector scan of the WoW folder");
 
   std::error_code ec;
   if (wowDir.empty() || !fs::is_directory(wowDir, ec) || ec) {
     r.state = ProbeState::Warn;
-    r.detail = "No WoW folder set, so nothing was scanned.";
-    r.remedy = "Point the manager at your WoW folder so it can check for "
-               "injectors before launching.";
+    r.detail = Tr("No WoW folder set, so nothing was scanned.");
+    r.remedy = Tr("Point the manager at your WoW folder so it can check for "
+               "injectors before launching.");
     return r;
   }
 
@@ -336,31 +337,31 @@ ProbeResult ProbeInjectorScan(const fs::path& wowDir) {
   const auto found = FindInjectorLoaders(filenames);
   if (found.empty()) {
     r.state = ProbeState::Ok;
-    r.detail = "No injector loaders found.";
+    r.detail = Tr("No injector loaders found.");
     return r;
   }
 
   r.state = ProbeState::Fail;
-  r.detail = "Found: ";
+  r.detail = Tr("Found: ");
   for (size_t i = 0; i < found.size(); ++i) {
     if (i) r.detail += ", ";
     r.detail += found[i];
   }
-  r.remedy = "Remove these from your WoW folder. Blizzard bans accounts for "
-             "in-process injectors, and this tool refuses to run alongside one.";
+  r.remedy = Tr("Remove these from your WoW folder. Blizzard bans accounts for "
+             "in-process injectors, and this tool refuses to run alongside one.");
   return r;
 }
 
 ProbeResult ProbeSidecarPath(const fs::path& sidecarDir, const fs::path& wowDir) {
   ProbeResult r;
-  r.title = "Sidecar install location";
+  r.title = Tr("Sidecar install location");
   r.detail = sidecarDir.generic_string();
 
   if (PathLooksLikeWowInstall(sidecarDir) || IsInside(sidecarDir, wowDir)) {
     r.state = ProbeState::Fail;
-    r.remedy = "Move the sidecar outside your WoW folder. Anything sitting next "
+    r.remedy = Tr("Move the sidecar outside your WoW folder. Anything sitting next "
                "to Wow.exe looks like an injector, which is the one thing this "
-               "design exists to avoid.";
+               "design exists to avoid.");
     return r;
   }
 
