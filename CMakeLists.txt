@@ -101,6 +101,15 @@ target_sources(sidecar_common PRIVATE
   src/common/neural/ReshadeHostedPass.cpp
   src/common/neural/NeuralPassFactory.cpp)
 
+# Both NVIDIA SDKs below are optional, which is right for working on the
+# interface and wrong for a release: a build without them starts, reports a
+# neural pass and never runs one -- NgxSession is a stub without the DLSS SDK,
+# and without the Optical Flow SDK there is no motion field, so the pass is
+# skipped and every frame is copied through untouched. Nothing says so except a
+# line in the log. The release workflow sets this so the build fails instead.
+option(SIDECAR_REQUIRE_SDKS
+       "Fail configuration when an NVIDIA SDK is missing, instead of warning" OFF)
+
 # The NVIDIA Optical Flow SDK is a manual download and is never vendored (I11).
 # Without it the project still builds; NvofaFlow reports Available() false and
 # the pipeline runs on a zero motion field.
@@ -109,6 +118,12 @@ if(NVOF_SDK_DIR)
   # Quoted: the SDK is often unpacked under a path containing a space.
   target_include_directories(sidecar_common PUBLIC "${NVOF_SDK_DIR}/NvOFInterface")
   target_compile_definitions(sidecar_common PUBLIC SIDECAR_HAVE_NVOF=1)
+elseif(SIDECAR_REQUIRE_SDKS)
+  message(FATAL_ERROR
+          "NVOF_SDK_DIR not set, and SIDECAR_REQUIRE_SDKS is on. Without the "
+          "Optical Flow SDK there is no motion field, and the neural pass is "
+          "skipped for every frame -- the binaries would look finished and do "
+          "nothing.")
 else()
   message(WARNING "NVOF_SDK_DIR not set; optical flow will report unavailable.")
   target_compile_definitions(sidecar_common PUBLIC SIDECAR_HAVE_NVOF=0)
@@ -132,6 +147,11 @@ if(DLSS_SDK_DIR)
   target_link_libraries(sidecar_common PUBLIC
     "$<$<CONFIG:Debug>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d_dbg.lib>"
     "$<$<NOT:$<CONFIG:Debug>>:${DLSS_SDK_DIR}/lib/Windows_x86_64/x64/nvsdk_ngx_d.lib>")
+elseif(SIDECAR_REQUIRE_SDKS)
+  message(FATAL_ERROR
+          "DLSS_SDK_DIR not set, and SIDECAR_REQUIRE_SDKS is on. Without the "
+          "DLSS SDK NgxSession compiles to a stub and the neural pass falls "
+          "back to passthrough.")
 else()
   message(WARNING "DLSS_SDK_DIR not set; the neural pass will report unavailable.")
   target_compile_definitions(sidecar_common PUBLIC SIDECAR_HAVE_NGX=0)

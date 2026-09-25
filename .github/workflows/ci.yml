@@ -39,6 +39,12 @@ jobs:
       - name: Test the translation checker itself
         run: python -m pytest ci/test_check_translations.py -v
 
+      # The release workflow reads its notes out of CHANGELOG.md. If that
+      # extraction breaks, it breaks at tag time, when the only symptom is a
+      # release with an empty body -- so it is tested here instead.
+      - name: Test the release-notes extractor
+        run: python -m pytest ci/test_release_notes.py -v
+
       - name: Check the translation table against the sources
         run: python ci/check_translations.py
 
