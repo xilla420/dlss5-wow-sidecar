@@ -96,6 +96,16 @@ struct Config {
   // buffer to capture, so this is a dial, not a measurement.
   float syntheticDepth = 0.5f;
 
+  // How many times the neural filter is run over each frame.
+  //
+  // One pass over a composited frame moves the picture very little --
+  // measured at well under a percent on static geometry -- because the model
+  // is given a finished image and a constant depth plane rather than the
+  // engine's own buffers. The demonstrations people post run it three times,
+  // which is also why the same threads accuse them of smeared textures. Each
+  // extra pass costs another full evaluate.
+  uint32_t neuralPasses = 1;
+
   std::vector<UiRect> uiMaskRects;
   uint32_t uiMaskFeather = 0;
 

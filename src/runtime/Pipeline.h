@@ -55,6 +55,9 @@ struct PipelineConfig {
   // the pipeline.
   std::string dlssPreset = "cnn-f";
   float syntheticDepth = 0.5f;
+  // How many times the neural filter runs over each frame. One by default;
+  // each extra pass is another full evaluate.
+  uint32_t neuralPasses = 1;
   // Where nvngx_*.dll live. Defaults to the executable's own directory.
   std::filesystem::path runtimeDir;
 };

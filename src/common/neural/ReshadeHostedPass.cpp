@@ -123,6 +123,7 @@ std::unique_ptr<ReshadeHostedPass> ReshadeHostedPass::Create(
     return nullptr;
   }
   p->preset_ = options.preset;
+  p->passes_ = options.passes < 1 ? 1 : (options.passes > 4 ? 4 : options.passes);
   return p;
 }
 
@@ -292,7 +293,79 @@ bool ReshadeHostedPass::Evaluate(ID3D12GraphicsCommandList* cl,
   eval.reset = justCreated_;
   justCreated_ = false;
 
-  const bool ok = motion != nullptr && session_->Evaluate(cl, eval);
+  // More than one pass needs somewhere for the middle of the run to live: a
+  // neural evaluate cannot read and write the same texture. The scratch is a
+  // copy of the output's own description, made once.
+  if (passes_ > 1 && !scratch_) {
+    ID3D12Device* device = nullptr;
+    if (SUCCEEDED(out->GetDevice(IID_PPV_ARGS(&device))) && device) {
+      const D3D12_RESOURCE_DESC desc = out->GetDesc();
+      const D3D12_HEAP_PROPERTIES heap{D3D12_HEAP_TYPE_DEFAULT};
+      if (FAILED(device->CreateCommittedResource(
+              &heap, D3D12_HEAP_FLAG_NONE, &desc,
+              D3D12_RESOURCE_STATE_UNORDERED_ACCESS, nullptr,
+              IID_PPV_ARGS(&scratch_)))) {
+        scratch_.Reset();
+        GlobalLog().Warn("could not allocate the multi-pass scratch texture; "
+                         "the neural pass runs once per frame");
+      }
+      device->Release();
+    }
+  }
+
+  // One pass over a composited frame barely moves it -- the model is given a
+  // finished image and a constant depth plane, not the engine's buffers. The
+  // public demonstrations run three passes for that reason, and are accused of
+  // smeared textures for the same reason. One stays the default.
+  const uint32_t passes = (passes_ > 1 && scratch_) ? passes_ : 1;
+
+  bool ok = motion != nullptr;
+  ID3D12Resource* source = color;   // in NON_PIXEL_SHADER_RESOURCE
+  ID3D12Resource* target = out;     // in UNORDERED_ACCESS
+
+  for (uint32_t pass = 0; ok && pass < passes; ++pass) {
+    eval.color = source;
+    eval.output = target;
+    // Only the first pass resets. Reset discards temporal history, and doing it
+    // again mid-frame would throw away what the previous pass just produced.
+    eval.reset = eval.reset && pass == 0;
+    ok = session_->Evaluate(cl, eval);
+    if (!ok || pass + 1 == passes) break;
+
+    // This pass's output becomes the next one's input, and the texture that is
+    // free becomes the next output.
+    ID3D12Resource* freed = (target == out) ? scratch_.Get() : out;
+    Transition(cl, target, D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+               D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+    if (source != color) {
+      Transition(cl, source, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    }
+    source = target;
+    target = freed;
+  }
+
+  // Put the ping-pong back the way the caller expects: the result in `out`, and
+  // every texture in UNORDERED_ACCESS.
+  if (passes > 1) {
+    if (source != color && source != out) {
+      // The scratch held the last input; it is finished with.
+      Transition(cl, source, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    } else if (source == out) {
+      // An even count finished in the scratch, and `out` is still holding the
+      // pass before it as a shader resource. Copy the result across.
+      Transition(cl, out, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
+                 D3D12_RESOURCE_STATE_COPY_DEST);
+      Transition(cl, scratch_.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
+                 D3D12_RESOURCE_STATE_COPY_SOURCE);
+      cl->CopyResource(out, scratch_.Get());
+      Transition(cl, scratch_.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE,
+                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+      Transition(cl, out, D3D12_RESOURCE_STATE_COPY_DEST,
+                 D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+    }
+  }
 
   Transition(cl, motion, D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE,
              D3D12_RESOURCE_STATE_UNORDERED_ACCESS);

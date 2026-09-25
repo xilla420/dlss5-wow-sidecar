@@ -16,10 +16,11 @@ namespace {
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
-constexpr std::array<std::string_view, 12> kKnownKeys = {
+constexpr std::array<std::string_view, 13> kKnownKeys = {
     "show_hud",     "show_overlay",   "flow_grid_size", "neural_pass",
     "dlss_preset",  "synthetic_depth", "ui_mask",       "ui_mask_feather",
-    "neural",       "wow_dir",       "language",      "ui_scale"};
+    "neural",       "wow_dir",       "language",      "ui_scale",
+    "neural_passes"};
 
 bool IsKnown(std::string_view key) {
   return std::find(kKnownKeys.begin(), kKnownKeys.end(), key) != kKnownKeys.end();
@@ -211,6 +212,14 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
 
   ReadFloat(root, "synthetic_depth", config.syntheticDepth, 0.0f, 1.0f, warnings);
 
+  // Capped at four. Each pass is a full evaluate, and at the resolutions
+  // this runs at the fourth already costs more than the frame is worth.
+  if (root.get("neural_passes")) {
+    int passes = static_cast<int>(config.neuralPasses);
+    ReadInt(root, "neural_passes", passes, 1, 4, warnings);
+    config.neuralPasses = static_cast<uint32_t>(passes);
+  }
+
   if (const auto node = root.get("ui_mask_feather")) {
     int feather = static_cast<int>(config.uiMaskFeather);
     ReadInt(root, "ui_mask_feather", feather, 0, 256, warnings);
@@ -290,6 +299,7 @@ std::string SerializeConfig(const Config& config) {
   out << "show_overlay = " << Boolean(config.showOverlay) << "\n";
   out << "flow_grid_size = " << config.flowGridSize << "\n";
   out << "synthetic_depth = " << Number(config.syntheticDepth) << "\n";
+  out << "neural_passes = " << config.neuralPasses << "\n";
   // Omitted while it is still automatic, so the file does not claim a choice
   // nobody made.
   if (config.uiScale > 0.0f) {

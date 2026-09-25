@@ -81,7 +81,10 @@ Target ResolveTarget(int argc, wchar_t** argv) {
             WideFromUtf8(Tr("World of Warcraft must run in borderless windowed mode.\n"
                             "Exclusive fullscreen has no compositor surface to capture."))};
   }
-  return {wow->hwnd, nullptr};
+  // Not nullptr: `problem` is a std::wstring now, and constructing one from a
+  // null pointer is undefined -- it crashed here, on the one path where
+  // everything had gone right.
+  return {wow->hwnd, {}};
 }
 
 }  // namespace
@@ -175,6 +178,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   cfg.neuralPass = config.neuralPass;
   cfg.dlssPreset = config.dlssPreset;
   cfg.syntheticDepth = config.syntheticDepth;
+  cfg.neuralPasses = config.neuralPasses;
   cfg.uiMaskFeather = static_cast<int32_t>(config.uiMaskFeather);
   cfg.runtimeDir = ExecutableDirectory();
   ReportWarnings(warnings);
