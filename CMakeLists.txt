@@ -76,6 +76,7 @@ target_sources(sidecar_common PRIVATE
   src/common/core/Log.cpp
   src/common/core/Sha256.cpp
   src/common/core/PanicSwitch.cpp
+  src/common/core/Utf8.cpp
   src/common/gpu/DeviceBridge.cpp
   src/common/gpu/FormatNormalize.cpp
   src/common/gpu/Luminance.cpp
@@ -152,10 +153,14 @@ add_executable(wowsidecar-manager WIN32
   src/manager/Install.cpp
   src/manager/Probes.cpp
   src/manager/Theme.cpp
+  src/manager/WowInstall.cpp
   ${imgui_SOURCE_DIR}/imgui.cpp
   ${imgui_SOURCE_DIR}/imgui_draw.cpp
   ${imgui_SOURCE_DIR}/imgui_tables.cpp
   ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+  # Dear ImGui's own std::string binding for InputText. Without it a text field
+  # needs a fixed buffer, which is how the WoW folder path used to be truncated.
+  ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp
   ${imgui_SOURCE_DIR}/backends/imgui_impl_win32.cpp
   ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp)
 target_include_directories(wowsidecar-manager PRIVATE

@@ -53,6 +53,17 @@ struct Config {
   bool showOverlay = true;
   uint32_t flowGridSize = 4;
 
+  // The folder holding Wow.exe, as UTF-8. Kept here rather than in the
+  // manager's frame loop because the injector scan (I8) is worth nothing if the
+  // operator has to re-enter the path on every launch: an empty folder makes
+  // that check report "nothing was scanned", which is the state it sat in for
+  // as long as this field did not exist.
+  //
+  // The sidecar never opens anything inside it. The path exists so filenames
+  // can be listed and compared against the known loaders, and so the sidecar
+  // can refuse to install itself in there.
+  std::string wowDir;
+
   // Neural rendering by default, because that is what anyone installing this
   // came for. It is safe as a default precisely because it cannot fail hard:
   // a missing runtime, a bad hash or a refused feature all degrade to
