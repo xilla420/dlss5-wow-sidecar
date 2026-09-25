@@ -82,6 +82,23 @@ Target ResolveTarget(int argc, wchar_t** argv) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
+  // Before anything asks Windows about a size. A DPI-unaware process is lied
+  // to: GetClientRect returns virtualised coordinates, so at 125% scaling a
+  // 2560x1440 game reports 2048x1152.
+  //
+  // Windows Graphics Capture is not lied to. It hands out frames at the real
+  // pixel size. The ring textures were built from the virtualised figure and
+  // the captured frame was the physical one, so the CopyResource that fills a
+  // ring slot had mismatched dimensions -- and CopyResource with mismatched
+  // dimensions does nothing at all. It returns void, so there is no failure to
+  // notice; the slot stays zeroed and reads as pure black.
+  //
+  // That is the whole of the "black screen at 125% scaling" report: every
+  // counter healthy, frame pacing correct, no errors logged, and a black
+  // overlay -- because the pipeline was faithfully presenting a texture
+  // nothing had ever been copied into.
+  SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
   int argc = 0;
   wchar_t** argv = CommandLineToArgvW(GetCommandLineW(), &argc);
 

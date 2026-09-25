@@ -64,26 +64,31 @@ ThemeColors CurrentThemeColors(bool dark) {
                      0xC8AA6E, 0x7B2CB5, 0x2A2620};
 }
 
-ThemeFonts LoadThemeFonts() {
+ThemeFonts LoadThemeFonts(float scale) {
   ImGuiIO& io = ImGui::GetIO();
   ThemeFonts fonts;
 
+  // Rasterised at the physical size, not scaled up afterwards: stretching a
+  // 96-DPI atlas to a 120-DPI display is exactly the blur this is meant to
+  // avoid.
+  const auto at = [scale](float points) { return points * scale; };
+
   // Body first, so it becomes ImGui's default face.
-  fonts.body = LoadFirst({L"segoeui.ttf", L"tahoma.ttf", L"arial.ttf"}, 17.0f);
+  fonts.body = LoadFirst({L"segoeui.ttf", L"tahoma.ttf", L"arial.ttf"}, at(17.0f));
 
   // Georgia stands in for Friz Quadrata: a Roman serif with the same weight in
   // the stems, and present on every Windows install.
-  fonts.heading = LoadFirst({L"georgiab.ttf", L"georgia.ttf", L"pala.ttf"}, 21.0f);
-  fonts.title = LoadFirst({L"georgiab.ttf", L"georgia.ttf", L"pala.ttf"}, 30.0f);
-  fonts.caption = LoadFirst({L"segoeui.ttf", L"tahoma.ttf", L"arial.ttf"}, 14.0f);
+  fonts.heading = LoadFirst({L"georgiab.ttf", L"georgia.ttf", L"pala.ttf"}, at(21.0f));
+  fonts.title = LoadFirst({L"georgiab.ttf", L"georgia.ttf", L"pala.ttf"}, at(30.0f));
+  fonts.caption = LoadFirst({L"segoeui.ttf", L"tahoma.ttf", L"arial.ttf"}, at(14.0f));
   // Numbers the operator compares against each other have to line up.
-  fonts.mono = LoadFirst({L"consola.ttf", L"cour.ttf"}, 16.0f);
+  fonts.mono = LoadFirst({L"consola.ttf", L"cour.ttf"}, at(16.0f));
 
   if (!fonts.body) io.Fonts->AddFontDefault();
   return fonts;
 }
 
-void ApplySidecarTheme(bool dark) {
+void ApplySidecarTheme(bool dark, float scale) {
   ImGui::StyleColorsDark();
 
   ImGuiStyle& style = ImGui::GetStyle();
@@ -173,6 +178,10 @@ void ApplySidecarTheme(bool dark) {
   c[ImGuiCol_ScrollbarGrabActive] = Rgb(colors.goldBright, 0.60f);
 
   c[ImGuiCol_ModalWindowDimBg] = Rgb(0x000000, 0.72f);
+
+  // Last, so it multiplies every padding, rounding and border set above rather
+  // than being overwritten by them.
+  if (scale != 1.0f) style.ScaleAllSizes(scale);
 }
 
 }  // namespace sidecar

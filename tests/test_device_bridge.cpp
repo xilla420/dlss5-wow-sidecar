@@ -80,6 +80,50 @@ TEST_CASE("bridge transfers a frame from D3D11 to D3D12 pixel-exact", "[device]"
   }
 }
 
+// The black-screen bug, reduced to its mechanism.
+//
+// At 125% Windows scaling a DPI-unaware process is told a 2560x1440 game window
+// is 2048x1152, so the bridge was built at the virtualised size while Windows
+// Graphics Capture delivered frames at the real one. CopyResource across a size
+// mismatch is not an error: it returns void and copies nothing. The ring slot
+// stayed zeroed and the overlay presented pure black, with every counter
+// healthy and nothing in the log.
+//
+// The runtime is now DPI-aware so the sizes agree, but the bridge must not go
+// back to silently presenting a texture nothing was copied into.
+TEST_CASE("a frame that does not match the bridge is refused, not silently dropped",
+          "[device]") {
+  auto gpu = DetectPrimaryGpu();
+  REQUIRE(gpu.has_value());
+  auto bridge = DeviceBridge::Create(gpu->luid, kW, kH);
+  REQUIRE(bridge != nullptr);
+  REQUIRE(bridge->SizeMismatch() == false);
+
+  // A source one scaling step larger, exactly as 125% scaling produces.
+  D3D11_TEXTURE2D_DESC td{};
+  td.Width = kW * 5 / 4; td.Height = kH * 5 / 4;
+  td.MipLevels = 1; td.ArraySize = 1;
+  td.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+  td.SampleDesc.Count = 1;
+  td.Usage = D3D11_USAGE_DYNAMIC;
+  td.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+  td.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+  ComPtr<ID3D11Texture2D> oversized;
+  REQUIRE(SUCCEEDED(bridge->D3d11()->CreateTexture2D(&td, nullptr, &oversized)));
+
+  bridge->Publish(oversized.Get());
+
+  // Refused and recorded, rather than published as a frame that is all zeroes.
+  REQUIRE(bridge->SizeMismatch() == true);
+  REQUIRE(bridge->AcquireLatest().has_value() == false);
+
+  // A correctly sized frame still works afterwards: the guard rejects the
+  // frame, it does not wedge the bridge.
+  auto good = MakePatternTexture(bridge->D3d11(), bridge->D3d11Context(), 0);
+  REQUIRE(bridge->Publish(good.Get()) == false);
+  REQUIRE(bridge->AcquireLatest().has_value() == true);
+}
+
 TEST_CASE("acquire returns nothing when no new frame was published", "[device]") {
   auto gpu = DetectPrimaryGpu();
   REQUIRE(gpu.has_value());

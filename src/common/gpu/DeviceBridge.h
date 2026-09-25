@@ -45,7 +45,18 @@ class DeviceBridge {
   // signals the shared fence, and publishes the slot.
   // Latest-wins: returns true when it overwrote a frame the render thread had
   // not yet consumed, which the caller records as a drop.
+  //
+  // A source whose dimensions do not match this bridge is refused and logged
+  // rather than copied: CopyResource silently does nothing across a size
+  // mismatch, and the resulting all-black overlay looks like a working
+  // pipeline from every counter.
   bool Publish(ID3D11Texture2D* src);
+
+  // True once a frame has been refused for the reason above. Sticky, because
+  // the condition is a configuration fault that does not clear by itself.
+  bool SizeMismatch() const {
+    return sizeMismatchReported_.load(std::memory_order_relaxed);
+  }
 
   // Render thread. Returns the newest published-but-unconsumed frame and marks
   // it consumed. The caller must have the queue wait on SharedFence() at the
@@ -68,6 +79,7 @@ class DeviceBridge {
   Microsoft::WRL::ComPtr<ID3D12CommandQueue> queue_;
   Microsoft::WRL::ComPtr<ID3D11Fence> fence11_;
   Microsoft::WRL::ComPtr<ID3D12Fence> fence12_;
+  std::atomic<bool> sizeMismatchReported_{false};
   HANDLE fenceHandle_ = nullptr;
 
   std::array<Slot, kRingDepth> ring_;

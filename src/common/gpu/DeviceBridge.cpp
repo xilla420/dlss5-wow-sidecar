@@ -1,5 +1,9 @@
 #include "gpu/DeviceBridge.h"
 
+#include <string>
+
+#include "core/Log.h"
+
 using Microsoft::WRL::ComPtr;
 
 namespace sidecar {
@@ -88,6 +92,31 @@ DeviceBridge::~DeviceBridge() {
 }
 
 bool DeviceBridge::Publish(ID3D11Texture2D* src) {
+  // CopyResource requires identical dimensions and format. Given anything else
+  // it does not fail -- it returns void and copies nothing, leaving the
+  // destination as it was. A ring slot that never receives a copy reads as
+  // zeroed, which presents as a perfectly paced, error-free, entirely black
+  // overlay. That cost one bug report a great deal of work to narrow down, so
+  // the mismatch is now caught here and named.
+  if (src) {
+    D3D11_TEXTURE2D_DESC desc{};
+    src->GetDesc(&desc);
+    if (desc.Width != width_ || desc.Height != height_) {
+      // Once, not per frame: this fires sixty times a second otherwise and the
+      // log becomes useless exactly when it is needed.
+      if (!sizeMismatchReported_.exchange(true, std::memory_order_relaxed)) {
+        GlobalLog().Error(
+            "capture is " + std::to_string(desc.Width) + "x" +
+            std::to_string(desc.Height) + " but the bridge was built for " +
+            std::to_string(width_) + "x" + std::to_string(height_) +
+            ". Nothing can be copied between them, so the overlay would be "
+            "black. This is what a DPI-scaled display does to a process that "
+            "asked Windows for a window size without being DPI-aware.");
+      }
+      return false;   // publish nothing rather than a frame that is a lie
+    }
+  }
+
   Slot& slot = ring_[writeIndex_];
   d3d11Ctx_->CopyResource(slot.tex11.Get(), src);
 
