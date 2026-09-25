@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.28)
-project(dlss5-wow-sidecar LANGUAGES CXX)
+# The version lives here and nowhere else. cmake/Version.h.in carries it into
+# the binaries, so the window title, the release tag and the changelog heading
+# cannot drift apart.
+project(dlss5-wow-sidecar VERSION 0.2.0 LANGUAGES CXX)
+
+configure_file(cmake/Version.h.in ${CMAKE_BINARY_DIR}/generated/core/Version.h @ONLY)
 
 if(NOT WIN32)
   message(FATAL_ERROR "Windows-only project (spec: Global Constraints).")
@@ -144,6 +149,7 @@ target_compile_options(sidecar_common PUBLIC /await:strict)
 target_link_libraries(sidecar_common PUBLIC windowsapp)
 
 add_executable(wowsidecar WIN32
+  src/sidecar.rc
   src/runtime/main.cpp
   src/runtime/Pipeline.cpp)
 target_include_directories(wowsidecar PRIVATE src)
@@ -151,6 +157,7 @@ target_link_libraries(wowsidecar PRIVATE sidecar_common shell32)
 add_invariant_check(wowsidecar)
 
 add_executable(wowsidecar-manager WIN32
+  src/sidecar.rc
   src/manager/main.cpp
   src/manager/Install.cpp
   src/manager/Probes.cpp

@@ -367,6 +367,14 @@ const TranslationPair kRussianTable[] = {
 
     // --------------------------------------------------------------- tuning
     {"Choose a look", "Выберите вид"},
+    {"IN USE", "ВЫБРАН"},
+    {"Custom -- your settings do not match any preset.",
+     "Свой набор — ваши настройки не совпадают ни с одним пресетом."},
+    {"Click one above to go back to a tested combination. Nothing is selected "
+     "because the individual settings below have been moved away from all four.",
+     "Нажмите на один из вариантов выше, чтобы вернуться к проверенному "
+     "сочетанию. Ничего не выбрано потому, что отдельные настройки ниже уведены "
+     "в сторону от всех четырёх."},
     {"Pick one. Every setting below is chosen for you, and the combinations "
      "here are ones that have actually been run -- unlike most of the "
      "arrangements you can reach by moving sliders individually.",
@@ -411,7 +419,10 @@ const TranslationPair kRussianTable[] = {
      "нейронного рендеринга."},
 
     {"Save settings", "Сохранить настройки"},
-    {"Unsaved changes.", "Есть несохранённые изменения."},
+    {"Changes are not saved yet.", "Изменения ещё не сохранены."},
+    {"Nothing here reaches the picture until it is written to sidecar.toml.",
+     "Ничего отсюда не дойдёт до картинки, пока не будет записано в "
+     "sidecar.toml."},
     {"Restart the overlay to apply.", "Перезапустите оверлей, чтобы применить."},
     {"Every individual setting", "Все настройки по отдельности"},
     {"Nothing in here is needed for normal use.",
@@ -496,12 +507,76 @@ const TranslationPair kRussianTable[] = {
      "Streamline, 2 — только NGX. Программе нужна двойка: она сама делает "
      "вызовы NGX, и Streamline в процессе нет."},
     {"Overlay", "Оверлей"},
+
+    // Тонкие ручки дополнения. Оно их не документирует, поэтому здесь сказано,
+    // что означает название и где это скорее всего проявится, — без выдуманных
+    // чисел.
+    {"Advanced", "Тонкая настройка"},
+    {"Local structure", "Структура поверхностей"},
+    {"How hard the model works on fine surface detail -- stonework, cloth "
+     "weave, wood grain. Raising it sharpens texture and also sharpens whatever "
+     "the model got wrong about it.",
+     "Насколько сильно модель работает с мелкой фактурой — кладкой, плетением "
+     "ткани, волокном дерева. Подняв, вы делаете чётче и саму текстуру, и всё, "
+     "что модель в ней поняла неправильно."},
+    {"Local tone", "Локальный тон"},
+    {"Local contrast: how far the model pushes light against dark within a "
+     "small area. This is the dial most likely to change the mood of a scene "
+     "rather than its detail.",
+     "Локальный контраст: насколько сильно модель разводит светлое и тёмное в "
+     "пределах небольшого участка. Именно этот регулятор скорее меняет "
+     "настроение сцены, а не её детализацию."},
+    {"Skin structure", "Структура кожи"},
+    {"Faces and skin specifically. The one people reach for after watching a "
+     "comparison video, and the one most likely to look wrong when overdone -- "
+     "skin is where anybody spots a mistake.",
+     "Отвечает именно за лица и кожу. Тот регулятор, к которому тянутся после "
+     "просмотра сравнительных роликов, и он же чаще всего выглядит неправильно "
+     "при перегибе: на коже ошибку замечает кто угодно."},
+
+    {"The strip of numbers the overlay draws in its own top-left corner: frame "
+     "rate, latency, which pass is running and how many frames were dropped. It "
+     "is drawn by the overlay, not by the game, so it never reaches a "
+     "screenshot the game takes.",
+     "Полоска цифр, которую оверлей рисует в своём левом верхнем углу: частота "
+     "кадров, задержка, какой проход выполняется и сколько кадров отброшено. "
+     "Её рисует оверлей, а не игра, поэтому в снимок экрана, сделанный игрой, "
+     "она не попадёт."},
+    {"Whether the overlay covers the game the moment it launches. Off starts it "
+     "hidden, which is the honest way to look at the untouched frame first and "
+     "then bring the neural pass in over the top of it.",
+     "Закрывать ли игру оверлеем сразу при запуске. Выключено — оверлей "
+     "стартует скрытым, и это честный порядок: сначала посмотреть нетронутый "
+     "кадр, потом навести поверх него нейронный проход."},
+
+    // Описания пресетов DLSS, живут в NgxSession.cpp и показываются под комбо.
+    {"CNN F. The default here: clamps history hard, which suits estimated "
+     "motion vectors.",
+     "CNN F. Здесь по умолчанию: жёстко ограничивает временную историю, что "
+     "подходит оценённым векторам движения."},
+    {"CNN E. Clamps hardest. Try this first if motion smears or flames and "
+     "lights flicker.",
+     "CNN E. Ограничивает сильнее всех. Пробуйте первым, если движение "
+     "смазывается или мерцают огонь и источники света."},
+    {"Transformer K. The SDK default for DLAA. Sharpest when the vectors are "
+     "trustworthy.",
+     "Transformer K. Умолчание SDK для DLAA. Самый чёткий, когда векторам "
+     "движения можно доверять."},
+    {"Transformer J. The older transformer preset.",
+     "Transformer J. Более старый трансформерный пресет."},
+    {"Whatever the runtime picks for itself.",
+     "То, что рантайм выберет сам."},
     {"Show the HUD", "Показывать HUD"},
     {"Show the overlay on start", "Показывать оверлей при запуске"},
     {"Reset to defaults", "Сбросить к значениям по умолчанию"},
 
     // ------------------------------------------------------------------ log
     {"%llu earlier line(s) dropped", "Отброшено предыдущих строк: %llu"},
+    {"Last error", "Последняя ошибка"},
+    {"The overlay (sidecar.log)", "Оверлей (sidecar.log)"},
+    {"This manager", "Этот менеджер"},
+    {"The overlay has not written anything yet.",
+     "Оверлей пока ничего не записал."},
 
     // -------------------------------------------------------- runtime dialogs
     {"Window class not found.", "Класс окна не найден."},

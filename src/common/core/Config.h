@@ -55,6 +55,16 @@ struct Config {
   // does not match them is a worse introduction than one in a second language.
   std::string language = "en";
 
+  // How much bigger than the design size the interface is drawn, on top of
+  // whatever the monitor's DPI already asks for. One means "the DPI's answer
+  // is right"; the operator raises it when the DPI's answer is not, which is
+  // the common case on a large display running at 100% scaling, where Windows
+  // reports 96 DPI and the text is still too small to read.
+  // Zero means "decide for me". The manager then measures the display and
+  // picks, and the value stays zero in the file until the operator chooses one
+  // from the header, at which point it becomes theirs and is written.
+  float uiScale = 0.0f;
+
   bool showHud = true;
   bool showOverlay = true;
   uint32_t flowGridSize = 4;
