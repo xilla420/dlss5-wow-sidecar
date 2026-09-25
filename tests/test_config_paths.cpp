@@ -117,3 +117,57 @@ TEST_CASE("a language of the wrong type warns rather than throwing", "[unit]") {
   REQUIRE(warnings.size() == 1);
   REQUIRE(warnings[0].find("language") != std::string::npos);
 }
+
+// The interface scale. Zero is not "smallest", it is "nobody has chosen", and
+// the difference matters: the manager measures the display only when the
+// operator has not spoken, and a zero written as a real value would pin the
+// interface to whatever the first launch happened to compute.
+
+TEST_CASE("the interface scale starts undecided", "[unit]") {
+  std::vector<std::string> warnings;
+  const auto cfg = ParseConfig("", warnings);
+  REQUIRE(cfg.uiScale == 0.0f);
+  REQUIRE(warnings.empty());
+}
+
+TEST_CASE("an undecided scale is left out of the document", "[unit]") {
+  Config config;
+  REQUIRE(config.uiScale == 0.0f);
+  REQUIRE(SerializeConfig(config).find("ui_scale") == std::string::npos);
+}
+
+TEST_CASE("a chosen scale round-trips", "[unit]") {
+  Config config;
+  config.uiScale = 1.50f;
+
+  std::vector<std::string> warnings;
+  const auto reread = ParseConfig(SerializeConfig(config), warnings);
+
+  REQUIRE(warnings.empty());
+  REQUIRE(reread.uiScale == 1.50f);
+}
+
+TEST_CASE("a scale out of range is clamped and reported", "[unit]") {
+  std::vector<std::string> warnings;
+  const auto big = ParseConfig("ui_scale = 12.0\n", warnings);
+  REQUIRE(big.uiScale == 3.0f);
+  REQUIRE(warnings.size() == 1);
+  REQUIRE(warnings[0].find("ui_scale") != std::string::npos);
+}
+
+TEST_CASE("a negative scale reads as undecided rather than clamped", "[unit]") {
+  // Clamping it to the floor would silently turn "I do not want to choose"
+  // into the smallest readable interface, which is the opposite of the intent.
+  std::vector<std::string> warnings;
+  const auto cfg = ParseConfig("ui_scale = -1.0\n", warnings);
+  REQUIRE(cfg.uiScale == 0.0f);
+  REQUIRE(warnings.empty());
+}
+
+TEST_CASE("a scale of the wrong type warns and stays undecided", "[unit]") {
+  std::vector<std::string> warnings;
+  const auto cfg = ParseConfig("ui_scale = \"big\"\n", warnings);
+  REQUIRE(cfg.uiScale == 0.0f);
+  REQUIRE(warnings.size() == 1);
+  REQUIRE(warnings[0].find("ui_scale") != std::string::npos);
+}

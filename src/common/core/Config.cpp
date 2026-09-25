@@ -16,10 +16,10 @@ namespace {
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
-constexpr std::array<std::string_view, 11> kKnownKeys = {
+constexpr std::array<std::string_view, 12> kKnownKeys = {
     "show_hud",     "show_overlay",   "flow_grid_size", "neural_pass",
     "dlss_preset",  "synthetic_depth", "ui_mask",       "ui_mask_feather",
-    "neural",       "wow_dir",       "language"};
+    "neural",       "wow_dir",       "language",      "ui_scale"};
 
 bool IsKnown(std::string_view key) {
   return std::find(kKnownKeys.begin(), kKnownKeys.end(), key) != kKnownKeys.end();
@@ -193,6 +193,22 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
     }
   }
 
+  // Not ReadFloat, because zero is meaningful here and its clamp would eat it.
+  // Zero is "decide for me"; anything else is clamped to a usable range, the
+  // floor being where the interface stops being readable and the ceiling where
+  // a maximised window stops fitting its own navigation rail.
+  if (const auto node = root.get("ui_scale")) {
+    if (const auto value = node->value<double>()) {
+      const float wanted = static_cast<float>(*value);
+      config.uiScale = wanted <= 0.0f ? 0.0f : std::clamp(wanted, 0.75f, 3.0f);
+      if (wanted > 0.0f && config.uiScale != wanted) {
+        warnings.emplace_back("ui_scale: out of range; clamped");
+      }
+    } else {
+      warnings.emplace_back("ui_scale: expected a number; deciding automatically");
+    }
+  }
+
   ReadFloat(root, "synthetic_depth", config.syntheticDepth, 0.0f, 1.0f, warnings);
 
   if (const auto node = root.get("ui_mask_feather")) {
@@ -274,6 +290,11 @@ std::string SerializeConfig(const Config& config) {
   out << "show_overlay = " << Boolean(config.showOverlay) << "\n";
   out << "flow_grid_size = " << config.flowGridSize << "\n";
   out << "synthetic_depth = " << Number(config.syntheticDepth) << "\n";
+  // Omitted while it is still automatic, so the file does not claim a choice
+  // nobody made.
+  if (config.uiScale > 0.0f) {
+    out << "ui_scale = " << Number(config.uiScale) << "\n";
+  }
   out << "ui_mask_feather = " << config.uiMaskFeather << "\n";
   // Omitted entirely when unset, so an untouched install does not carry a key
   // that reads as "configured to nothing".

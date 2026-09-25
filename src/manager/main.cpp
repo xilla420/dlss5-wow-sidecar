@@ -18,7 +18,9 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -32,6 +34,7 @@
 #include "core/I18n.h"
 #include "core/Log.h"
 #include "core/Utf8.h"
+#include "core/Version.h"
 #include "manager/Install.h"
 #include "manager/Probes.h"
 #include "manager/Theme.h"
@@ -49,11 +52,22 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND, UINT, WPARAM,
 
 namespace {
 
+// The design sizes, at scale 1. Not constexpr any more: the interface is drawn
+// at whatever the monitor's DPI and the operator's setting ask for, and these
+// are multiplied once at startup rather than at every use, so the hundred or so
+// places that read them need no arithmetic of their own.
 constexpr int kWindowWidth = 1180;
 constexpr int kWindowHeight = 820;
-constexpr float kNavWidth = 208.0f;
-constexpr float kHeaderHeight = 104.0f;
-constexpr float kPad = 22.0f;
+float kNavWidth = 208.0f;
+float kHeaderHeight = 104.0f;
+float kPad = 22.0f;
+
+// How much bigger than the design size everything is drawn. Read by S() below,
+// set once the window exists and the DPI can be asked for.
+float g_scale = 1.0f;
+
+// A length in design pixels, in the pixels it is actually drawn at.
+inline float S(float designPixels) { return designPixels * g_scale; }
 
 ComPtr<ID3D11Device> g_device;
 ComPtr<ID3D11DeviceContext> g_context;
@@ -155,6 +169,46 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
   }
 }
 
+// The last lines of a log file, or nothing when it is not there.
+//
+// Reads from the end rather than the beginning: the overlay's log grows for as
+// long as it runs, and the interesting part is always the newest. The cap is
+// generous enough to hold a whole session's worth of a normal run and small
+// enough that re-reading it costs nothing.
+std::vector<std::string> TailOfFile(const fs::path& path, size_t maxLines) {
+  std::error_code ec;
+  const auto size = fs::file_size(path, ec);
+  if (ec) return {};
+
+  std::ifstream file(path, std::ios::binary);
+  if (!file) return {};
+
+  constexpr uintmax_t kMostToRead = 256 * 1024;
+  if (size > kMostToRead) {
+    file.seekg(static_cast<std::streamoff>(size - kMostToRead), std::ios::beg);
+    // The seek almost certainly landed mid-line; drop the partial one rather
+    // than show a sentence that starts in the middle of a word.
+    std::string partial;
+    std::getline(file, partial);
+  }
+
+  std::vector<std::string> lines;
+  std::string line;
+  while (std::getline(file, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    lines.push_back(line);
+    // Kept bounded as it is read, so a log that grew past the cap between two
+    // reads cannot make this allocate without limit.
+    if (lines.size() > maxLines * 2) {
+      lines.erase(lines.begin(), lines.begin() + static_cast<long>(maxLines));
+    }
+  }
+  if (lines.size() > maxLines) {
+    lines.erase(lines.begin(), lines.end() - static_cast<long>(maxLines));
+  }
+  return lines;
+}
+
 fs::path ExecutableDirectory() {
   wchar_t buffer[MAX_PATH]{};
   GetModuleFileNameW(nullptr, buffer, MAX_PATH);
@@ -185,7 +239,9 @@ ThemeColors g_colors;
 
 // A bronze rule across the available width. The game separates everything with
 // one of these, and it does more for the resemblance than any amount of colour.
+// padBelow is a length and scales; alpha is not and does not.
 void GoldRule(float alpha = 0.45f, float padBelow = 10.0f) {
+  padBelow = S(padBelow);
   ImDrawList* draw = ImGui::GetWindowDrawList();
   const ImVec2 at = ImGui::GetCursorScreenPos();
   const float width = ImGui::GetContentRegionAvail().x;
@@ -215,12 +271,12 @@ void Hint(const char* text) {
 void Dot(bool good, const char* label, bool warnNotFail = true) {
   ImDrawList* draw = ImGui::GetWindowDrawList();
   const ImVec2 at = ImGui::GetCursorScreenPos();
-  const float radius = 5.0f;
+  const float radius = S(5.0f);
   const ImU32 colour = ImGui::GetColorU32(
       good ? Rgb(g_colors.ok) : Rgb(warnNotFail ? g_colors.warn : g_colors.fail));
-  draw->AddCircleFilled(ImVec2(at.x + radius + 1.0f, at.y + ImGui::GetTextLineHeight() * 0.5f),
+  draw->AddCircleFilled(ImVec2(at.x + radius + S(1.0f), at.y + ImGui::GetTextLineHeight() * 0.5f),
                         radius, colour);
-  ImGui::Dummy(ImVec2(radius * 2.0f + 8.0f, 0.0f));
+  ImGui::Dummy(ImVec2(radius * 2.0f + S(8.0f), 0.0f));
   ImGui::SameLine(0.0f, 0.0f);
   ImGui::TextUnformatted(Tr(label));
 }
@@ -228,16 +284,16 @@ void Dot(bool good, const char* label, bool warnNotFail = true) {
 // One number, labelled, in a bordered slot. The game shows statistics like
 // this and it beats a run of "label: value" lines for scanning.
 void StatCard(const char* label, const char* value, float width, ImVec4 valueColor) {
-  ImGui::BeginChild(label, ImVec2(width, 74.0f), ImGuiChildFlags_Border);
-  ImGui::Dummy(ImVec2(0.0f, 2.0f));
-  ImGui::Indent(12.0f);
+  ImGui::BeginChild(label, ImVec2(width, S(74.0f)), ImGuiChildFlags_Border);
+  ImGui::Dummy(ImVec2(0.0f, S(2.0f)));
+  ImGui::Indent(S(12.0f));
   if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
   ImGui::TextDisabled("%s", Tr(label));
   if (g_fonts.caption) ImGui::PopFont();
   if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
   ImGui::TextColored(valueColor, "%s", value);
   if (g_fonts.heading) ImGui::PopFont();
-  ImGui::Unindent(12.0f);
+  ImGui::Unindent(S(12.0f));
   ImGui::EndChild();
 }
 
@@ -476,22 +532,37 @@ void DrawBoard(const std::vector<ProbeResult>& results) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
-  // Before any window exists or any size is asked for. Without this the manager
-  // is fed virtualised coordinates on a scaled display and reports the game's
-  // resolution as, say, 2048x1152 when it is really 2560x1440 -- the same lie
-  // that made the runtime present a black overlay.
-  SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
   PinSystemGraphicsDlls();
+
+  // Before the first window exists, which is the only time this can be set.
+  //
+  // Without it Windows treats the process as written for 96 DPI and scales the
+  // finished pixels up, which is blurry. With it the window is given real
+  // pixels and the interface has to do its own scaling -- which is the point:
+  // text rasterised at the right size is sharp, text stretched to it is not.
+  //
+  // Per-monitor rather than system-wide because this machine is as likely to
+  // have two displays at different scalings as one, and dragging the window
+  // between them should not leave it the wrong size.
+  SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
   WNDCLASSEXW wc{sizeof(wc)};
   wc.style = CS_HREDRAW | CS_VREDRAW;
   wc.lpfnWndProc = WndProc;
   wc.hInstance = inst;
   wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+  // Resource 1, from src/sidecar.rc. The shell finds the icon in the file by
+  // itself for Explorer and the taskbar, but the title bar and Alt-Tab take it
+  // from the window class, and an unset class icon is the generic one Windows
+  // hands out to a program that did not say.
+  wc.hIcon = LoadIconW(inst, MAKEINTRESOURCEW(1));
+  wc.hIconSm = wc.hIcon;
   wc.lpszClassName = L"SidecarManager";
   RegisterClassExW(&wc);
 
-  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, L"DLSS 5 Sidecar",
+  const std::wstring windowTitle =
+      WideFromUtf8("DLSS 5 \xE2\x80\x94 Sidecar for World of Warcraft \xE2\x80\x94 v" SIDECAR_VERSION);
+  HWND hwnd = CreateWindowExW(0, wc.lpszClassName, windowTitle.c_str(),
                               WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
                               kWindowWidth, kWindowHeight, nullptr, nullptr,
                               inst, nullptr);
@@ -520,27 +591,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     DwmSetWindowAttribute(hwnd, 36 /* TEXT_COLOR */, &text, sizeof(text));
     DwmSetWindowAttribute(hwnd, 34 /* BORDER_COLOR */, &border, sizeof(border));
   }
-  // Now that there is a window, ask which display it is on and how scaled that
-  // display is. The process is DPI-aware, so Windows hands over real pixels and
-  // no longer magnifies anything on our behalf -- which is the point, but it
-  // means the interface has to be scaled here or it comes out physically
-  // smaller on a 125% display than on a 100% one.
-  const float dpiScale = static_cast<float>(GetDpiForWindow(hwnd)) / 96.0f;
-  if (dpiScale != 1.0f) {
-    SetWindowPos(hwnd, nullptr, 0, 0, static_cast<int>(kWindowWidth * dpiScale),
-                 static_cast<int>(kWindowHeight * dpiScale),
-                 SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
-  }
   ShowWindow(hwnd, show);
-
-  IMGUI_CHECKVERSION();
-  ImGui::CreateContext();
-  ImGui::GetIO().IniFilename = nullptr;   // no state file next to the binary
-  g_fonts = LoadThemeFonts(dpiScale);     // before the backend builds its atlas
-  ApplySidecarTheme(true, dpiScale);
-  g_colors = CurrentThemeColors(true);
-  ImGui_ImplWin32_Init(hwnd);
-  ImGui_ImplDX11_Init(g_device.Get(), g_context.Get());
 
   const fs::path sidecarDir = ExecutableDirectory();
   const fs::path configPath = sidecarDir / "sidecar.toml";
@@ -548,15 +599,103 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
   // Its own file: the runtime owns sidecar.log, and two processes writing one
   // file would interleave into nonsense.
   GlobalLog().OpenFile(sidecarDir / "sidecar-manager.log");
-  GlobalLog().Info("manager starting");
+  GlobalLog().Info("manager " SIDECAR_VERSION " starting");
 
   std::error_code ec;
   bool noticeAcknowledged = fs::exists(configPath, ec) && !ec;
 
+  // Read before the atlas is built, not after. The faces are rasterised at
+  // their final size, so learning the scale afterwards would mean building the
+  // whole atlas twice on every launch that is not at scale 1.
   std::vector<std::string> warnings;
   Config config;
   if (auto loaded = LoadConfig(configPath, warnings)) config = *loaded;
   for (const auto& warning : warnings) GlobalLog().Warn("config: " + warning);
+
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGui::GetIO().IniFilename = nullptr;   // no state file next to the binary
+
+  // How big to draw everything, decided here and not changed again.
+  //
+  // DPI alone is not the answer, and assuming it was is what made the first
+  // attempt useless. A 49-inch display running at 100% scaling reports 96 DPI
+  // and is telling the truth -- each pixel really is a normal size -- while the
+  // interface on it is still unreadable, because the screen is a metre wide and
+  // the person is sitting back from it. What DPI cannot express is how far away
+  // somebody is, and physical size is the best proxy anyone has: a bigger
+  // display is a display you sit further from.
+  //
+  // So: the DPI scaling Windows asks for, multiplied by how much wider the
+  // panel is than the one this interface was drawn against. Both are needed.
+  // A 4K laptop reports 200% DPI and a small panel, and gets 2.0 from the first
+  // term alone; this display reports 100% and a huge panel, and gets its
+  // increase from the second.
+  const UINT dpi = GetDpiForWindow(hwnd);
+  const float dpiScale = dpi > 0 ? static_cast<float>(dpi) / 96.0f : 1.0f;
+
+  float sizeScale = 1.0f;
+  if (const HDC screen = GetDC(hwnd)) {
+    // Physical width in millimetres, from the display's own EDID.
+    const int widthMm = GetDeviceCaps(screen, HORZSIZE);
+    ReleaseDC(hwnd, screen);
+    // 620 mm is a 28-inch 16:9 panel -- a large desktop monitor, and about
+    // where this interface's sizes were chosen. Below that, no change: a
+    // smaller screen is one you sit closer to, and shrinking the text would be
+    // the wrong direction.
+    if (widthMm > 620) {
+      sizeScale = std::min(static_cast<float>(widthMm) / 620.0f, 2.0f);
+    }
+  }
+
+  // The operator's own number wins outright when they have set one. Zero means
+  // they have not, which is the default and the common case.
+  float appliedScale = config.uiScale > 0.0f ? config.uiScale : dpiScale * sizeScale;
+  appliedScale = std::clamp(appliedScale, 1.0f, 3.0f);
+  GlobalLog().Info("interface scale " + std::to_string(appliedScale) + " (dpi " +
+                   std::to_string(dpi) + ", " +
+                   (config.uiScale > 0.0f ? "set in sidecar.toml" : "measured from the display") +
+                   ")");
+  g_scale = appliedScale;
+  kNavWidth *= appliedScale;
+  kHeaderHeight *= appliedScale;
+  kPad *= appliedScale;
+
+  g_fonts = LoadThemeFonts(appliedScale);   // before the backend builds its atlas
+  ApplySidecarTheme(true);
+  ImGui::GetStyle().ScaleAllSizes(appliedScale);
+  g_colors = CurrentThemeColors(true);
+  ImGui_ImplWin32_Init(hwnd);
+  ImGui_ImplDX11_Init(g_device.Get(), g_context.Get());
+
+  // The window was created at the design size, which on a scaled interface is
+  // too small to hold it. Grown once, here, rather than in the creation call,
+  // because neither the DPI nor the monitor is known until the window exists.
+  //
+  // Capped at the work area rather than simply multiplied. Multiplying asked
+  // for 1574 pixels of height on a 1440-tall screen, and the bottom of the
+  // interface went where nobody could reach it. The work area is what Windows
+  // says is usable -- the desktop less the taskbar -- and nine tenths of it
+  // leaves the window looking like a window rather than a full-screen takeover.
+  if (appliedScale > 1.0f) {
+    int width = static_cast<int>(kWindowWidth * appliedScale);
+    int height = static_cast<int>(kWindowHeight * appliedScale);
+
+    MONITORINFO monitor{sizeof(monitor)};
+    if (GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &monitor)) {
+      const int availableWidth = monitor.rcWork.right - monitor.rcWork.left;
+      const int availableHeight = monitor.rcWork.bottom - monitor.rcWork.top;
+      width = std::min(width, availableWidth * 9 / 10);
+      height = std::min(height, availableHeight * 9 / 10);
+      SetWindowPos(hwnd, nullptr,
+                   monitor.rcWork.left + (availableWidth - width) / 2,
+                   monitor.rcWork.top + (availableHeight - height) / 2,
+                   width, height, SWP_NOZORDER);
+    } else {
+      SetWindowPos(hwnd, nullptr, 0, 0, width, height, SWP_NOMOVE | SWP_NOZORDER);
+    }
+  }
+
 
   // Guess the folder only when nothing is set. A path the operator chose
   // outranks the registry on every later launch, and because an empty setting
@@ -610,6 +749,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
   // second; these are switched with hysteresis instead.
   bool captureBound = false;
   bool starving = false;
+
+  // The overlay's log, tailed from disk. It belongs to the other process, so
+  // there is nothing to subscribe to -- it is read, on a timer, while the Log
+  // page is open.
+  std::vector<std::string> overlayLog;
+  double overlayLogReadAt = -1.0;
 
   const auto save = [&]() {
     if (SaveConfig(configPath, config)) {
@@ -668,7 +813,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     // ------------------------------------------------------------- header band
     ImGui::BeginChild("header", ImVec2(0.0f, kHeaderHeight));
     ImGui::Indent(kPad);
-    ImGui::Dummy(ImVec2(0.0f, 12.0f));
+    ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
 
     if (g_fonts.title) ImGui::PushFont(g_fonts.title);
     ImGui::TextColored(Rgb(g_colors.goldBright), "DLSS 5 Sidecar");
@@ -680,17 +825,44 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
     // The primary action lives in the header and never moves, so it is in the
     // same place no matter which section is open.
-    const float buttonWidth = 190.0f;
+    //
+    // Its width is measured, not chosen. "Start overlay" and "Запустить
+    // оверлей" are not the same length, and neither is either of them at a
+    // different interface scale; a constant here is a constant that is wrong
+    // for every case but the one it was measured against.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const auto widestOf = [](std::initializer_list<const char*> texts) {
+      float widest = 0.0f;
+      for (const char* text : texts) {
+        widest = std::max(widest, ImGui::CalcTextSize(text).x);
+      }
+      return widest;
+    };
+
+    // Both labels, because the button swaps between them and must not resize
+    // under the cursor when the overlay starts.
+    const float buttonWidth =
+        widestOf({Tr("Start overlay"), Tr("Stop overlay")}) + style.FramePadding.x * 2.0f + S(28.0f);
+
+    // Each language names itself. "Russian" in an English list is no help to
+    // someone who cannot read the list. Declared here so the combo can be
+    // measured before the button is placed.
+    const char* languageNames[] = {"English", "Русский"};
+    // The arrow is a square the height of the frame, and it is drawn inside the
+    // width the combo is given rather than beside it.
+    const float languageWidth = widestOf({languageNames[0], languageNames[1]}) +
+                                ImGui::GetFrameHeight() + style.FramePadding.x * 2.0f + S(10.0f);
+
     ImGui::SameLine();
     ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth - kPad);
-    ImGui::SetCursorPosY(30.0f);
+    ImGui::SetCursorPosY(S(30.0f));
 
     if (!noticeAcknowledged) ImGui::BeginDisabled();
     if (live.overlayRunning) {
       ImGui::PushStyleColor(ImGuiCol_Button, Rgb(g_colors.fail, 0.20f));
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Rgb(g_colors.fail, 0.36f));
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, Rgb(g_colors.fail, 0.50f));
-      if (ImGui::Button(Tr("Stop overlay"), ImVec2(buttonWidth, 42.0f))) {
+      if (ImGui::Button(Tr("Stop overlay"), ImVec2(buttonWidth, S(42.0f)))) {
         if (!control::Send(SidecarCommand::Stop)) {
           GlobalLog().Warn("the overlay did not answer; it may already be closing");
         }
@@ -703,7 +875,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Rgb(g_colors.accent, 0.42f));
       ImGui::PushStyleColor(ImGuiCol_ButtonActive, Rgb(g_colors.goldBright, 0.55f));
       ImGui::PushStyleColor(ImGuiCol_Text, Rgb(g_colors.goldBright));
-      if (ImGui::Button(Tr("Start overlay"), ImVec2(buttonWidth, 42.0f))) startOverlay();
+      if (ImGui::Button(Tr("Start overlay"), ImVec2(buttonWidth, S(42.0f)))) startOverlay();
       ImGui::PopStyleColor(4);
       if (!canStart) ImGui::EndDisabled();
     }
@@ -712,13 +884,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     // Left of the primary action, and outside the notice's disabled block: a
     // person who cannot read the notice has to be able to change the language
     // before agreeing to it.
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth - kPad - 130.0f);
-    ImGui::SetCursorPosY(36.0f);
-    ImGui::SetNextItemWidth(112.0f);
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth - kPad - languageWidth -
+                         S(16.0f));
+    ImGui::SetCursorPosY(S(36.0f));
+    ImGui::SetNextItemWidth(languageWidth);
     int languageIndex = CurrentLanguage() == Language::Russian ? 1 : 0;
-    // Each language names itself. "Russian" in an English list is no help
-    // to someone who cannot read the list.
-    const char* languageNames[] = {"English", "Русский"};
     if (ImGui::Combo("##language", &languageIndex, languageNames, 2)) {
       const Language chosen = languageIndex == 1 ? Language::Russian : Language::English;
       SetLanguage(chosen);
@@ -727,7 +897,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       // this is a preference about the tool, not a setting for the pipeline,
       // and losing it on exit would make the switch look broken.
       save();
+      // The board holds finished strings rather than keys -- a probe's detail
+      // is often a sentence with a driver version built into it, which no
+      // lookup could translate after the fact. So the probes run again. They
+      // are cheap, and the alternative is half an interface in each language.
+      results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
     }
+
 
     ImGui::Unindent(kPad);
     ImGui::EndChild();
@@ -743,6 +919,14 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     // ---------------------------------------------------------------- nav rail
     ImGui::Indent(kPad);
     ImGui::BeginChild("nav", ImVec2(kNavWidth, -kPad));
+
+    // A gutter the width of the marker, so the marker has somewhere to be that
+    // is not on top of the first letter. Applied to every row rather than only
+    // the selected one: text that shifts sideways when a row is chosen reads as
+    // a glitch.
+    const float markerGutter = S(12.0f);
+    ImGui::Indent(markerGutter);
+
     for (int i = 0; i < static_cast<int>(Section::Count); ++i) {
       const auto candidate = static_cast<Section>(i);
       const bool selected = candidate == section;
@@ -750,7 +934,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       const ImVec2 rowAt = ImGui::GetCursorScreenPos();
       ImGui::PushID(SectionId(candidate));
       if (ImGui::Selectable(SectionLabel(candidate), selected,
-                            ImGuiSelectableFlags_None, ImVec2(0.0f, 34.0f))) {
+                            ImGuiSelectableFlags_None, ImVec2(0.0f, S(34.0f)))) {
         section = candidate;
       }
       if (selected) {
@@ -762,7 +946,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         // Drawn just inside the row, not just outside it: anything left of the
         // child's content edge is clipped away and silently never appears.
         ImGui::GetWindowDrawList()->AddRectFilled(
-            ImVec2(rowAt.x, rowAt.y), ImVec2(rowAt.x + 3.0f, rowAt.y + 34.0f),
+            ImVec2(rowAt.x - markerGutter, ImGui::GetItemRectMin().y),
+            ImVec2(rowAt.x - markerGutter + S(3.0f), ImGui::GetItemRectMax().y),
             ImGui::GetColorU32(Rgb(g_colors.goldBright)));
       }
 
@@ -789,7 +974,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
     // The rail's foot is where the live state belongs: it is true regardless of
     // which page is open.
-    ImGui::SetCursorPosY(ImGui::GetWindowHeight() - 96.0f);
+    ImGui::Unindent(markerGutter);
+    ImGui::SetCursorPosY(ImGui::GetWindowHeight() - S(124.0f));
     GoldRule(0.30f, 8.0f);
     if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
     Dot(live.wowRunning && live.wowBorderless,
@@ -797,6 +983,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                         : "WoW: not running");
     Dot(live.overlayRunning, live.overlayRunning ? "Overlay: running" : "Overlay: stopped");
     if (live.wowRunning) ImGui::TextDisabled("   %ux%u", live.wowWidth, live.wowHeight);
+    // Which build this is. At the foot of the rail rather than in a dialog,
+    // because the question is always "what am I looking at" and never "let me
+    // go and find out".
+    ImGui::TextDisabled("   v" SIDECAR_VERSION);
     if (g_fonts.caption) ImGui::PopFont();
     ImGui::EndChild();
 
@@ -842,15 +1032,15 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         // it. With the buttons underneath, they slid out from under the cursor
         // mid-click. Buttons first, then a region whose height never changes
         // whatever it has to say.
-        ImGui::Dummy(ImVec2(0.0f, 10.0f));
+        ImGui::Dummy(ImVec2(0.0f, S(10.0f)));
         const bool visible = s.overlayVisible != 0;
         if (ImGui::Button(visible ? Tr("Hide overlay (A/B compare)") : Tr("Show overlay"),
-                          ImVec2(230.0f, 34.0f))) {
+                          ImVec2(S(230.0f), S(34.0f)))) {
           control::Send(visible ? SidecarCommand::HideOverlay : SidecarCommand::ShowOverlay);
         }
         ImGui::SameLine();
         const bool hudUp = s.hudVisible != 0;
-        if (ImGui::Button(hudUp ? Tr("Hide HUD") : Tr("Show HUD"), ImVec2(150.0f, 34.0f))) {
+        if (ImGui::Button(hudUp ? Tr("Hide HUD") : Tr("Show HUD"), ImVec2(S(150.0f), S(34.0f)))) {
           control::Send(hudUp ? SidecarCommand::HideHud : SidecarCommand::ShowHud);
         }
         ImGui::SameLine();
@@ -870,10 +1060,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         const bool spilling = s.vramSpilledMb > 0;
         const bool overBudget = s.vramBudgetMb > 0 && s.vramUsedMb > s.vramBudgetMb;
 
-        ImGui::Dummy(ImVec2(0.0f, 8.0f));
-        ImGui::BeginChild("advice", ImVec2(0.0f, 132.0f), ImGuiChildFlags_Border);
-        ImGui::Dummy(ImVec2(0.0f, 2.0f));
-        ImGui::Indent(10.0f);
+        ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
+        ImGui::BeginChild("advice", ImVec2(0.0f, S(132.0f)), ImGuiChildFlags_Border);
+        ImGui::Dummy(ImVec2(0.0f, S(2.0f)));
+        ImGui::Indent(S(10.0f));
         if (spilling || overBudget) {
           // Memory first: when this is the problem every other reading is a
           // consequence of it, including the GPU wait in the breakdown below.
@@ -912,7 +1102,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
           Hint("The overlay is presenting close to every frame Windows hands it, "
                "and there is memory to spare. Nothing to fix here.");
         }
-        ImGui::Unindent(10.0f);
+        ImGui::Unindent(S(10.0f));
         ImGui::EndChild();
 
         // Memory, as a plain reading. The advisory above owns the alarm; this is
@@ -920,7 +1110,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         if (s.vramBudgetMb > 0) {
           const float ratio = static_cast<float>(s.vramUsedMb) /
                               static_cast<float>(s.vramBudgetMb);
-          ImGui::Dummy(ImVec2(0.0f, 12.0f));
+          ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
           if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
           ImGui::TextDisabled(Tr("GPU MEMORY USED BY THE SIDECAR"));
           if (g_fonts.caption) ImGui::PopFont();
@@ -932,7 +1122,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
           std::snprintf(label, sizeof(label), "%u MB used  /  %u MB allowed%s",
                         s.vramUsedMb, s.vramBudgetMb,
                         spilling ? Tr("  --  SPILLING") : "");
-          ImGui::ProgressBar(ratio > 1.0f ? 1.0f : ratio, ImVec2(-1.0f, 20.0f), label);
+          ImGui::ProgressBar(ratio > 1.0f ? 1.0f : ratio, ImVec2(S(-1.0f), S(20.0f)), label);
           ImGui::PopStyleColor();
           if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
           ImGui::TextDisabled(Tr("This is the sidecar's own share, not the whole card. "
@@ -945,7 +1135,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         // Where the frame went, as a stacked bar. A frame rate on its own tells
         // you something is slow; this tells you which of four different things
         // it is, and they have four different answers.
-        ImGui::Dummy(ImVec2(0.0f, 12.0f));
+        ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
         if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
         ImGui::TextDisabled(Tr("WHERE THE FRAME GOES"));
         if (g_fonts.caption) ImGui::PopFont();
@@ -964,11 +1154,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
           float x = barAt.x;
           for (const auto& part : parts) {
             const float w = static_cast<float>(part.ms / total) * barWidth;
-            draw->AddRectFilled(ImVec2(x, barAt.y), ImVec2(x + w, barAt.y + 18.0f),
+            draw->AddRectFilled(ImVec2(x, barAt.y), ImVec2(x + w, barAt.y + S(18.0f)),
                                 ImGui::GetColorU32(Rgb(part.colour, 0.85f)));
             x += w;
           }
-          ImGui::Dummy(ImVec2(0.0f, 24.0f));
+          ImGui::Dummy(ImVec2(0.0f, S(24.0f)));
 
           if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
           for (const auto& part : parts) {
@@ -979,38 +1169,38 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
             const float top = swatch.y + (ImGui::GetTextLineHeight() - size) * 0.5f;
             draw->AddRectFilled(ImVec2(swatch.x, top), ImVec2(swatch.x + size, top + size),
                                 ImGui::GetColorU32(Rgb(part.colour)));
-            ImGui::Dummy(ImVec2(size + 8.0f, 0.0f));
+            ImGui::Dummy(ImVec2(size + S(8.0f), 0.0f));
             ImGui::SameLine(0.0f, 0.0f);
             ImGui::Text(Tr("%-24s %5.2f ms"), part.label, part.ms);
           }
           if (g_fonts.caption) ImGui::PopFont();
         }
 
-        ImGui::Dummy(ImVec2(0.0f, 12.0f));
+        ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
         const bool neural = std::string(s.passName).find("reshade") != std::string::npos;
         ImGui::TextUnformatted(Tr("Frames"));
-        ImGui::SameLine(120.0f);
+        ImGui::SameLine(S(120.0f));
         ImGui::Text(Tr("%llu presented, %llu dropped"),
                     static_cast<unsigned long long>(s.frames),
                     static_cast<unsigned long long>(s.drops));
         ImGui::TextUnformatted(Tr("Pass"));
-        ImGui::SameLine(120.0f);
+        ImGui::SameLine(S(120.0f));
         ImGui::TextColored(neural ? Rgb(g_colors.epic) : Rgb(g_colors.parchment), "%s",
                            s.passName);
         if (*s.runtimeVariant) {
           ImGui::TextUnformatted(Tr("Runtime"));
-          ImGui::SameLine(120.0f);
+          ImGui::SameLine(S(120.0f));
           ImGui::TextUnformatted(s.runtimeVariant);
         }
         ImGui::TextUnformatted(Tr("Verdict"));
-        ImGui::SameLine(120.0f);
+        ImGui::SameLine(S(120.0f));
         ImGui::TextColored(StateColor(asState, g_colors), "%s",
                            verdict == GateVerdict::Playable   ? Tr("playable")
                            : verdict == GateVerdict::Marginal ? Tr("marginal")
                                                               : Tr("too slow"));
 
         if (*s.lastError) {
-          ImGui::Dummy(ImVec2(0.0f, 10.0f));
+          ImGui::Dummy(ImVec2(0.0f, S(10.0f)));
           ImGui::TextColored(Rgb(g_colors.fail), "The overlay reported");
           ImGui::TextWrapped("%s", s.lastError);
         }
@@ -1029,7 +1219,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                  : "Press Start overlay.");
       }
 
-      ImGui::Dummy(ImVec2(0.0f, 20.0f));
+      ImGui::Dummy(ImVec2(0.0f, S(20.0f)));
       SectionHeading("Playing with the overlay up");
       Hint("The overlay covers the game completely and passes every click "
            "straight through to it, so play normally. It never takes focus, so "
@@ -1045,7 +1235,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
            "to redistribute and nothing here downloads anything -- neither "
            "binary in this project can reach the network at all. Fetch them "
            "yourself, then point this at them.");
-      ImGui::Dummy(ImVec2(0.0f, 10.0f));
+      ImGui::Dummy(ImVec2(0.0f, S(10.0f)));
 
       const auto& components = Components();
       for (size_t i = 0; i < components.size(); ++i) {
@@ -1054,9 +1244,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         const bool present = fs::exists(installed, ec) && !ec;
 
         ImGui::PushID(static_cast<int>(i));
-        ImGui::BeginChild("row", ImVec2(0.0f, 132.0f), ImGuiChildFlags_Border);
-        ImGui::Dummy(ImVec2(0.0f, 2.0f));
-        ImGui::Indent(12.0f);
+        ImGui::BeginChild("row", ImVec2(0.0f, S(132.0f)), ImGuiChildFlags_Border);
+        ImGui::Dummy(ImVec2(0.0f, S(2.0f)));
+        ImGui::Indent(S(12.0f));
 
         Dot(present, std::string(component.title).c_str(), !component.required);
         ImGui::SameLine();
@@ -1076,7 +1266,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                             std::string(component.source).c_str());
         if (g_fonts.caption) ImGui::PopFont();
 
-        if (ImGui::Button(present ? Tr("Replace...") : Tr("Choose file..."), ImVec2(150.0f, 0.0f))) {
+        if (ImGui::Button(present ? Tr("Replace...") : Tr("Choose file..."), ImVec2(S(150.0f), 0.0f))) {
           const fs::path picked =
               AskForFile(hwnd, L"DLL and add-on files\0*.dll;*.addon64\0All files\0*.*\0\0",
                          L"Choose the file to install");
@@ -1097,7 +1287,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
             }
           }
         }
-        ImGui::Unindent(12.0f);
+        ImGui::Unindent(S(12.0f));
         ImGui::EndChild();
         ImGui::PopID();
       }
@@ -1107,7 +1297,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                            "%s", setupMessage.c_str());
       }
 
-      ImGui::Dummy(ImVec2(0.0f, 14.0f));
+      ImGui::Dummy(ImVec2(0.0f, S(14.0f)));
       SectionHeading("Remove");
       Hint("Deletes the files listed above from this folder, and nothing else. "
            "It never touches a WoW installation. The sidecar's own two "
@@ -1117,7 +1307,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       const auto plan = UninstallPlan(sidecarDir, uninstallGenerated);
       const bool canRemove = confirmUninstall && !plan.empty() && !live.overlayRunning;
       if (!canRemove) ImGui::BeginDisabled();
-      if (ImGui::Button(Tr("Remove installed files"), ImVec2(210.0f, 0.0f))) {
+      if (ImGui::Button(Tr("Remove installed files"), ImVec2(S(210.0f), 0.0f))) {
         const auto result = RemoveAll(plan);
         setupMessage = result.message;
         setupMessageIsError = !result.ok;
@@ -1139,15 +1329,15 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       Hint("Nothing here opens, reads, writes or hooks the game process. The "
            "import table of every binary is checked against that claim at "
            "build time.");
-      ImGui::Dummy(ImVec2(0.0f, 8.0f));
+      ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
       ImGui::TextUnformatted(Tr("WoW folder (used only to scan filenames for injectors)"));
-      ImGui::SetNextItemWidth(-260.0f);
+      ImGui::SetNextItemWidth(S(-260.0f));
       // Bound to the std::string itself, which grows as needed. The fixed
       // buffer this replaced silently truncated anything past its length, and a
       // path that has been cut short is a path that scans the wrong folder.
       if (ImGui::InputText("##wowdir", &config.wowDir)) dirty = true;
       ImGui::SameLine();
-      if (ImGui::Button(Tr("Browse..."), ImVec2(110.0f, 0.0f))) {
+      if (ImGui::Button(Tr("Browse..."), ImVec2(S(110.0f), 0.0f))) {
         const fs::path picked =
             AskForFolder(hwnd, L"Select the folder that holds Wow.exe",
                          PathFromUtf8(config.wowDir));
@@ -1158,7 +1348,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         }
       }
       ImGui::SameLine();
-      if (ImGui::Button(Tr("Detect"), ImVec2(90.0f, 0.0f))) {
+      if (ImGui::Button(Tr("Detect"), ImVec2(S(90.0f), 0.0f))) {
         if (const auto detected = DetectWowFolder()) {
           config.wowDir = Utf8FromPath(*detected);
           save();
@@ -1174,7 +1364,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
            "folder Wow.exe sits in, not its parent: an injector has to be next "
            "to the executable to be loaded by it. Nothing inside is opened -- "
            "only the file names are read.");
-      if (ImGui::Button(Tr("Re-run checks"), ImVec2(160.0f, 0.0f))) {
+      if (ImGui::Button(Tr("Re-run checks"), ImVec2(S(160.0f), 0.0f))) {
         results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
         int failures = 0;
         for (const auto& r : results) {
@@ -1186,7 +1376,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
           GlobalLog().Info("all checks green");
         }
       }
-      ImGui::Dummy(ImVec2(0.0f, 8.0f));
+      ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
       DrawBoard(results);
     }
 
@@ -1195,58 +1385,126 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       Hint("Pick one. Every setting below is chosen for you, and the combinations "
            "here are ones that have actually been run -- unlike most of the "
            "arrangements you can reach by moving sliders individually.");
-      ImGui::Dummy(ImVec2(0.0f, 8.0f));
+      ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
 
       const size_t active = MatchingPreset(config);
       for (size_t i = 0; i < std::size(kPresets); ++i) {
         const bool selected = i == active;
         ImGui::PushID(static_cast<int>(i));
-        ImGui::BeginChild("preset", ImVec2(0.0f, 96.0f), ImGuiChildFlags_Border);
-        ImGui::Dummy(ImVec2(0.0f, 2.0f));
-        ImGui::Indent(12.0f);
 
+        // The whole card carries the state, not a sliver at its edge. A border
+        // and a ground the operator can see from across the room beats a
+        // three-pixel rule and a shade of gold.
         if (selected) {
-          // A gold edge on the chosen one, matching the nav rail, so "which is
-          // on" reads the same way everywhere in the app.
-          const ImVec2 at = ImGui::GetCursorScreenPos();
-          ImGui::GetWindowDrawList()->AddRectFilled(
-              ImVec2(at.x - 12.0f, at.y - 4.0f), ImVec2(at.x - 9.0f, at.y + 74.0f),
-              ImGui::GetColorU32(Rgb(g_colors.goldBright)));
+          ImGui::PushStyleColor(ImGuiCol_Border, Rgb(g_colors.goldBright, 0.95f));
+          ImGui::PushStyleColor(ImGuiCol_ChildBg, Rgb(g_colors.accent, 0.18f));
+          ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, S(2.0f));
         }
+        ImGui::BeginChild("preset", ImVec2(0.0f, S(104.0f)), ImGuiChildFlags_Border);
+        ImGui::Dummy(ImVec2(0.0f, S(2.0f)));
+        ImGui::Indent(S(12.0f));
+
         if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
         ImGui::TextColored(selected ? Rgb(g_colors.goldBright) : Rgb(g_colors.parchment),
                            "%s", Tr(kPresets[i].name));
         if (g_fonts.heading) ImGui::PopFont();
+
+        // Said in words as well as in colour. Somebody who cannot pick the
+        // chosen card out of four by its border should not have to.
+        if (selected) {
+          ImGui::SameLine();
+          if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
+          ImGui::TextColored(Rgb(g_colors.ok), "  %s", Tr("IN USE"));
+          if (g_fonts.caption) ImGui::PopFont();
+        }
+
         ImGui::TextUnformatted(Tr(kPresets[i].summary));
         Hint(kPresets[i].detail);
 
-        ImGui::Unindent(12.0f);
+        ImGui::Unindent(S(12.0f));
         ImGui::EndChild();
-        if (ImGui::IsItemClicked() && !selected) {
+
+        // Hover plus a click, rather than IsItemClicked on the child: a child
+        // window with content of its own does not reliably report the click,
+        // and a preset that silently refuses to be picked is worse than one
+        // that is merely hard to see.
+        // Against the card's own rectangle rather than through IsItemHovered.
+        // A child window's hover state is about the child, and the flag that
+        // would have widened it -- ChildWindows -- is only legal on
+        // IsWindowHovered; passing it to IsItemHovered puts ImGui's own error
+        // panel over the interface, which is what it is for.
+        const bool hovered =
+            ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
+        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !selected) {
           kPresets[i].apply(config);
           dirty = true;
+        }
+        if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+
+        if (selected) {
+          ImGui::PopStyleVar();
+          ImGui::PopStyleColor(2);
         }
         ImGui::PopID();
       }
       if (active == static_cast<size_t>(-1)) {
-        ImGui::TextColored(Rgb(g_colors.warn),
-                           "Custom -- your settings do not match any preset.");
+        // Said loudly, because "none of these is highlighted" is otherwise
+        // indistinguishable from "the highlight is broken".
+        if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
+        ImGui::TextColored(Rgb(g_colors.warn), "%s",
+                           Tr("Custom -- your settings do not match any preset."));
+        if (g_fonts.heading) ImGui::PopFont();
+        Hint("Click one above to go back to a tested combination. Nothing is "
+             "selected because the individual settings below have been moved "
+             "away from all four.");
       }
 
-      ImGui::Dummy(ImVec2(0.0f, 14.0f));
+      ImGui::Dummy(ImVec2(0.0f, S(14.0f)));
+
+      // An unsaved change is easy to walk away from here: nothing on this page
+      // takes effect until it is written, and the file is only read again at
+      // the overlay's next start. So the ask is a band across the page in the
+      // warning colour rather than four small words beside a button.
+      if (dirty) {
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Rgb(g_colors.warn, 0.16f));
+        ImGui::PushStyleColor(ImGuiCol_Border, Rgb(g_colors.warn, 0.75f));
+        ImGui::BeginChild("unsaved", ImVec2(0.0f, S(58.0f)), ImGuiChildFlags_Border);
+        ImGui::Dummy(ImVec2(0.0f, S(4.0f)));
+        ImGui::Indent(S(12.0f));
+        if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
+        ImGui::TextColored(Rgb(g_colors.warn), "%s", Tr("Changes are not saved yet."));
+        if (g_fonts.heading) ImGui::PopFont();
+        if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
+        ImGui::TextDisabled("%s",
+                            Tr("Nothing here reaches the picture until it is written to "
+                               "sidecar.toml."));
+        if (g_fonts.caption) ImGui::PopFont();
+        ImGui::Unindent(S(12.0f));
+        ImGui::EndChild();
+        ImGui::PopStyleColor(2);
+        ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
+      }
+
+      const float saveWidth =
+          ImGui::CalcTextSize(Tr("Save settings")).x + ImGui::GetStyle().FramePadding.x * 2.0f +
+          S(28.0f);
       if (!dirty) ImGui::BeginDisabled();
+      // Filled while there is something to save, so the button is the brightest
+      // thing on the page exactly when it needs pressing.
+      if (dirty) {
+        ImGui::PushStyleColor(ImGuiCol_Button, Rgb(g_colors.accent, 0.55f));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Rgb(g_colors.goldBright, 0.65f));
+      }
       ImGui::PushStyleColor(ImGuiCol_Text, Rgb(g_colors.goldBright));
-      if (ImGui::Button(Tr("Save settings"), ImVec2(170.0f, 34.0f))) save();
-      ImGui::PopStyleColor();
+      if (ImGui::Button(Tr("Save settings"), ImVec2(saveWidth, S(38.0f)))) save();
+      ImGui::PopStyleColor(dirty ? 3 : 1);
       if (!dirty) ImGui::EndDisabled();
       ImGui::SameLine();
-      if (dirty) {
-        ImGui::TextColored(Rgb(g_colors.warn), "%s", Tr("Unsaved changes."));
-      } else if (live.overlayRunning) {
+      if (!dirty && live.overlayRunning) {
         ImGui::TextDisabled(Tr("Restart the overlay to apply."));
       }
 
-      ImGui::Dummy(ImVec2(0.0f, 16.0f));
+      ImGui::Dummy(ImVec2(0.0f, S(16.0f)));
       if (!ImGui::TreeNode(Tr("Every individual setting"))) {
         Hint("Nothing in here is needed for normal use.");
       } else {
@@ -1255,13 +1513,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
            "into ReShade.ini where the add-on reads them. The add-on reads that "
            "file once, when it loads, so a change reaches the picture at the "
            "overlay's next start -- not while it runs.");
-      ImGui::Dummy(ImVec2(0.0f, 8.0f));
+      ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
 
       {
         int passIndex = config.neuralPass == "reshade" ? 1 : 0;
         const char* passes[] = {Tr("passthrough -- capture and present, untouched"),
                                 Tr("reshade -- DLSS 5 neural rendering")};
-        ImGui::SetNextItemWidth(440.0f);
+        ImGui::SetNextItemWidth(S(440.0f));
         if (ImGui::Combo(Tr("Neural pass"), &passIndex, passes, 2)) {
           config.neuralPass = passIndex == 1 ? "reshade" : "passthrough";
           dirty = true;
@@ -1281,7 +1539,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
           names.push_back(choice->name);
           descriptions.push_back(choice->description);
         }
-        ImGui::SetNextItemWidth(440.0f);
+        ImGui::SetNextItemWidth(S(440.0f));
         if (ImGui::Combo(Tr("DLSS preset"), &current, names.data(),
                          static_cast<int>(names.size()))) {
           config.dlssPreset = names[static_cast<size_t>(current)];
@@ -1293,7 +1551,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       {
         const char* grids[] = {Tr("1 -- finest, most expensive"), "2", Tr("4 -- default")};
         int index = config.flowGridSize == 1 ? 0 : config.flowGridSize == 2 ? 1 : 2;
-        ImGui::SetNextItemWidth(440.0f);
+        ImGui::SetNextItemWidth(S(440.0f));
         if (ImGui::Combo(Tr("Optical flow grid"), &index, grids, 3)) {
           config.flowGridSize = index == 0 ? 1u : index == 1 ? 2u : 4u;
           dirty = true;
@@ -1303,7 +1561,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
              "finer grid can sharpen the estimate or the error equally.");
       }
 
-      ImGui::SetNextItemWidth(440.0f);
+      ImGui::SetNextItemWidth(S(440.0f));
       if (ImGui::SliderFloat(Tr("Synthetic depth"), &config.syntheticDepth, 0.0f, 1.0f,
                              "%.2f")) {
         dirty = true;
@@ -1313,47 +1571,50 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
            "stability under motion rather than preventing NR from running; this "
            "dial is worth a try if motion smears.");
 
-      ImGui::Dummy(ImVec2(0.0f, 16.0f));
+      ImGui::Dummy(ImVec2(0.0f, S(16.0f)));
       SectionHeading("Neural rendering strength");
       Hint("Passed straight through to the RenoDX add-on. The add-on owns what "
            "these mean; we only carry them.");
-      ImGui::Dummy(ImVec2(0.0f, 8.0f));
+      ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
 
       auto& n = config.neural;
-      ImGui::SetNextItemWidth(440.0f);
+      ImGui::SetNextItemWidth(S(440.0f));
       if (ImGui::SliderFloat(Tr("Intensity"), &n.intensity, 0.0f, 1.0f, "%.2f")) dirty = true;
       Hint("How much of the neural result is mixed in. Start here.");
 
-      ImGui::SetNextItemWidth(440.0f);
+      ImGui::SetNextItemWidth(S(440.0f));
       if (ImGui::SliderInt(Tr("Add-on preset"), &n.preset, 0, 3)) dirty = true;
-      ImGui::SetNextItemWidth(440.0f);
+      ImGui::SetNextItemWidth(S(440.0f));
       if (ImGui::SliderInt(Tr("Style"), &n.style, 0, 3)) dirty = true;
 
-      ImGui::SetNextItemWidth(440.0f);
+      ImGui::SetNextItemWidth(S(440.0f));
       if (ImGui::SliderFloat(Tr("Colour strength"), &n.colorStrength, 0.0f, 1.0f, "%.2f")) {
         dirty = true;
       }
       Hint("At zero the add-on's colour handling collapses to black, so this is "
            "not a subtle dial.");
 
-      ImGui::SetNextItemWidth(440.0f);
+      ImGui::SetNextItemWidth(S(440.0f));
       if (ImGui::SliderFloat(Tr("HDR transfer strength"), &n.transferStrength, 0.0f, 1.0f,
                              "%.2f")) {
         dirty = true;
       }
-      ImGui::SetNextItemWidth(440.0f);
+      ImGui::SetNextItemWidth(S(440.0f));
       if (ImGui::SliderFloat(Tr("Paper-white scale"), &n.paperWhiteScale, 0.0f, 4.0f, "%.2f")) {
         dirty = true;
       }
       Hint("Both only matter on an HDR display. The sidecar captures SDR today, "
            "so leave them at 1.00 unless you are experimenting.");
 
-      ImGui::Dummy(ImVec2(0.0f, 6.0f));
-      if (ImGui::TreeNode("Advanced")) {
+      ImGui::Dummy(ImVec2(0.0f, S(6.0f)));
+      if (ImGui::TreeNode(Tr("Advanced"))) {
         Hint("These three have no documented default, so they are written only "
              "once you move them. Clearing the box returns them to untouched, "
              "which leaves whatever the add-on does by itself.");
-        const auto optional = [&](const char* label, float& value) {
+        // The label doubles as the widget id, so it is translated at the point
+        // it is drawn and the id stays the English one.
+        const auto optional = [&](const char* label, const char* explanation,
+                                  float& value) {
           bool set = value >= 0.0f;
           ImGui::PushID(label);
           if (ImGui::Checkbox("##set", &set)) {
@@ -1363,19 +1624,32 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
           ImGui::SameLine();
           if (!set) ImGui::BeginDisabled();
           float shown = set ? value : 1.0f;
-          ImGui::SetNextItemWidth(390.0f);
-          if (ImGui::SliderFloat(label, &shown, 0.0f, 2.0f, "%.2f") && set) {
+          ImGui::SetNextItemWidth(S(390.0f));
+          if (ImGui::SliderFloat(Tr(label), &shown, 0.0f, 2.0f, "%.2f") && set) {
             value = shown;
             dirty = true;
           }
           if (!set) ImGui::EndDisabled();
+          Hint(explanation);
           ImGui::PopID();
         };
-        optional("Local structure", n.localStructure);
-        optional("Local tone", n.localTone);
-        optional("Skin structure", n.skinStructure);
+        optional("Local structure",
+                 "How hard the model works on fine surface detail -- stonework, "
+                 "cloth weave, wood grain. Raising it sharpens texture and also "
+                 "sharpens whatever the model got wrong about it.",
+                 n.localStructure);
+        optional("Local tone",
+                 "Local contrast: how far the model pushes light against dark "
+                 "within a small area. This is the dial most likely to change "
+                 "the mood of a scene rather than its detail.",
+                 n.localTone);
+        optional("Skin structure",
+                 "Faces and skin specifically. The one people reach for after "
+                 "watching a comparison video, and the one most likely to look "
+                 "wrong when overdone -- skin is where anybody spots a mistake.",
+                 n.skinStructure);
 
-        ImGui::Dummy(ImVec2(0.0f, 6.0f));
+        ImGui::Dummy(ImVec2(0.0f, S(6.0f)));
         if (ImGui::Checkbox(Tr("Enable the add-on's upscaling (work in progress)"),
                             &n.upscaling)) {
           dirty = true;
@@ -1384,7 +1658,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
              "native-resolution DLAA contract, so it usually reports that it "
              "fell back to native. Off is the tested path.");
 
-        ImGui::SetNextItemWidth(390.0f);
+        ImGui::SetNextItemWidth(S(390.0f));
         if (ImGui::SliderInt(Tr("Hook mode"), &n.enableHooks, 0, 2)) dirty = true;
         Hint("0 turns neural rendering off entirely, 1 adds Streamline hooks, 2 "
              "is NGX only. Two is what this sidecar wants: it makes the NGX "
@@ -1392,13 +1666,20 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         ImGui::TreePop();
       }
 
-      ImGui::Dummy(ImVec2(0.0f, 16.0f));
+      ImGui::Dummy(ImVec2(0.0f, S(16.0f)));
       SectionHeading("Overlay");
       if (ImGui::Checkbox(Tr("Show the HUD"), &config.showHud)) dirty = true;
+      Hint("The strip of numbers the overlay draws in its own top-left corner: "
+           "frame rate, latency, which pass is running and how many frames were "
+           "dropped. It is drawn by the overlay, not by the game, so it never "
+           "reaches a screenshot the game takes.");
       if (ImGui::Checkbox(Tr("Show the overlay on start"), &config.showOverlay)) dirty = true;
+      Hint("Whether the overlay covers the game the moment it launches. Off "
+           "starts it hidden, which is the honest way to look at the untouched "
+           "frame first and then bring the neural pass in over the top of it.");
 
-      ImGui::Dummy(ImVec2(0.0f, 12.0f));
-      if (ImGui::Button(Tr("Reset to defaults"), ImVec2(170.0f, 30.0f))) {
+      ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
+      if (ImGui::Button(Tr("Reset to defaults"), ImVec2(S(170.0f), S(30.0f)))) {
         const auto mask = config.uiMaskRects;   // calibration is not a setting
         config = Config{};
         config.uiMaskRects = mask;
@@ -1412,11 +1693,52 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       SectionHeading("Log");
       const std::string lastError = GlobalLog().LastError();
       if (!lastError.empty()) {
-        ImGui::TextColored(Rgb(g_colors.fail), "Last error");
+        ImGui::TextColored(Rgb(g_colors.fail), "%s", Tr("Last error"));
         ImGui::TextWrapped("%s", lastError.c_str());
-        ImGui::Dummy(ImVec2(0.0f, 8.0f));
+        ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
       }
-      ImGui::BeginChild("logscroll", ImVec2(0.0f, -28.0f), ImGuiChildFlags_Border);
+
+      // Re-read a few times a second rather than every frame. The file is
+      // small, but reading it sixty times a second to show the same bytes is
+      // work nobody asked for.
+      const double now = ImGui::GetTime();
+      if (now - overlayLogReadAt > 0.5) {
+        overlayLog = TailOfFile(sidecarDir / "sidecar.log", 400);
+        overlayLogReadAt = now;
+      }
+
+      // Two panes, because there are two programs. The overlay's is first and
+      // larger: when something has gone wrong, that is the one with the answer
+      // in it, and the manager's own half of the story is always the same two
+      // lines about having asked for a launch.
+      const float available = ImGui::GetContentRegionAvail().y - S(64.0f);
+      const float overlayHeight = std::max(available * 0.6f, S(120.0f));
+
+      ImGui::TextColored(Rgb(g_colors.accent), "%s", Tr("The overlay (sidecar.log)"));
+      ImGui::BeginChild("overlaylog", ImVec2(0.0f, overlayHeight), ImGuiChildFlags_Border);
+      if (g_fonts.mono) ImGui::PushFont(g_fonts.mono);
+      if (overlayLog.empty()) {
+        ImGui::TextDisabled("%s", Tr("The overlay has not written anything yet."));
+      }
+      for (const auto& line : overlayLog) {
+        const bool bad = line.find("ERROR") != std::string::npos;
+        if (bad) {
+          ImGui::TextColored(Rgb(g_colors.fail), "%s", line.c_str());
+        } else {
+          ImGui::TextUnformatted(line.c_str());
+        }
+      }
+      if (g_fonts.mono) ImGui::PopFont();
+      // Follow the tail while it grows, but only while the operator has not
+      // scrolled up to read something.
+      if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - S(4.0f)) {
+        ImGui::SetScrollHereY(1.0f);
+      }
+      ImGui::EndChild();
+
+      ImGui::Dummy(ImVec2(0.0f, S(6.0f)));
+      ImGui::TextColored(Rgb(g_colors.accent), "%s", Tr("This manager"));
+      ImGui::BeginChild("logscroll", ImVec2(0.0f, S(-28.0f)), ImGuiChildFlags_Border);
       if (g_fonts.mono) ImGui::PushFont(g_fonts.mono);
       for (const auto& line : GlobalLog().Recent()) {
         ImGui::TextUnformatted(line.c_str());
@@ -1438,9 +1760,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     if (!noticeAcknowledged) {
       ImGui::OpenPopup(kFirstRunTitle);
       const ImVec2 center = viewport->GetCenter();
-      ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-      ImGui::SetNextWindowSize(ImVec2(600.0f, 0.0f));
-      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24.0f, 20.0f));
+      ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(S(0.5f), S(0.5f)));
+      ImGui::SetNextWindowSize(ImVec2(S(600.0f), 0.0f));
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(24.0f), S(20.0f)));
       // No title bar: the heading below is the title, and ImGui's own bar would
       // print the same words a second time in a different face.
       if (ImGui::BeginPopupModal(kFirstRunTitle, nullptr,
@@ -1452,9 +1774,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         if (g_fonts.heading) ImGui::PopFont();
         GoldRule(0.45f, 10.0f);
         ImGui::TextWrapped("%s", Tr(kFirstRunBody));
-        ImGui::Dummy(ImVec2(0.0f, 12.0f));
+        ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
         ImGui::PushStyleColor(ImGuiCol_Text, Rgb(g_colors.goldBright));
-        if (ImGui::Button(Tr("I understand"), ImVec2(170.0f, 34.0f))) {
+        if (ImGui::Button(Tr("I understand"), ImVec2(S(170.0f), S(34.0f)))) {
           noticeAcknowledged = true;
           // The config file's existence is what records the acknowledgement, so
           // write it here. It lives beside the manager, never in WoW's

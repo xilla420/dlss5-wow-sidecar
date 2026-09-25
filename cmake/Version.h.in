@@ -1,0 +1,14 @@
+#pragma once
+
+// Generated from cmake/Version.h.in. The single source of truth is the
+// VERSION field of project() in CMakeLists.txt, so a release tag, the window
+// title and the changelog heading cannot drift apart by someone editing one
+// of them and forgetting the others.
+//
+// Do not edit the generated copy under build/generated -- it is overwritten on
+// every configure.
+
+#define SIDECAR_VERSION "@PROJECT_VERSION@"
+#define SIDECAR_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define SIDECAR_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define SIDECAR_VERSION_PATCH @PROJECT_VERSION_PATCH@
