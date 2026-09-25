@@ -9,7 +9,9 @@
 #include "core/Config.h"
 #include "core/ControlChannel.h"
 #include "core/GpuProfile.h"
+#include "core/I18n.h"
 #include "core/Log.h"
+#include "core/Utf8.h"
 #include "neural/AddonSettings.h"
 #include "neural/NeuralPassFactory.h"
 #include "present/WindowTracker.h"
@@ -22,7 +24,9 @@ namespace {
 
 struct Target {
   HWND hwnd = nullptr;
-  const wchar_t* problem = nullptr;
+  // Owned rather than pointed at: a translated string has no static
+  // literal to borrow, and this outlives the call that produced it.
+  std::wstring problem;
 };
 
 fs::path ExecutableDirectory() {
@@ -67,14 +71,15 @@ Target ResolveTarget(int argc, wchar_t** argv) {
   // testpattern.exe.
   if (argc > 1) {
     HWND hwnd = FindWindowW(argv[1], nullptr);
-    return hwnd ? Target{hwnd, nullptr} : Target{nullptr, L"Window class not found."};
+    return hwnd ? Target{hwnd, {}}
+              : Target{nullptr, WideFromUtf8(Tr("Window class not found."))};
   }
   auto wow = FindWowWindow();
-  if (!wow) return {nullptr, L"World of Warcraft is not running."};
+  if (!wow) return {nullptr, WideFromUtf8(Tr("World of Warcraft is not running."))};
   if (!wow->borderless) {
     return {nullptr,
-            L"World of Warcraft must run in borderless windowed mode.\n"
-            L"Exclusive fullscreen has no compositor surface to capture."};
+            WideFromUtf8(Tr("World of Warcraft must run in borderless windowed mode.\n"
+                            "Exclusive fullscreen has no compositor surface to capture."))};
   }
   return {wow->hwnd, nullptr};
 }
@@ -110,7 +115,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   auto gpu = DetectPrimaryGpu();
   if (!gpu) {
     GlobalLog().Error("no NVIDIA adapter found");
-    MessageBoxW(nullptr, L"No NVIDIA adapter found.", L"DLSS 5 Sidecar", MB_ICONERROR);
+    MessageBoxW(nullptr, WideFromUtf8(Tr("No NVIDIA adapter found.")).c_str(),
+                L"DLSS 5 Sidecar", MB_ICONERROR);
     return 1;
   }
   GlobalLog().Info(std::string("adapter: ") + ToString(gpu->arch));
@@ -119,7 +125,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     GlobalLog().Error(std::string(ToString(gpu->arch)) +
                       " is not supported; RTX 40 or RTX 50 required");
     wchar_t msg[256];
-    swprintf_s(msg, L"%hs is not supported. RTX 40 or RTX 50 required.",
+    swprintf_s(msg,
+               WideFromUtf8(Tr("%hs is not supported. RTX 40 or RTX 50 required.")).c_str(),
                ToString(gpu->arch));
     MessageBoxW(nullptr, msg, L"DLSS 5 Sidecar", MB_ICONERROR);
     return 1;
@@ -128,7 +135,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   const Target target = ResolveTarget(argc, argv);
   if (!target.hwnd) {
     GlobalLog().Error("no capture target: see the dialog for what to do");
-    MessageBoxW(nullptr, target.problem, L"DLSS 5 Sidecar", MB_ICONERROR);
+    MessageBoxW(nullptr, target.problem.c_str(), L"DLSS 5 Sidecar", MB_ICONERROR);
     return 1;
   }
 
@@ -175,7 +182,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   auto pipeline = Pipeline::Create(*gpu, cfg, nullptr);
   if (!pipeline) {
     GlobalLog().Error("could not create the pipeline");
-    MessageBoxW(nullptr, L"Failed to create the pipeline.", L"DLSS 5 Sidecar", MB_ICONERROR);
+    MessageBoxW(nullptr, WideFromUtf8(Tr("Failed to create the pipeline.")).c_str(),
+                L"DLSS 5 Sidecar", MB_ICONERROR);
     return 1;
   }
 
@@ -199,8 +207,9 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   if (!control) {
     GlobalLog().Error("another overlay is already running");
     MessageBoxW(nullptr,
-                L"An overlay is already running.\n"
-                L"Stop it from the manager before starting another.",
+                WideFromUtf8(Tr("An overlay is already running.\n"
+                                "Stop it from the manager before starting another."))
+                    .c_str(),
                 L"DLSS 5 Sidecar", MB_ICONERROR);
     return 1;
   }
@@ -232,7 +241,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     // this loop instead, and the rebuild happens here, where the windows live.
     if (pipeline->NeedsRebuild() && !pipeline->RebuildAndRestart()) {
       MessageBoxW(nullptr,
-                  L"The graphics device was reset and could not be rebuilt.",
+                  WideFromUtf8(Tr("The graphics device was reset and could not be rebuilt."))
+                      .c_str(),
                   L"DLSS 5 Sidecar", MB_ICONERROR);
       break;
     }

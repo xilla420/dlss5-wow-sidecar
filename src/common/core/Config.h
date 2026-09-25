@@ -49,6 +49,12 @@ struct NeuralSettings {
 };
 
 struct Config {
+  // Interface language, as a tag the translator understands ("en", "ru").
+  // English by default, and deliberately not taken from the Windows locale:
+  // every screenshot in the documentation is English, and a first run that
+  // does not match them is a worse introduction than one in a second language.
+  std::string language = "en";
+
   bool showHud = true;
   bool showOverlay = true;
   uint32_t flowGridSize = 4;

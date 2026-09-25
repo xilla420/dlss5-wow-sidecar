@@ -33,6 +33,15 @@ jobs:
       - name: Test the invariant checker itself
         run: python -m pytest ci/test_check_imports.py -v
 
+      # Translations are keyed by their English source text, so editing an
+      # English string orphans its translation silently: nothing fails to
+      # build and nothing looks wrong until somebody switches language.
+      - name: Test the translation checker itself
+        run: python -m pytest ci/test_check_translations.py -v
+
+      - name: Check the translation table against the sources
+        run: python ci/check_translations.py
+
       # No -G. The generator used to be pinned to "Visual Studio 17 2022",
       # which stopped existing the day windows-latest became the VS 2026
       # image: CMake reported "could not find any instance of Visual Studio"
