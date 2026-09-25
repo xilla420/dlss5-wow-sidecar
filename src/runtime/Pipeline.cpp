@@ -170,6 +170,7 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
     ctx.arch = gpu.arch;
     ctx.dlssPreset = config.dlssPreset;
     ctx.syntheticDepth = config.syntheticDepth;
+    ctx.neuralPasses = config.neuralPasses;
 
     std::vector<std::string> warnings;
     p->dev_.pass = MakeNeuralPass(config.neuralPass, ctx, warnings);

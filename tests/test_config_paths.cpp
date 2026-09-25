@@ -171,3 +171,43 @@ TEST_CASE("a scale of the wrong type warns and stays undecided", "[unit]") {
   REQUIRE(warnings.size() == 1);
   REQUIRE(warnings[0].find("ui_scale") != std::string::npos);
 }
+
+// How many times the neural filter runs. A dial rather than a default: one pass
+// changes a composited frame very little, and three change it mostly by
+// blurring it, which is measurable and was measured.
+
+TEST_CASE("the neural filter runs once by default", "[unit]") {
+  std::vector<std::string> warnings;
+  const auto cfg = ParseConfig("", warnings);
+  REQUIRE(cfg.neuralPasses == 1);
+  REQUIRE(warnings.empty());
+}
+
+TEST_CASE("a pass count round-trips", "[unit]") {
+  Config config;
+  config.neuralPasses = 3;
+
+  std::vector<std::string> warnings;
+  const std::string document = SerializeConfig(config);
+  const auto reread = ParseConfig(document, warnings);
+
+  INFO("document:\n" << document);
+  for (const auto& w : warnings) INFO("warning: " << w);
+  REQUIRE(warnings.empty());
+  REQUIRE(reread.neuralPasses == 3);
+}
+
+TEST_CASE("a pass count out of range is clamped and reported", "[unit]") {
+  // Each pass is a full evaluate. Accepting twenty would mean accepting a
+  // frame time nobody can use, silently.
+  std::vector<std::string> warnings;
+  const auto many = ParseConfig("neural_passes = 20\n", warnings);
+  REQUIRE(many.neuralPasses == 4);
+  REQUIRE(warnings.size() == 1);
+  REQUIRE(warnings[0].find("neural_passes") != std::string::npos);
+
+  warnings.clear();
+  const auto none = ParseConfig("neural_passes = 0\n", warnings);
+  REQUIRE(none.neuralPasses == 1);
+  REQUIRE(warnings.size() == 1);
+}

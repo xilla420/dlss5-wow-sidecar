@@ -24,6 +24,7 @@ std::unique_ptr<INeuralPass> MakeNeuralPass(std::string_view name,
     options.height = context.height;
     options.arch = context.arch;
     options.syntheticDepth = context.syntheticDepth;
+    options.passes = context.neuralPasses;
     if (auto preset = DlssPresetFromName(context.dlssPreset)) {
       options.preset = *preset;
     } else {
