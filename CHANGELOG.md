@@ -117,6 +117,33 @@ commit for weeks.
 
 ---
 
+## 0.1.3
+
+Released before 0.2.0's work was merged, so the two overlap: the RTX 5070 fix
+described under 0.2.0 above shipped here first.
+
+### Fixed
+
+**The RTX 5070 was refused as an unsupported card.** GB205 is `0x2F04`, past an
+unused gap the Blackwell device-id table did not cover, so a shipping RTX 50
+card fell through to Unsupported and the runtime would not start. Checking the
+display driver's own INF rather than the bug report also turned up `0x2F06`, a
+second RTX 5060 in the same block, which was refused for the same reason.
+
+**The overlay was black on a display with scaling set above 100%.** Both
+executables were DPI-unaware, so Windows reported a 2560×1440 game window as
+2048×1152 at 125%. Windows Graphics Capture is not virtualised and delivered
+frames at the real size, so the ring textures and the captured frame had
+different dimensions — and `CopyResource` across a size mismatch returns void
+and copies nothing. The ring slot stayed zeroed and presented as pure black,
+with healthy counters, correct pacing and an empty log, which is why it looked
+like a working pipeline and reproduced even in passthrough.
+
+Both entry points now declare per-monitor-v2 awareness. `DeviceBridge` also
+refuses a frame whose dimensions do not match and logs both sizes, because a
+silent all-black overlay is the worst way for that class of mistake to present
+itself.
+
 ## 0.1.2
 
 ### Fixed
