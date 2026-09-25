@@ -12,6 +12,7 @@
 #include <commdlg.h>
 #include <dwmapi.h>
 #include <shellapi.h>
+#include <shobjidl.h>
 #include <d3d11.h>
 #include <dxgi1_2.h>
 #include <wrl/client.h>
@@ -24,13 +25,16 @@
 #include <imgui.h>
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
+#include <misc/cpp/imgui_stdlib.h>
 
 #include "core/Config.h"
 #include "core/ControlChannel.h"
 #include "core/Log.h"
+#include "core/Utf8.h"
 #include "manager/Install.h"
 #include "manager/Probes.h"
 #include "manager/Theme.h"
+#include "manager/WowInstall.h"
 #include "neural/AddonSettings.h"
 #include "neural/NgxSession.h"
 #include "present/Hud.h"
@@ -248,6 +252,57 @@ fs::path AskForFile(HWND owner, const wchar_t* filter, const wchar_t* title) {
   ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
   if (!GetOpenFileNameW(&ofn)) return {};
   return fs::path(buffer);
+}
+
+// The folder equivalent, for the one folder this program wants to know about.
+// It is a separate function because the folder picker is not the file picker
+// with a flag: GetOpenFileNameW cannot select a directory at all, which is how
+// the WoW folder ended up as a field you had to type a path into.
+//
+// COM is initialised here rather than in wWinMain because this is the only
+// thing in the manager that needs it, and it is uninitialised again only when
+// this call is the one that started it -- decrementing somebody else's
+// reference would tear COM down underneath them.
+fs::path AskForFolder(HWND owner, const wchar_t* title, const fs::path& startAt) {
+  const HRESULT init = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED | COINIT_DISABLE_OLE1DDE);
+  const bool weStartedIt = SUCCEEDED(init);
+
+  fs::path chosen;
+  IFileDialog* dialog = nullptr;
+  if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                 IID_PPV_ARGS(&dialog)))) {
+    DWORD options = 0;
+    if (SUCCEEDED(dialog->GetOptions(&options))) {
+      dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
+    }
+    dialog->SetTitle(title);
+
+    // Open where the current guess points, so confirming a detected folder is
+    // one click rather than a walk down the drive.
+    if (!startAt.empty()) {
+      IShellItem* item = nullptr;
+      if (SUCCEEDED(SHCreateItemFromParsingName(startAt.c_str(), nullptr, IID_PPV_ARGS(&item)))) {
+        dialog->SetFolder(item);
+        item->Release();
+      }
+    }
+
+    if (SUCCEEDED(dialog->Show(owner))) {
+      IShellItem* result = nullptr;
+      if (SUCCEEDED(dialog->GetResult(&result))) {
+        PWSTR path = nullptr;
+        if (SUCCEEDED(result->GetDisplayName(SIGDN_FILESYSPATH, &path)) && path) {
+          chosen = fs::path(path);
+          CoTaskMemFree(path);
+        }
+        result->Release();
+      }
+    }
+    dialog->Release();
+  }
+
+  if (weStartedIt) CoUninitialize();
+  return chosen;
 }
 
 struct LiveState {
@@ -492,9 +547,20 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
   if (auto loaded = LoadConfig(configPath, warnings)) config = *loaded;
   for (const auto& warning : warnings) GlobalLog().Warn("config: " + warning);
 
-  std::string wowDirUtf8;
-  wowDirUtf8.resize(512);
-  auto results = RunAllProbes(sidecarDir, fs::path{});
+  // Guess the folder only when nothing is set. A path the operator chose
+  // outranks the registry on every later launch, and because an empty setting
+  // is omitted from the file entirely, "never configured" and "cleared" are the
+  // same state on purpose: both mean "guess for me".
+  if (config.wowDir.empty()) {
+    if (const auto detected = DetectWowFolder()) {
+      config.wowDir = Utf8FromPath(*detected);
+      GlobalLog().Info("WoW folder detected: " + config.wowDir);
+    } else {
+      GlobalLog().Info("no WoW folder detected; the injector scan needs one to run");
+    }
+  }
+
+  auto results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
 
   // Which page opens first. An optional command-line argument names it, which
   // exists so the README's screenshots can be captured without driving the
@@ -988,7 +1054,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
               setupMessageIsError = !result.ok;
               if (result.ok) {
                 GlobalLog().Info(result.message);
-                results = RunAllProbes(sidecarDir, fs::path(wowDirUtf8.c_str()));
+                results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
               }
             }
           }
@@ -1019,7 +1085,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         setupMessageIsError = !result.ok;
         GlobalLog().Info(result.message);
         confirmUninstall = false;
-        results = RunAllProbes(sidecarDir, fs::path(wowDirUtf8.c_str()));
+        results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
       }
       if (!canRemove) ImGui::EndDisabled();
       ImGui::SameLine();
@@ -1037,11 +1103,41 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
            "build time.");
       ImGui::Dummy(ImVec2(0.0f, 8.0f));
       ImGui::TextUnformatted("WoW folder (used only to scan filenames for injectors)");
-      ImGui::SetNextItemWidth(-170.0f);
-      ImGui::InputText("##wowdir", wowDirUtf8.data(), wowDirUtf8.size());
+      ImGui::SetNextItemWidth(-260.0f);
+      // Bound to the std::string itself, which grows as needed. The fixed
+      // buffer this replaced silently truncated anything past its length, and a
+      // path that has been cut short is a path that scans the wrong folder.
+      if (ImGui::InputText("##wowdir", &config.wowDir)) dirty = true;
       ImGui::SameLine();
+      if (ImGui::Button("Browse...", ImVec2(110.0f, 0.0f))) {
+        const fs::path picked =
+            AskForFolder(hwnd, L"Select the folder that holds Wow.exe",
+                         PathFromUtf8(config.wowDir));
+        if (!picked.empty()) {
+          config.wowDir = Utf8FromPath(picked);
+          save();
+          results = RunAllProbes(sidecarDir, picked);
+        }
+      }
+      ImGui::SameLine();
+      if (ImGui::Button("Detect", ImVec2(90.0f, 0.0f))) {
+        if (const auto detected = DetectWowFolder()) {
+          config.wowDir = Utf8FromPath(*detected);
+          save();
+          results = RunAllProbes(sidecarDir, *detected);
+        } else {
+          // Saying nothing here would read as a dead button. The honest answer
+          // is that the registry has no entry, not that the game is absent.
+          GlobalLog().Warn(
+              "no WoW folder found in the registry -- point at it with Browse");
+        }
+      }
+      Hint("Detected from Battle.net's own uninstall entry. Point this at the "
+           "folder Wow.exe sits in, not its parent: an injector has to be next "
+           "to the executable to be loaded by it. Nothing inside is opened -- "
+           "only the file names are read.");
       if (ImGui::Button("Re-run checks", ImVec2(160.0f, 0.0f))) {
-        results = RunAllProbes(sidecarDir, fs::path(wowDirUtf8.c_str()));
+        results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
         int failures = 0;
         for (const auto& r : results) {
           if (r.state == ProbeState::Fail) ++failures;

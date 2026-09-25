@@ -14,10 +14,10 @@ namespace {
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
-constexpr std::array<std::string_view, 9> kKnownKeys = {
+constexpr std::array<std::string_view, 10> kKnownKeys = {
     "show_hud",     "show_overlay",   "flow_grid_size", "neural_pass",
     "dlss_preset",  "synthetic_depth", "ui_mask",       "ui_mask_feather",
-    "neural"};
+    "neural",       "wow_dir"};
 
 bool IsKnown(std::string_view key) {
   return std::find(kKnownKeys.begin(), kKnownKeys.end(), key) != kKnownKeys.end();
@@ -94,6 +94,32 @@ std::string Number(float value) {
 
 const char* Boolean(bool value) { return value ? "true" : "false"; }
 
+// A TOML basic string, escaped. Windows paths are the reason this exists:
+// every separator is a backslash, which TOML reads as the start of an escape,
+// so writing one raw produces a document that either fails to parse or parses
+// into a different path. A literal string would dodge the backslashes but not
+// an apostrophe, and people do have those in their user names.
+std::string TomlString(std::string_view value) {
+  std::string out = "\"";
+  for (const char c : value) {
+    switch (c) {
+      case '"':  out += "\\\""; break;
+      case '\\': out += "\\\\"; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        // Other control characters are illegal unescaped in a TOML basic
+        // string. They have no business in a path, so they are dropped rather
+        // than given an escape nothing here will ever read back.
+        if (static_cast<unsigned char>(c) >= 0x20) out += c;
+        break;
+    }
+  }
+  out += '"';
+  return out;
+}
+
 }  // namespace
 
 Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
@@ -135,6 +161,17 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
       config.dlssPreset = *value;
     } else {
       warnings.emplace_back("dlss_preset: expected a string; using \"cnn-f\"");
+    }
+  }
+
+  // Not checked for existence here. A folder that has gone away is something to
+  // report on the checks board, where it can be re-pointed, rather than a
+  // reason to drop the setting on load and make the operator find it again.
+  if (const auto node = root.get("wow_dir")) {
+    if (auto value = node->value<std::string>()) {
+      config.wowDir = *value;
+    } else {
+      warnings.emplace_back("wow_dir: expected a string; leaving it unset");
     }
   }
 
@@ -219,6 +256,11 @@ std::string SerializeConfig(const Config& config) {
   out << "flow_grid_size = " << config.flowGridSize << "\n";
   out << "synthetic_depth = " << Number(config.syntheticDepth) << "\n";
   out << "ui_mask_feather = " << config.uiMaskFeather << "\n";
+  // Omitted entirely when unset, so an untouched install does not carry a key
+  // that reads as "configured to nothing".
+  if (!config.wowDir.empty()) {
+    out << "wow_dir = " << TomlString(config.wowDir) << "\n";
+  }
 
   const auto& n = config.neural;
   out << "\n# Passed through to the RenoDX DLSS 5 add-on's [RenoDX.DLSS5]\n"
