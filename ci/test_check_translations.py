@@ -56,7 +56,7 @@ def test_a_key_no_source_uses_is_reported(tmp_path):
     )
     problems = checker.check()
     assert len(problems) == 1
-    assert "no source file" in problems[0]
+    assert "no source file" in problems[0][1]
 
 
 def test_a_duplicate_key_is_reported(tmp_path):
@@ -68,20 +68,20 @@ def test_a_duplicate_key_is_reported(tmp_path):
         'Tr("Detect");\n',
     )
     problems = checker.check()
-    assert any("duplicate key" in p for p in problems)
+    assert any("duplicate key" in message for _, message in problems)
 
 
 def test_a_translation_equal_to_its_key_is_reported(tmp_path):
     build(tmp_path, '    {"Detect", "Detect"},\n', 'Tr("Detect");\n')
     problems = checker.check()
-    assert any("identical to the key" in p for p in problems)
+    assert any("identical to the key" in message for _, message in problems)
 
 
 def test_an_empty_translation_is_reported(tmp_path):
     # Worse than no entry at all: no entry shows English, this shows nothing.
     build(tmp_path, '    {"Detect", ""},\n', 'Tr("Detect");\n')
     problems = checker.check()
-    assert any("empty translation" in p for p in problems)
+    assert any("empty translation" in message for _, message in problems)
 
 
 def test_a_dropped_format_specifier_is_reported(tmp_path):
@@ -93,7 +93,7 @@ def test_a_dropped_format_specifier_is_reported(tmp_path):
         'Tr("%llu presented, %llu dropped");\n',
     )
     problems = checker.check()
-    assert any("format specifiers differ" in p for p in problems)
+    assert any("format specifiers differ" in message for _, message in problems)
 
 
 def test_reordered_specifiers_of_different_types_are_reported(tmp_path):
@@ -103,7 +103,7 @@ def test_reordered_specifiers_of_different_types_are_reported(tmp_path):
         'Tr("Wanted as %s, size %zu");\n',
     )
     problems = checker.check()
-    assert any("format specifiers differ" in p for p in problems)
+    assert any("format specifiers differ" in message for _, message in problems)
 
 
 def test_a_percent_in_prose_is_not_mistaken_for_a_specifier(tmp_path):
@@ -143,7 +143,45 @@ def test_a_table_with_no_rows_is_reported_rather_than_passing(tmp_path):
     build(tmp_path, "", 'Tr("Detect");\n')
     problems = checker.check()
     assert len(problems) == 1
-    assert "no translation rows" in problems[0]
+    assert "no translation rows" in problems[0][1]
+
+
+def test_a_stale_key_warns_rather_than_failing_the_build(tmp_path):
+    # A key with no source use cannot be looked up, so Translate() hands back
+    # the English it was given. One sentence in the wrong language is not worth
+    # blocking every English string edit over, in a language the maintainer
+    # does not read -- so it is reported, and the build still passes.
+    build(tmp_path, '    {"Gone", "Ушло"},\n', 'Tr("Detect");\n')
+    problems = checker.check()
+    assert [severity for severity, _ in problems] == ["warning"]
+    assert checker.main() == 0
+
+
+def test_a_dropped_specifier_still_fails_the_build(tmp_path):
+    # This one does not degrade. The string reaches printf, and a translation
+    # missing its %s reads an argument that was never passed.
+    build(
+        tmp_path,
+        '    {"%s frames", "кадров"},\n',
+        'Tr("%s frames");\n',
+    )
+    problems = checker.check()
+    assert ("error", problems[0][1]) == problems[0]
+    assert any("format specifiers differ" in message for _, message in problems)
+    assert checker.main() == 1
+
+
+def test_warnings_do_not_mask_an_error_in_the_same_table(tmp_path):
+    # A table can be both stale and dangerous. The stale rows must not make the
+    # dangerous one look survivable.
+    build(
+        tmp_path,
+        '    {"Gone", "Ушло"},\n    {"%s frames", "кадров"},\n',
+        'Tr("%s frames");\n',
+    )
+    severities = {severity for severity, _ in checker.check()}
+    assert severities == {"warning", "error"}
+    assert checker.main() == 1
 
 
 if __name__ == "__main__":
