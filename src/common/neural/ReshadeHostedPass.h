@@ -81,7 +81,9 @@ class ReshadeHostedPass : public INeuralPass {
     return DXGI_FORMAT_R16G16B16A16_FLOAT;
   }
 
-  const char* Name() const override { return "reshade-hosted DLSS 5 NR"; }
+  // Carries the pass count when it is more than one, so the manager's Status
+  // page shows what is actually running rather than what the file asks for.
+  const char* Name() const override { return name_.c_str(); }
 
   // Which runtime build is live, for the HUD and the log. Never ambiguous:
   // two builds share a version string and a byte count, so only the digest
@@ -107,6 +109,7 @@ class ReshadeHostedPass : public INeuralPass {
   uint32_t depthRowPitch_ = 0;
   DlssPreset preset_ = DlssPreset::CnnF;
   uint32_t passes_ = 1;
+  std::string name_ = "reshade-hosted DLSS 5 NR";
   // Somewhere for the middle of a multi-pass run to live. Created on
   // first use and only when more than one pass is asked for, because it
   // is the size of a full frame and most runs never need it.

@@ -16,6 +16,7 @@ add_executable(sidecar_tests
   test_nvofa_flow.cpp
   test_motion_vector_math.cpp
   test_config.cpp
+  test_manager_settings.cpp
   test_addon_settings.cpp
   test_install.cpp
   test_log.cpp
@@ -28,6 +29,8 @@ add_executable(sidecar_tests
   test_probes.cpp
   test_neural_pass_factory.cpp
   test_panic_switch.cpp
+  test_hotkey.cpp
+  test_bidi.cpp
   test_wow_install.cpp
   test_utf8.cpp
   test_config_paths.cpp

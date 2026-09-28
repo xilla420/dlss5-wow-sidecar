@@ -20,6 +20,26 @@
 namespace sidecar {
 
 const TranslationPair kRussianTable[] = {
+    {"Interface mode",
+     "Режим интерфейса"},
+    {"Easy",
+     "Простой"},
+    {"All controls and diagnostics.",
+     "Все настройки и диагностика."},
+    {"Everyday controls. Settings are preserved.",
+     "Основные функции. Настройки сохраняются."},
+    {"Your next adventure",
+     "Твоё следующее приключение"},
+    {"Choose a look. Check your setup. Start playing.",
+     "Выбери стиль. Проверь настройку. Начни игру."},
+    {"Discard changes",
+     "Отменить изменения"},
+    {"Settings saved.",
+     "Настройки сохранены."},
+    {"Could not save settings. Check folder permissions and try again.",
+     "Не удалось сохранить настройки. Проверьте права доступа к папке и повторите попытку."},
+    {"Cancel",
+     "Отмена"},
     // ---------------------------------------------------------------- shell
     {"Status", "Состояние"},
     {"Setup", "Установка"},
@@ -420,9 +440,6 @@ const TranslationPair kRussianTable[] = {
 
     {"Save settings", "Сохранить настройки"},
     {"Changes are not saved yet.", "Изменения ещё не сохранены."},
-    {"Nothing here reaches the picture until it is written to sidecar.toml.",
-     "Ничего отсюда не дойдёт до картинки, пока не будет записано в "
-     "sidecar.toml."},
     {"Restart the overlay to apply.", "Перезапустите оверлей, чтобы применить."},
     {"Every individual setting", "Все настройки по отдельности"},
     {"Nothing in here is needed for normal use.",
@@ -594,6 +611,64 @@ const TranslationPair kRussianTable[] = {
      "Остановите его из менеджера, прежде чем запускать другой."},
     {"The graphics device was reset and could not be rebuilt.",
      "Графическое устройство было сброшено и не может быть пересоздано."},
+    // -------------------------------------------------------------- hotkeys
+    {"Hotkeys", "Горячие клавиши"},
+    {"off", "выкл."},
+    {"Start or stop the overlay (while this window is open)",
+     "Запустить или остановить оверлей (пока это окно открыто)"},
+    {"Show or hide the overlay: instant A/B against the untouched game",
+     "Показать или скрыть оверлей: мгновенное сравнение с исходной игрой"},
+    {"Show or hide the frame-time HUD", "Показать или скрыть HUD времени кадра"},
+    {"Panic: take the overlay down, always", "Паника: снять оверлей в любой ситуации"},
+    {"Change them on the Tuning page.", "Изменить их можно на странице «Настройка»."},
+    {"Written like Ctrl+Alt+D or Shift+Alt+F9. Each needs Ctrl, Alt or Win, "
+     "because Windows takes the combination away from the game. Leave one "
+     "empty to switch it off.",
+     "Записываются как Ctrl+Alt+D или Shift+Alt+F9. Нужен Ctrl, Alt или Win, "
+     "потому что Windows забирает сочетание у игры. Оставьте поле пустым, "
+     "чтобы отключить клавишу."},
+    {"Start / stop overlay", "Запуск / остановка"},
+    {"Show / hide overlay", "Показать / скрыть оверлей"},
+    {"Show / hide HUD", "Показать / скрыть HUD"},
+    {"not a key combination", "не сочетание клавиш"},
+
+    // ------------------------------------------------- themes and strength
+    {"Language",
+     "Язык"},
+    {"Interface theme",
+     "Тема интерфейса"},
+    {"Stormwind",
+     "Штормград"},
+    {"Quest log",
+     "Журнал заданий"},
+    {"Neural strength",
+     "Нейронная сила"},
+    {"How many times DLSS 5 runs over each frame. One pass is subtle. Two or "
+     "three push the picture further from the original -- closer to the heavily "
+     "processed look in demonstration videos -- and each extra pass costs another "
+     "full neural pass of GPU time.",
+     "Сколько раз DLSS 5 проходит по каждому кадру. Один проход едва заметен. Два "
+     "или три уводят картинку дальше от оригинала — ближе к сильно обработанному "
+     "виду демонстрационных роликов, — и каждый дополнительный проход стоит ещё "
+     "одного полного нейронного прохода времени GPU."},
+    {"1x  Natural",
+     "1x  Естественно"},
+    {"2x  Stronger",
+     "2x  Сильнее"},
+    {"3x  Strongest",
+     "3x  Максимум"},
+    {"Closest to the game",
+     "Ближе всего к игре"},
+    {"About twice the GPU time",
+     "Примерно вдвое больше времени GPU"},
+    {"About three times the GPU time",
+     "Примерно втрое больше времени GPU"},
+    {"Four passes, set in sidecar.toml. Pick one above to go back.",
+     "Четыре прохода, заданы в sidecar.toml. Выберите один выше, чтобы вернуться."},
+    {"The Off preset runs no neural pass, so this has no effect until you pick "
+     "another look.",
+     "Пресет «Выкл.» не запускает нейронный проход, поэтому это не действует, "
+     "пока вы не выберете другой вид."},
 };
 
 const size_t kRussianTableSize = sizeof(kRussianTable) / sizeof(kRussianTable[0]);

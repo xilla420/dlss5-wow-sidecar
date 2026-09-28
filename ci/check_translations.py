@@ -19,6 +19,9 @@ Also checked, because each has a silent failure mode of its own:
   * format specifiers -- a translation that drops a %s, or reorders two of them
     against the arguments they consume, is not a typo but a crash
 
+Every table is checked: I18nRu.cpp, I18nEs.cpp and the rest, one per
+language, found by name under src/common/core.
+
 Run:  python ci/check_translations.py
 """
 
@@ -31,6 +34,8 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parent.parent
 SOURCES = REPO / "src"
 TABLE = SOURCES / "common/core/I18nRu.cpp"
+# A table is I18n plus a two-letter language code: I18nRu.cpp, I18nZh.cpp.
+TABLE_NAME = re.compile(r"I18n[A-Z][a-z]\.cpp")
 
 # A C++ string literal, allowing escaped quotes, plus any adjacent literals the
 # compiler would concatenate into it.
@@ -74,7 +79,7 @@ def literals_in_sources() -> set[str]:
     """Every string literal in the tree, except the table's own."""
     found: set[str] = set()
     for path in sorted(SOURCES.rglob("*")):
-        if path.suffix not in (".cpp", ".h") or path == TABLE:
+        if path.suffix not in (".cpp", ".h") or path == TABLE or TABLE_NAME.fullmatch(path.name):
             continue
         text = path.read_text(encoding="utf-8")
         for run in RUN.finditer(text):
@@ -82,7 +87,16 @@ def literals_in_sources() -> set[str]:
     return found
 
 
-def check() -> list[tuple[str, str]]:
+def tables() -> list[pathlib.Path]:
+    """Every translation table, Russian first so its report reads as before."""
+    found = sorted((SOURCES / "common" / "core").glob("I18n*.cpp"))
+    found = [path for path in found if TABLE_NAME.fullmatch(path.name)]
+    if TABLE in found:
+        found.remove(TABLE)
+    return [TABLE] + found
+
+
+def check(table: pathlib.Path | None = None) -> list[tuple[str, str]]:
     """Returns (severity, message) pairs, where severity is "error" or "warning".
 
     The split is by what the problem does at runtime, not by how untidy it is.
@@ -98,12 +112,13 @@ def check() -> list[tuple[str, str]]:
     arguments they consume reads a pointer that was never passed. That is a
     crash, and it still fails the build.
     """
+    table = table or TABLE
     problems: list[tuple[str, str]] = []
-    pairs = table_pairs(TABLE.read_text(encoding="utf-8"))
+    pairs = table_pairs(table.read_text(encoding="utf-8"))
     if not pairs:
         # Not a translation problem: the checker cannot see what it is meant to
         # check, so it is not reporting anything trustworthy.
-        return [("error", f"{TABLE.name}: no translation rows found -- has the file moved?")]
+        return [("error", f"{table.name}: no translation rows found -- has the file moved?")]
 
     known = literals_in_sources()
 
@@ -145,46 +160,46 @@ def check() -> list[tuple[str, str]]:
     return problems
 
 
-def table_name() -> str:
+def table_name(table: pathlib.Path | None = None) -> str:
     """The table's path for display, repo-relative where that makes sense.
 
     relative_to raises when the table is not under the repository, which is the
     normal case in this script's own tests -- so main() could not be called
     from them at all until this stopped assuming.
     """
+    table = table or TABLE
     try:
-        return TABLE.relative_to(REPO).as_posix()
+        return table.relative_to(REPO).as_posix()
     except ValueError:
-        return TABLE.name
+        return table.name
 
 
 def main() -> int:
-    problems = check()
-    errors = [message for severity, message in problems if severity == "error"]
-    warnings = [message for severity, message in problems if severity == "warning"]
-    name = table_name()
+    failed = False
+    for table in tables():
+        problems = check(table)
+        errors = [message for severity, message in problems if severity == "error"]
+        warnings = [message for severity, message in problems if severity == "warning"]
+        name = table_name(table)
 
-    # GitHub Actions renders ::warning:: in the run summary without failing the
-    # job, so a stale translation is visible to whoever can fix it rather than
-    # blocking whoever cannot.
-    for message in warnings:
-        print(f"::warning file={name}::{message}")
-    for message in errors:
-        print(f"::error file={name}::{message}")
+        # GitHub Actions renders ::warning:: in the run summary without failing
+        # the job, so a stale translation is visible to whoever can fix it
+        # rather than blocking whoever cannot.
+        for message in warnings:
+            print(f"::warning file={name}::{message}")
+        for message in errors:
+            print(f"::error file={name}::{message}")
 
-    pairs = table_pairs(TABLE.read_text(encoding="utf-8"))
-    if errors:
-        print(f"FAIL {name}: {len(errors)} error(s), "
-              f"{len(warnings)} warning(s)")
-        return 1
-    if warnings:
-        print(f"ok   {name}: {len(pairs)} translations, "
-              f"{len(warnings)} stale -- warned, not fatal")
-        return 0
-    print(
-        f"ok   {name}: {len(pairs)} translations, all keys present"
-    )
-    return 0
+        pairs = table_pairs(table.read_text(encoding="utf-8"))
+        if errors:
+            print(f"FAIL {name}: {len(errors)} error(s), {len(warnings)} warning(s)")
+            failed = True
+        elif warnings:
+            print(f"ok   {name}: {len(pairs)} translations, "
+                  f"{len(warnings)} stale -- warned, not fatal")
+        else:
+            print(f"ok   {name}: {len(pairs)} translations, all keys present")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

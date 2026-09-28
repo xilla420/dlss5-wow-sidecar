@@ -31,6 +31,89 @@ is what the reader is looking for.
 
 ## Unreleased
 
+## 0.4.0
+
+The manager now separates everyday use from detailed tuning, with an illustrated
+welcome page and settings controls that stay within reach.
+
+### Added
+
+- **Easy / Advanced modes.** Easy is the default; Advanced reveals individual
+  rendering settings, editable hotkeys, timing diagnostics and logs. Existing
+  setup, checks, presets, strength choices, themes and languages remain available.
+  Switching modes preserves every rendering value.
+- **Original generated citadel artwork**, embedded in the executable, with
+  theme-aware shading. The header separates preferences from the main action.
+- **Persistent Save / Discard controls** on every page, visible save errors, and
+  an unsaved-change dialog on close. Interface preferences save independently
+  from unfinished rendering edits.
+- Keyboard navigation for primary actions, presets and strength buttons.
+- Regression tests for mode persistence, rendering resets and preset detection.
+
+### Fixed
+
+- Resetting rendering now preserves language, theme, mode, scale, WoW path,
+  hotkeys and mask calibration.
+- Custom hook, HDR and optional strength values no longer appear as Recommended.
+- Start is cancelled when pending settings cannot be saved; add-on settings
+  write failures are reported rather than silently ignored.
+- Fixed the first-run dialog position on scaled displays.
+
+Includes the previously unreleased 0.3.0 changes below: three themes, ten
+languages, 1x/2x/3x neural strength, configurable hotkeys and the project website.
+
+## 0.3.0
+
+A new face for the manager, in ten languages, and a way to make the neural pass
+stronger.
+
+### Added
+
+**Neural strength: 1×, 2× or 3×.** The runtime could already run the neural
+filter more than once over a frame, but only by editing `sidecar.toml`. The
+Tuning page now offers it as three cards. Two and three passes move the picture
+further from the original, towards the look of the demonstration videos, and
+each costs roughly another full pass of GPU time. The Status page shows the pass
+count that is actually live (`reshade-hosted DLSS 5 NR x2`), not the one the file
+asks for.
+
+**Three looks, chosen at the top of the window.** *Stormwind* is the game's Esc
+menu: carved stone, a double gold frame, red buttons with a gold rim.
+*Quest log* is a parchment page in dark ink with a wax-seal start button.
+*Dragonflight* is the modern UI: dark slate, hairlines, gold corner brackets.
+Each has its own typefaces (Cinzel, IM Fell English, Marcellus, over Alegreya
+Sans, Alegreya and Inter), embedded under the SIL Open Font License, and its own
+generated background art. No artwork from the game is used. The setting is
+`theme` in `sidecar.toml`.
+
+**Eight more languages:** Spanish, German, French, Turkish, Arabic, Simplified
+Chinese, Japanese and Korean, alongside English and Russian. The picker lists
+each language in its own script. The font atlas carries only the characters the
+chosen language uses, so Chinese costs a few hundred glyphs rather than tens of
+thousands. Arabic is shaped and laid out right to left by the manager itself,
+since ImGui does neither. A few sentences are assembled from pieces at runtime,
+and in Arabic those stay English rather than come out in the wrong order.
+
+**Hotkeys for everything you do mid-game.** Ctrl+Alt+D shows or hides the
+overlay — the A/B comparison, without alt-tabbing to the manager. Ctrl+Alt+H
+does the same for the frame-time HUD, and Ctrl+Alt+S starts or stops the overlay
+while the manager sits minimised. All three can be rebound or switched off on
+the Tuning page or under `[hotkeys]` in `sidecar.toml`; Ctrl+Alt+Backspace stays
+the panic switch. They are `RegisterHotKey`, like the panic switch — no keyboard
+hook, and the import scan still passes.
+
+**A project website** at https://xilla420.github.io/dlss5-wow-sidecar/, with a
+before/after slider over real captures, so people searching for DLSS 5 in WoW
+find this rather than a forum thread telling them to put ReShade next to
+`Wow.exe`.
+
+### Changed
+
+**The README is short now.** It covers what this is, how to start, the hotkeys,
+the settings and whether it is safe. The measurements, the pipeline, the safety
+invariants and the build instructions moved, unchanged, to
+[docs/HOW-IT-WORKS.md](docs/HOW-IT-WORKS.md).
+
 ## 0.2.0
 
 Three things that were broken or missing rather than merely unpolished, and the

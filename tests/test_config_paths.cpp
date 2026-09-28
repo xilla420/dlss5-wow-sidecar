@@ -103,7 +103,7 @@ TEST_CASE("an unknown language tag warns and falls back to English", "[unit]") {
   // Refusing to start over a typo in a preference would be the wrong trade in
   // a tool that has to run in order to explain itself.
   std::vector<std::string> warnings;
-  const auto cfg = ParseConfig("language = \"de\"\n", warnings);
+  const auto cfg = ParseConfig("language = \"xx\"\n", warnings);
   REQUIRE(cfg.language == "en");
   REQUIRE(warnings.size() == 1);
   REQUIRE(warnings[0].find("language") != std::string::npos);

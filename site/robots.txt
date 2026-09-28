@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://xilla420.github.io/dlss5-wow-sidecar/sitemap.xml

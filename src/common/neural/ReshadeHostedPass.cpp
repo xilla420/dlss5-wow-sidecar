@@ -124,6 +124,7 @@ std::unique_ptr<ReshadeHostedPass> ReshadeHostedPass::Create(
   }
   p->preset_ = options.preset;
   p->passes_ = options.passes < 1 ? 1 : (options.passes > 4 ? 4 : options.passes);
+  if (p->passes_ > 1) p->name_ += " x" + std::to_string(p->passes_);
   return p;
 }
 

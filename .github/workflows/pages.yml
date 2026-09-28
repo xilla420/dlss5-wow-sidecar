@@ -1,0 +1,40 @@
+name: Pages
+
+# The project website at https://xilla420.github.io/dlss5-wow-sidecar/.
+# It is site/ plus the README's screenshots, so the two never drift apart.
+
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', 'docs/screenshots/**', 'assets/icon.ico', '.github/workflows/pages.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble the site
+        run: |
+          mkdir -p _site/screenshots
+          cp -r site/. _site/
+          cp docs/screenshots/*.png docs/screenshots/*.jpg _site/screenshots/
+          cp assets/icon.ico _site/favicon.ico
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
