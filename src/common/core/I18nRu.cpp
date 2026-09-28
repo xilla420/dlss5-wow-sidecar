@@ -594,6 +594,26 @@ const TranslationPair kRussianTable[] = {
      "Остановите его из менеджера, прежде чем запускать другой."},
     {"The graphics device was reset and could not be rebuilt.",
      "Графическое устройство было сброшено и не может быть пересоздано."},
+    // -------------------------------------------------------------- hotkeys
+    {"Hotkeys", "Горячие клавиши"},
+    {"off", "выкл."},
+    {"Start or stop the overlay (while this window is open)",
+     "Запустить или остановить оверлей (пока это окно открыто)"},
+    {"Show or hide the overlay: instant A/B against the untouched game",
+     "Показать или скрыть оверлей: мгновенное сравнение с исходной игрой"},
+    {"Show or hide the frame-time HUD", "Показать или скрыть HUD времени кадра"},
+    {"Panic: take the overlay down, always", "Паника: снять оверлей в любой ситуации"},
+    {"Change them on the Tuning page.", "Изменить их можно на странице «Настройка»."},
+    {"Written like Ctrl+Alt+D or Shift+Alt+F9. Each needs Ctrl, Alt or Win, "
+     "because Windows takes the combination away from the game. Leave one "
+     "empty to switch it off.",
+     "Записываются как Ctrl+Alt+D или Shift+Alt+F9. Нужен Ctrl, Alt или Win, "
+     "потому что Windows забирает сочетание у игры. Оставьте поле пустым, "
+     "чтобы отключить клавишу."},
+    {"Start / stop overlay", "Запуск / остановка"},
+    {"Show / hide overlay", "Показать / скрыть оверлей"},
+    {"Show / hide HUD", "Показать / скрыть HUD"},
+    {"not a key combination", "не сочетание клавиш"},
 };
 
 const size_t kRussianTableSize = sizeof(kRussianTable) / sizeof(kRussianTable[0]);

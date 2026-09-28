@@ -110,6 +110,16 @@ struct Config {
   uint32_t uiMaskFeather = 0;
 
   NeuralSettings neural;
+
+  // Global key combinations, in the spelling ParseHotkey reads ("Ctrl+Alt+D").
+  // An empty string switches that hotkey off. The overlay owns the first two,
+  // so they work while the game has focus and the manager is minimised; the
+  // manager owns start/stop, because the overlay cannot start itself.
+  struct Hotkeys {
+    std::string toggleOverlay = "Ctrl+Alt+D";
+    std::string toggleHud = "Ctrl+Alt+H";
+    std::string startStop = "Ctrl+Alt+S";
+  } hotkeys;
 };
 
 // Never throws. A malformed document, a bad value or an unrecognised key all

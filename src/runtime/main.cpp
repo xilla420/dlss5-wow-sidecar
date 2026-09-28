@@ -9,6 +9,7 @@
 #include "core/Config.h"
 #include "core/ControlChannel.h"
 #include "core/GpuProfile.h"
+#include "core/Hotkey.h"
 #include "core/I18n.h"
 #include "core/Log.h"
 #include "core/Utf8.h"
@@ -226,8 +227,36 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   GlobalLog().Info("overlay running");
   GiveTargetTheForeground(target.hwnd);
 
+  // The in-game switches. Registered here, on the thread that owns the overlay
+  // window, so a toggle never shows or hides a window from the render thread.
+  // WM_HOTKEY arrives in this loop with a null hwnd; the panic switch keeps its
+  // own registration on the render thread, because it has to work even when
+  // this loop is stuck.
+  constexpr int kToggleOverlayId = 0xB00D;
+  constexpr int kToggleHudId = 0xB00E;
+  const auto registerHotkey = [](int id, const std::string& spelling, const char* what) {
+    if (spelling.empty()) return;
+    const auto hotkey = ParseHotkey(spelling);
+    if (hotkey && RegisterThreadHotkey(id, *hotkey)) {
+      GlobalLog().Info(std::string(what) + " hotkey: " + spelling);
+    } else {
+      GlobalLog().Warn(std::string(what) + " hotkey " + spelling +
+                       " could not be registered; another program may own it");
+    }
+  };
+  registerHotkey(kToggleOverlayId, config.hotkeys.toggleOverlay, "toggle overlay");
+  registerHotkey(kToggleHudId, config.hotkeys.toggleHud, "toggle HUD");
+
   MSG msg{};
   while (GetMessageW(&msg, nullptr, 0, 0)) {
+    if (msg.message == WM_HOTKEY && msg.hwnd == nullptr) {
+      if (msg.wParam == kToggleOverlayId) {
+        pipeline->SetOverlayVisible(!pipeline->OverlayVisible());
+      } else if (msg.wParam == kToggleHudId) {
+        pipeline->SetHudVisible(!pipeline->HudVisible());
+      }
+      continue;
+    }
     TranslateMessage(&msg);
     DispatchMessageW(&msg);
 
@@ -251,6 +280,8 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
       break;
     }
   }
+  UnregisterHotKey(nullptr, kToggleOverlayId);
+  UnregisterHotKey(nullptr, kToggleHudId);
   pipeline->Stop();
   return 0;
 }

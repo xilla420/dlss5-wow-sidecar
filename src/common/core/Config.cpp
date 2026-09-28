@@ -2,6 +2,7 @@
 
 #include <toml++/toml.h>
 
+#include "core/Hotkey.h"
 #include "core/I18n.h"
 
 #include <algorithm>
@@ -16,11 +17,11 @@ namespace {
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
-constexpr std::array<std::string_view, 13> kKnownKeys = {
+constexpr std::array<std::string_view, 14> kKnownKeys = {
     "show_hud",     "show_overlay",   "flow_grid_size", "neural_pass",
     "dlss_preset",  "synthetic_depth", "ui_mask",       "ui_mask_feather",
     "neural",       "wow_dir",       "language",      "ui_scale",
-    "neural_passes"};
+    "neural_passes", "hotkeys"};
 
 bool IsKnown(std::string_view key) {
   return std::find(kKnownKeys.begin(), kKnownKeys.end(), key) != kKnownKeys.end();
@@ -210,6 +211,34 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
     }
   }
 
+  // Each one validated on its own, so one typo costs that hotkey its default
+  // and leaves the others alone. An empty string is a deliberate "off".
+  if (const auto node = root.get("hotkeys")) {
+    if (const auto* table = node->as_table()) {
+      const auto readHotkey = [&](std::string_view key, std::string& target) {
+        const auto entry = table->get(key);
+        if (!entry) return;
+        const auto value = entry->value<std::string>();
+        if (!value) {
+          warnings.emplace_back("hotkeys." + std::string(key) +
+                                ": expected a string; keeping " + target);
+        } else if (value->empty()) {
+          target.clear();
+        } else if (const auto parsed = ParseHotkey(*value)) {
+          target = FormatHotkey(*parsed);
+        } else {
+          warnings.emplace_back("hotkeys." + std::string(key) + ": \"" + *value +
+                                "\" is not a key combination; keeping " + target);
+        }
+      };
+      readHotkey("toggle_overlay", config.hotkeys.toggleOverlay);
+      readHotkey("toggle_hud", config.hotkeys.toggleHud);
+      readHotkey("start_stop", config.hotkeys.startStop);
+    } else {
+      warnings.emplace_back("hotkeys: expected a table; keeping the defaults");
+    }
+  }
+
   ReadFloat(root, "synthetic_depth", config.syntheticDepth, 0.0f, 1.0f, warnings);
 
   // Capped at four. Each pass is a full evaluate, and at the resolutions
@@ -311,6 +340,13 @@ std::string SerializeConfig(const Config& config) {
   if (!config.wowDir.empty()) {
     out << "wow_dir = " << TomlString(config.wowDir) << "\n";
   }
+
+  out << "\n# Global hotkeys. An empty string switches one off. Ctrl+Alt+Backspace\n"
+         "# is the panic switch and is not configurable.\n";
+  out << "[hotkeys]\n";
+  out << "toggle_overlay = " << TomlString(config.hotkeys.toggleOverlay) << "\n";
+  out << "toggle_hud = " << TomlString(config.hotkeys.toggleHud) << "\n";
+  out << "start_stop = " << TomlString(config.hotkeys.startStop) << "\n";
 
   const auto& n = config.neural;
   out << "\n# Passed through to the RenoDX DLSS 5 add-on's [RenoDX.DLSS5]\n"
