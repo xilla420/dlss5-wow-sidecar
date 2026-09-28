@@ -9,7 +9,7 @@ $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 Push-Location $root
 try {
-  $version = (Select-String CMakeLists.txt 'project\(.*VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)').Matches[0].Groups[1].Value
+  $version = (Select-String -Path CMakeLists.txt -Pattern 'project\(.*VERSION\s+([0-9]+\.[0-9]+\.[0-9]+)').Matches[0].Groups[1].Value
   $cache = Get-Content (Join-Path $BuildDir 'CMakeCache.txt') -Raw
   if ($cache -notmatch '(?m)^SIDECAR_REQUIRE_SDKS:BOOL=ON\s*$') {
     throw 'Configure with SIDECAR_REQUIRE_SDKS=ON and rebuild before packaging.'
