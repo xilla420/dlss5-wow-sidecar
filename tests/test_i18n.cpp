@@ -96,7 +96,7 @@ TEST_CASE("an unknown tag is refused and leaves the target alone", "[unit]") {
   // preference would be the wrong trade in a tool that has to run in order to
   // explain itself.
   Language parsed = Language::Russian;
-  CHECK_FALSE(ParseLanguageTag("de", parsed));
+  CHECK_FALSE(ParseLanguageTag("xx", parsed));
   CHECK(parsed == Language::Russian);
   CHECK_FALSE(ParseLanguageTag("", parsed));
   CHECK_FALSE(ParseLanguageTag("EN", parsed));   // tags are lower-case
@@ -134,4 +134,70 @@ TEST_CASE("the table is not empty", "[unit]") {
   // Every check above passes trivially over an empty table, so the count is
   // asserted rather than assumed.
   CHECK(RussianEntryCount() > 100);
+}
+
+TEST_CASE("every language's tag round-trips and names itself", "[unit]") {
+  std::set<std::string> tags;
+  for (size_t i = 0; i < kLanguageCount; ++i) {
+    const auto language = static_cast<Language>(i);
+    const std::string tag = TagForLanguage(language);
+    INFO(tag);
+    CHECK(tags.insert(tag).second);
+    Language parsed = Language::English;
+    REQUIRE(ParseLanguageTag(tag, parsed));
+    CHECK(parsed == language);
+    CHECK(std::strlen(NativeLanguageName(language)) > 0);
+  }
+  CHECK(IsRightToLeft(Language::Arabic));
+  CHECK_FALSE(IsRightToLeft(Language::Japanese));
+}
+
+TEST_CASE("every table is sound: no duplicates, no empty rows, most keys covered",
+          "[unit]") {
+  for (size_t i = 1; i < kLanguageCount; ++i) {
+    const auto language = static_cast<Language>(i);
+    INFO(TagForLanguage(language));
+    std::set<std::string> seen;
+    for (size_t row = 0; row < TranslationCount(language); ++row) {
+      const char* english = nullptr;
+      const char* translated = nullptr;
+      TranslationAt(language, row, english, translated);
+      INFO("row " << row << ": " << english);
+      CHECK(seen.insert(english).second);
+      CHECK(std::strlen(translated) > 0);
+    }
+    // Arabic leaves the runtime-joined fragments in English on purpose.
+    CHECK(TranslationCount(language) > 200);
+  }
+}
+
+TEST_CASE("each language translates the navigation", "[unit]") {
+  LanguageGuard guard;
+  for (size_t i = 1; i < kLanguageCount; ++i) {
+    SetLanguage(static_cast<Language>(i));
+    INFO(TagForLanguage(static_cast<Language>(i)));
+    CHECK(std::strcmp(Tr("Start overlay"), "Start overlay") != 0);
+  }
+}
+
+TEST_CASE("visual ordering reorders Arabic but leaves other languages alone", "[unit]") {
+  LanguageGuard guard;
+  struct OrderingGuard {
+    ~OrderingGuard() { SetVisualOrdering(false); }
+  } ordering;
+
+  SetLanguage(Language::Arabic);
+  SetVisualOrdering(false);
+  const std::string logical = Tr("Start overlay");
+  SetVisualOrdering(true);
+  const std::string visual = Tr("Start overlay");
+  CHECK(logical != visual);          // shaped and reversed for ImGui
+  CHECK_FALSE(visual.empty());
+
+  // A string whose two specifiers would swap places in visual order is not
+  // shown in Arabic at all: printf would read its arguments backwards.
+  CHECK(std::string(Tr("%llu presented, %llu dropped")) == "%llu presented, %llu dropped");
+
+  SetLanguage(Language::German);
+  CHECK(std::string(Tr("Start overlay")) == "Overlay starten");
 }

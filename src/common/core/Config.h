@@ -55,6 +55,14 @@ struct Config {
   // does not match them is a worse introduction than one in a second language.
   std::string language = "en";
 
+  // Which of the manager's three looks: "stormwind", "questlog" or
+  // "dragonflight". Checked by the manager, which owns the themes; the
+  // runtime never reads it.
+  std::string theme = "stormwind";
+
+  // Presentation only. Switching modes never rewrites rendering settings.
+  bool advancedMode = false;
+
   // How much bigger than the design size the interface is drawn, on top of
   // whatever the monitor's DPI already asks for. One means "the DPI's answer
   // is right"; the operator raises it when the DPI's answer is not, which is
@@ -110,6 +118,16 @@ struct Config {
   uint32_t uiMaskFeather = 0;
 
   NeuralSettings neural;
+
+  // Global key combinations, in the spelling ParseHotkey reads ("Ctrl+Alt+D").
+  // An empty string switches that hotkey off. The overlay owns the first two,
+  // so they work while the game has focus and the manager is minimised; the
+  // manager owns start/stop, because the overlay cannot start itself.
+  struct Hotkeys {
+    std::string toggleOverlay = "Ctrl+Alt+D";
+    std::string toggleHud = "Ctrl+Alt+H";
+    std::string startStop = "Ctrl+Alt+S";
+  } hotkeys;
 };
 
 // Never throws. A malformed document, a bad value or an unrecognised key all
@@ -130,5 +148,8 @@ std::string SerializeConfig(const Config& config);
 // Writes SerializeConfig to disk. False means the file could not be written --
 // a read-only directory, most likely -- and the caller has to say so.
 bool SaveConfig(const std::filesystem::path& path, const Config& config);
+
+// Reset rendering only; keep installation, interface, hotkeys and calibration.
+void ResetRenderingSettings(Config& config);
 
 }  // namespace sidecar

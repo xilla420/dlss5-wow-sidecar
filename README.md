@@ -1,363 +1,122 @@
-**English** | [Русский](README.ru.md)
-
-[Changelog](CHANGELOG.md)
+**English** | [Русский](README.ru.md) · [Website](https://xilla420.github.io/dlss5-wow-sidecar/) · [Changelog](CHANGELOG.md) · [How it works](docs/HOW-IT-WORKS.md)
 
 # DLSS 5 Sidecar for World of Warcraft
 
-Runs NVIDIA's DLSS 5 Neural Rendering over a live World of Warcraft frame —
-**without loading a single byte of code into `Wow.exe`**.
+[![Download](https://img.shields.io/github/v/release/xilla420/dlss5-wow-sidecar?label=download&color=c8aa6e)](https://github.com/xilla420/dlss5-wow-sidecar/releases/latest)
+[![CI](https://github.com/xilla420/dlss5-wow-sidecar/actions/workflows/ci.yml/badge.svg)](https://github.com/xilla420/dlss5-wow-sidecar/actions/workflows/ci.yml)
+[![Downloads](https://img.shields.io/github/downloads/xilla420/dlss5-wow-sidecar/total?color=1eff00)](https://github.com/xilla420/dlss5-wow-sidecar/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![Windows 11](https://img.shields.io/badge/Windows-11-0078D4)
+![NVIDIA RTX 40 / 50](https://img.shields.io/badge/NVIDIA-RTX%2040%20%2F%2050-76B900)
 
-The game is captured out of the Windows compositor, processed in a separate
-process, and the result is presented back over the top through an opaque
-click-through overlay. WoW never sees this program. There is no injector, no
-detour, no hook, no memory read, and nothing placed in the game's folder.
+**NVIDIA DLSS 5 Neural Rendering for World of Warcraft, without touching the game.**
+A free overlay for RTX 40 and RTX 50 cards. Nothing is injected into `Wow.exe`,
+and nothing goes in your WoW folder.
 
-Measured on an RTX 4080 at 2560×1440 against retail WoW: **p50 11.6 ms, p99
-12.6 ms** capture-to-present, with neural rendering armed.
+![DLSS 5 off and on, on a WoW character](docs/screenshots/dlss-face-comparison.png)
 
-> **Status: working, and rough.** Neural rendering runs on real frames on Ada
-> hardware. What it costs in image quality, and whether it is worth the latency
-> on your setup, is a judgement you make with the game in front of you — the
-> manager ships a one-click A/B against the untouched frame so you can.
-
-## What it actually looks like
-
-![DLSS 5 Neural Rendering on a character face, off and on](docs/screenshots/dlss-face-comparison.png)
-
-Retail WoW, RTX 4080, 2560×1440, shown at 2.4×, **with World of Warcraft's own
-anti-aliasing turned off** — so what you are looking at is the neural pass
-working on raw aliased edges rather than on top of the game's MSAA. The overlay
-was toggled between two captures a third of a second apart with the character
-standing still, so the halves line up.
-
-Look at the hair spikes, the chains behind, and the railing on the right: the
-stair-stepping on the left is gone on the right. Skin and shading pick up depth
-too. It also **darkens the image and deepens facial shadow**, which is a real
-side effect and a matter of taste rather than something a README can settle.
-
-A second comparison on a different scene, showing cloth and an NPC face:
-
-![A second comparison](docs/screenshots/dlss-comparison.png)
-
-**Both are zoomed for a reason.** At 1:1, in motion, the effect is subtler than
-this. Judge it with the one-click A/B in the app rather than from a picture;
-full frames are in [`docs/screenshots/`](docs/screenshots/) as `dlss-on.jpg`
-and `dlss-off.jpg`.
-
-![The manager's Status page](docs/screenshots/status.png)
-
-**Read the frame-rate section before you install this.** The honest headline is
-that the overlay is capped by how fast Windows hands out captured frames, and on
-the machine this was developed against that is 60 per second regardless of the
-239 Hz monitor behind it. The app measures and shows you this directly.
+*Left: the game as it is. Right: with DLSS 5. Retail WoW, RTX 4080, 1440p, zoomed 2.4×.*
+**[Drag the before/after slider on the website →](https://xilla420.github.io/dlss5-wow-sidecar/#compare)**
 
 ---
 
-## Why this exists, and why it is shaped like this
+## Get started
 
-The obvious way to get DLSS 5 into a game that does not support it is to inject
-a DLL beside the executable. For World of Warcraft that is not a trade-off, it
-is a mistake: Blizzard bans accounts for ReShade next to `Wow.exe`, and no
-amount of care on the tool's part changes that.
+1. **[Download the latest release](https://github.com/xilla420/dlss5-wow-sidecar/releases/latest)** and unzip it anywhere *except* your WoW folder.
+2. Run **`wowsidecar-manager.exe`**.
+3. Start WoW in **borderless windowed** mode.
+4. Press **Start overlay** (or **Ctrl+Alt+S**). Then just play.
 
-So this project does the harder thing. It never touches the game process at all.
-Everything happens out-of-process, on a frame that Windows has already finished
-compositing.
+Everything you need is in the zip. The **Checks** page tells you if something is
+wrong, and how to fix it.
 
-That constraint is not a comment in a design document — it is enforced against
-the built binaries on every build and in CI:
+## Easy or Advanced
 
-| Invariant | What it forbids | How it is checked |
-|---|---|---|
-| I1 | Reading or writing another process's memory | Import table scan |
-| I4 | Window hooks of any kind (`SetWindowsHookEx`) | Import table scan |
-| I6 | Synthesising input (`SendInput`, `keybd_event`, …) | Import table scan |
-| I10 | Networking, of any kind, in either binary | Import table scan |
-| I12 | Requesting elevation | Manifest scan |
-| I7/I8/I9 | Installing next to `Wow.exe`, or running with an injector present | Unit-tested predicates |
+The manager opens in **Easy** mode: pick a look and neural strength on **Tuning**,
+check **Setup** and **Checks**, then start the overlay. Switch to **Advanced** in
+the sidebar for individual rendering settings, hotkey editing, detailed timings
+and logs. Switching modes keeps your settings.
 
-`ci/check_imports.py` reads the import directory — static *and* delayed — of
-every executable produced and fails the build if any forbidden symbol appears.
-The claim is checked, not asserted.
+**Save settings** and **Discard changes** stay visible on every page. Rendering
+changes apply the next time the overlay starts. Theme, language and mode are
+saved separately, without committing unfinished tuning changes.
 
-**This is not a guarantee you will never be banned.** No third-party tool can
-offer that. What it is: this program does not do the things people get banned
-for.
+The welcome page uses original generated artwork. Presets, strength controls and
+the primary action support keyboard navigation with visible focus.
 
----
+**You need:** Windows 11 · an NVIDIA **RTX 40** or **RTX 50** card · WoW in borderless windowed mode.
 
-## What you need
+## Hotkeys
 
-| | |
+| Keys | What it does |
 |---|---|
-| **GPU** | NVIDIA RTX 40 (Ada) or RTX 50 (Blackwell). Nothing else is supported, and the manager will say so. |
-| **OS** | Windows 11 |
-| **WoW** | Running in **borderless windowed** mode. Exclusive fullscreen has no compositor surface to capture. |
-| **Resolution** | Up to 1440p on Ada, up to 2160p on Blackwell, is what the GPU matrix intends. Above that it still runs, and tells you it will cost more. |
+| **Ctrl+Alt+S** | Start or stop the overlay |
+| **Ctrl+Alt+D** | Show or hide the overlay: instant before/after |
+| **Ctrl+Alt+H** | Show or hide the frame-time HUD |
+| **Ctrl+Alt+Backspace** | Panic button: take the overlay down, always |
 
----
+You can change the first three on the **Tuning** page in **Advanced** mode.
 
-## Using it
+## Strength: 1×, 2× or 3×
 
-Everything is in the release. Take the latest from
-[**Releases**](../../releases), unzip it anywhere — **not** into your WoW
-folder — and run `wowsidecar-manager.exe`.
+![The neural strength setting](docs/screenshots/strength.png)
 
-The zip contains both executables, the neural runtime, ReShade, the RenoDX
-add-on, and a `sidecar.toml` already set to the Recommended preset. There is
-nothing else to download and nothing to configure before first run. The four
-third-party binaries belong to their authors and are listed in
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+DLSS 5 can run more than once on every frame. **1×** is subtle and closest to the
+game. **2×** and **3×** push the picture further, closer to the heavily processed
+look you see in demo videos. Each extra pass costs roughly one more pass of GPU time.
 
-1. Unzip, run `wowsidecar-manager.exe`.
-2. **Checks** — everything should be green. A failing check always comes with a
-   remedy; a warning is a judgement call left to you.
-3. Start WoW in borderless windowed mode.
-4. **Start overlay.** The manager minimises itself and the overlay comes up.
+## Three looks, ten languages
 
-**Never unzip next to `Wow.exe`.** The manager refuses that arrangement and the
-check is unit-tested — putting ReShade beside the game is the thing Blizzard
-bans people for, and it is not what this does.
-
-![The Setup page](docs/screenshots/setup.png)
-
-The **Setup** tab shows each component, whether it is present, and what it is
-for. You should not need it after a release install; it exists so that a missing
-or replaced file is a named problem with a remedy rather than a silent failure.
-
-**You play normally.** The overlay covers the game completely but passes every
-click straight through to it and never takes focus. If the keyboard stops
-reaching the game, alt-tab to WoW once.
-
-**Ctrl+Alt+Backspace** takes the overlay down from anywhere, without needing the
-manager window — it is a panic switch, and it works even if the manager is gone.
-
-### Tuning
-
-![The Tuning page](docs/screenshots/tuning.png)
-
-Pick a preset. There are four, they are the combinations that have actually been
-run, and the good one is the default:
-
-| Preset | For |
-|---|---|
-| **Recommended** | The tuned default. Full intensity, CNN F, flow grid 4. Start here. |
-| **Softer** | Half intensity. If the picture looks over-processed, or faces and text look waxy. |
-| **Most stable** | CNN E and a finer motion grid. For smearing, or flicker on flames and lights. |
-| **Off (A/B baseline)** | No neural work, same capture and present path. What the overlay costs you before any neural rendering. |
-
-Every individual slider is still there under **Every individual setting**, but
-nothing in there is needed for normal use — and two of them cost real frames:
-**optical flow grid 1** is sixteen times the motion-vector work of grid 4, and
-the add-on's **upscaling** toggle is a work-in-progress path that reports
-falling back to native anyway. The presets set both correctly.
-
-Settings land in `sidecar.toml` and are projected into the `[RenoDX.DLSS5]`
-section of `ReShade.ini`. The add-on reads that file once, when it loads, so **a
-change takes effect at the overlay's next start**, not while it runs.
-
----
-
-## About frame rate
-
-This is the part most people will care about, so here are the measurements
-rather than a claim. All on an RTX 4080, 2560×1440, against retail WoW.
-
-**There is a hard ceiling, and it is not the neural pass.** Windows Graphics
-Capture delivers frames at the desktop compositor's rate. On the development
-machine that is **60 per second**, on a 239 Hz monitor, with the game itself
-running far faster. Nothing in this tool can present a frame that was never
-captured, so 60 is the ceiling — and the Status page shows **CAPTURED FPS**
-beside **OVERLAY FPS** so you can see immediately which one is limiting you.
-
-If they are equal, you are capture-bound and no setting will help. It is worth
-checking whether a multi-monitor setup with mismatched refresh rates is dragging
-the compositor down to the slowest display.
-
-### Cap the game's frame rate
-
-If the overlay is presenting fewer frames than are being captured, the game is
-taking the GPU and starving the neural pass. Measured on the development
-machine, same build and same scene, differing only in whether the game had
-focus:
-
-| World of Warcraft | overlay | GPU wait |
+| Stormwind | Quest log | Dragonflight |
 |---|---|---|
-| focused, uncapped | 11.7 fps | 83 ms |
-| in the background (self-throttling) | **35.2 fps** | **27 ms** |
+| ![Stormwind theme](docs/screenshots/theme-stormwind.png) | ![Quest log theme](docs/screenshots/theme-questlog.png) | ![Dragonflight theme](docs/screenshots/theme-dragonflight.png) |
 
-That is the whole of the "it speeds up when I alt-tab" effect: an unfocused game
-throttles itself and hands the card back.
+Pick the theme and the language at the top of the window. The interface speaks
+English, Русский, Español, Deutsch, Français, Türkçe, العربية, 简体中文, 日本語 and 한국어.
 
-**So cap the game, in the game's own options.** It costs nothing, because the
-overlay can never present faster than the capture rate — every frame WoW renders
-beyond that is thrown away before it reaches the sidecar. Setting **Max
-Foreground FPS** to roughly the captured figure on the Status page converts
-wasted frames into GPU time for the neural pass. The app says this in place when
-it detects the condition.
+![The manager in Japanese, Arabic, Chinese and Korean](docs/screenshots/languages.png)
 
-### Video memory is the thing that will actually ruin it
+## Is it safe for my account?
 
-Watch the **GPU MEMORY** bar on the Status page before you blame the neural
-pass. This is the failure that does not look like itself.
+Here is what it does *not* do, and every build checks it automatically:
 
-Past the per-process budget the driver evicts resources to system memory and
-every frame waits on the PCIe bus. Frame times explode while the GPU sits
-*nearly idle* — on the development machine, measured within a single session:
+- It never loads code into `Wow.exe`, and never reads or writes the game's memory.
+- It puts nothing in your WoW folder, and refuses to run if it finds an injector there.
+- No ReShade next to the game. That is the setup Blizzard bans for.
+- No keyboard hooks, no fake input, no internet access.
 
-| GPU memory state | overlay | GPU wait |
-|---|---|---|
-| comfortable | 40 fps | 24 ms |
-| card ~91% full, 745 MB spilled to system RAM | **6.5 fps** | **153 ms** |
+It reads the finished picture from Windows, the same way OBS or Discord screen
+share does. **No third-party tool can promise you will never be banned.** This one
+simply doesn't do any of the things people get banned for.
+[How that is enforced →](docs/HOW-IT-WORKS.md#why-this-exists-and-why-it-is-shaped-like-this)
 
-Same build, same settings, same scene. Nothing about the pipeline changed. A
-process-level GPU utilisation counter showed the sidecar at *8.8%* while it was
-taking 153 ms a frame, which is the tell: that time is not compute.
+## Good to know
 
-The card's memory is shared with everything else on the desktop, and the
-sidecar is rarely the biggest consumer — on the development machine the desktop
-compositor alone held 9.1 GB of 16. Close browsers, streaming and capture tools,
-and anything compositing a second monitor; lower the game's texture quality.
-**Nothing in this tool can make room**, which is exactly why it tells you.
+- **It won't raise your FPS.** DLSS 5 Neural Rendering changes how the game *looks*.
+  It isn't upscaling or frame generation, and it costs some GPU time.
+- **Windows caps the overlay at your capture rate**, often 60 fps. The Status page
+  shows you exactly where each millisecond goes.
+- **Cap WoW's frame rate** (Max Foreground FPS) to about the captured rate. That
+  frees the GPU for the neural pass, at no cost.
+- **Low on video memory?** Close browsers and streaming tools, or lower texture quality.
+  The app warns you when this happens.
+- It adds about 11 ms of latency. That's fine for questing and raiding, and you
+  may feel it in high-end PvP.
 
-**Underneath that ceiling, two things were worth fixing:**
+## FAQ
 
-| | before | after |
-|---|---|---|
-| Swapchain (2 buffers / latency 1 → 3 / 2) — p50 | 14.16 ms | **11.61 ms** |
-| the same, p99 | 16.86 ms | **12.55 ms** |
-| Default settings → Recommended preset, presented | 52.0 fps | **59.9 fps** |
-| the same, GPU time | 18.1 ms | **13.1 ms** |
+**Does it work with WoW Classic?** Yes. Any client in borderless windowed mode works.
 
-The first was a self-inflicted stall: with two buffers and a maximum frame
-latency of one, presents blocked on the compositor *inside* our own fence wait,
-where it looked exactly like GPU work.
+**Is it an addon?** No. It's a separate Windows program that sits over the game window.
 
-**And one thing that turned out not to be a lever at all.** Asking DLSS for a
-smaller render size does nothing here — measured at a 0.667 render scale, GPU
-time moved from 10.7–11.1 ms to 10.4–10.9 ms, which is noise. The add-on
-substitutes its neural output at *output* resolution, so the render size never
-reaches the work that costs. **There is no DLSS upscaling on this route, and
-therefore no performance win**: what you get is the neural rendering filter at a
-fixed cost set by your capture resolution. It makes the picture different. It
-does not make the game faster.
+**Which GPUs?** GeForce RTX 40 (e.g. 4060–4090) and RTX 50 (e.g. 5060–5090). Older
+cards, AMD and Intel can't run DLSS 5.
+
+**Where are the technical details?** In [How it works](docs/HOW-IT-WORKS.md):
+the safety checks, frame-rate measurements, the pipeline, and how to build it.
 
 ---
 
-## How it works
-
-```
-WoW window ──> Windows Graphics Capture ──> D3D11→D3D12 shared texture
-                                                      │
-                       ┌──────────────────────────────┤
-                       │                              │
-              BGRA8 → R8 luminance            BGRA8 → RGBA16F
-                       │                              │
-                  NVIDIA NVOFA                        │
-                (optical flow)                        │
-                       │                              │
-              flow grid → RG16F motion vectors        │
-                       │                              │
-                       └──────────> DLSS/DLAA evaluate <─── synthetic R32F depth
-                                            │
-                              (RenoDX add-on detours this call
-                               and substitutes neural output)
-                                            │
-                                    UI mask blend
-                                            │
-                         DirectComposition overlay ──> screen
-```
-
-The counter-intuitive part is the neural pass. **It is a DLSS client, not a
-neural-rendering client.** Asking NGX for a neural-rendering feature directly
-does not work — the runtime refuses a session set up by anyone but the NGX core,
-which two spikes established. So the sidecar creates and evaluates an ordinary
-DLSS/DLAA feature, and the RenoDX add-on — loaded by ReShade into *our* process,
-never the game's — detours our own NGX calls and substitutes neural-rendered
-output.
-
-Design and spike write-ups live in [`docs/`](docs/).
-
----
-
-## Limitations, stated plainly
-
-- **There is no depth buffer, and there cannot be one.** This captures DWM's
-  composited output. There is no depth, no albedo, no normals, no camera
-  matrices — one colour image and a motion field estimated from two of them. A
-  constant depth plane is bound because the contract requires the binding. It
-  costs temporal stability under motion rather than preventing NR from running.
-- **Motion vectors are estimated, not rendered.** NVOFA infers them from
-  luminance. They are good, not authoritative, and the CNN presets exist in the
-  UI specifically to contain the cases where they are confidently wrong.
-- **The contract is strictly weaker than any in-process tool's.** That is the
-  price of not touching the game.
-- **SDR only** today. The HDR knobs are carried through to the add-on but the
-  capture path is SDR.
-- **This costs frames; it does not gain them.** See *About frame rate* above:
-  there is no upscaling lever on this route, and the capture rate caps the
-  overlay well below what the game itself achieves.
-- **Latency is real.** ~11.6 ms p50 on a 4080 at 1440p. Fine for questing and
-  raiding; you will feel it in high-end PvP. The manager's Status tab breaks
-  each frame into GPU, idle, CPU and compositor time so you can see where it
-  goes rather than guess.
-- **UI masking exists but has no calibration UI** — rectangles are hand-written
-  into `sidecar.toml` for now.
-- **The add-on's upscaling path is unfinished** and usually reports falling back
-  to native. Off is the tested path.
-
----
-
-## Building
-
-```bash
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Release
-```
-
-Two optional SDKs, neither vendored (I11), both manual downloads:
-
-| | |
-|---|---|
-| `-DDLSS_SDK_DIR=` | [NVIDIA/DLSS](https://github.com/NVIDIA/DLSS). Without it `NgxSession` compiles to a stub that reports why it is unavailable, and the neural pass falls back to passthrough. |
-| `-DNVOF_SDK_DIR=` | NVIDIA Optical Flow SDK, headers only. Without it the pipeline runs on a zero motion field. |
-
-Tests: `build\tests\Release\sidecar_tests.exe "[unit]"`. The `[device]` tests
-need a real NVIDIA GPU and are excluded from CI, because a skipped GPU test must
-not read as a pass.
-
-Translation table: `python ci/check_translations.py`. Translations are keyed
-by their English source text, so editing an English string orphans its
-translation silently — nothing fails to build and nothing looks wrong until
-somebody switches language. This check is what catches that, and it runs in CI.
-
----
-
-## Interface language
-
-The app speaks English by default and Russian by choice. The switch is in the
-manager's header, left of the primary button, and is reachable before the
-first-run notice is accepted — somebody who cannot read the notice has to be
-able to change the language before agreeing to it.
-
-The choice is kept in `sidecar.toml` under `language` (`"en"` or `"ru"`). The
-Windows locale is deliberately not consulted: every screenshot in this document
-is English, and a first run that does not match them is a worse introduction
-than one in a second language.
-
-Log lines stay English in every interface language. The log is what travels
-back to the maintainer in a bug report, and a translated one makes that report
-harder to act on rather than easier.
-
----
-
-## License
-
-The source here is MIT — see [LICENSE](LICENSE).
-
-The four binaries in the release bundle are not ours and are not covered by it.
-They are listed with their publishers and terms in
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md), which also explains why the
-two NVIDIA runtimes should come out of the release assets before this repository
-is made public. `.gitignore` still blocks all of them from the repository
-itself; they ride on the release, not in the tree.
+MIT licensed. The third-party runtimes in the release zip belong to their authors;
+see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Not affiliated with NVIDIA or
+Blizzard Entertainment.

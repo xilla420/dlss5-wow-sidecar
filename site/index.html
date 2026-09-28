@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DLSS 5 for World of Warcraft: neural rendering without injection | DLSS 5 Sidecar</title>
+<meta name="description" content="Free, open-source DLSS 5 Neural Rendering overlay for World of Warcraft on NVIDIA RTX 40 and RTX 50 GPUs. No DLL injection, no ReShade next to Wow.exe, no hooks. Windows 11.">
+<meta name="keywords" content="DLSS 5 WoW, DLSS 5 World of Warcraft, WoW neural rendering, World of Warcraft DLSS, WoW ReShade alternative, RTX 5090 WoW, RTX 4090 WoW, WoW graphics mod, DLSS 5 overlay">
+<link rel="canonical" href="https://xilla420.github.io/dlss5-wow-sidecar/">
+<meta name="theme-color" content="#0b0a08">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="favicon.ico">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="DLSS 5 Sidecar">
+<meta property="og:title" content="DLSS 5 for World of Warcraft, without touching the game">
+<meta property="og:description" content="Open-source DLSS 5 Neural Rendering overlay for WoW on RTX 40/50. No injection, no ReShade beside Wow.exe.">
+<meta property="og:url" content="https://xilla420.github.io/dlss5-wow-sidecar/">
+<meta property="og:image" content="https://xilla420.github.io/dlss5-wow-sidecar/og.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="DLSS 5 for World of Warcraft, without touching the game">
+<meta name="twitter:description" content="Open-source DLSS 5 Neural Rendering overlay for WoW on RTX 40/50. No injection, no ReShade beside Wow.exe.">
+<meta name="twitter:image" content="https://xilla420.github.io/dlss5-wow-sidecar/og.png">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "DLSS 5 Sidecar for World of Warcraft",
+  "alternateName": ["DLSS 5 WoW", "wowsidecar"],
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Windows 11",
+  "description": "Runs NVIDIA DLSS 5 Neural Rendering over a live World of Warcraft frame from outside the game process: no DLL injection, no hooks, no ReShade next to Wow.exe.",
+  "url": "https://xilla420.github.io/dlss5-wow-sidecar/",
+  "downloadUrl": "https://github.com/xilla420/dlss5-wow-sidecar/releases/latest",
+  "codeRepository": "https://github.com/xilla420/dlss5-wow-sidecar",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+  "image": "https://xilla420.github.io/dlss5-wow-sidecar/og.png",
+  "screenshot": "https://xilla420.github.io/dlss5-wow-sidecar/screenshots/dlss-face-comparison.png",
+  "softwareRequirements": "NVIDIA GeForce RTX 40 or RTX 50 series GPU",
+  "softwareVersion": "0.4.0",
+  "inLanguage": ["en", "ru", "es", "de", "fr", "tr", "ar", "zh", "ja", "ko"],
+  "featureList": ["DLSS 5 Neural Rendering overlay", "1x, 2x or 3x neural passes", "Instant before/after hotkey", "Three WoW-style themes", "No injection into Wow.exe"]
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {"@type": "Question", "name": "Can I get banned for using DLSS 5 in World of Warcraft?",
+     "acceptedAnswer": {"@type": "Answer", "text": "No third-party tool can promise that. This one never loads into Wow.exe, never places ReShade or a DLL in the WoW folder, and never reads the game's memory. It reads the finished frame from Windows, the way OBS or Discord screen share does, and the build fails if either program imports an API that could do otherwise."}},
+    {"@type": "Question", "name": "Does DLSS 5 increase FPS in WoW?",
+     "acceptedAnswer": {"@type": "Answer", "text": "No. DLSS 5 Neural Rendering is a filter that changes how the image looks, not Super Resolution or Frame Generation. It costs frames rather than gaining them."}},
+    {"@type": "Question", "name": "Which GPUs support DLSS 5 in WoW?",
+     "acceptedAnswer": {"@type": "Answer", "text": "NVIDIA GeForce RTX 40 series (Ada) and RTX 50 series (Blackwell). Older NVIDIA cards, AMD and Intel GPUs cannot run DLSS 5."}},
+    {"@type": "Question", "name": "Does it work with WoW Classic?",
+     "acceptedAnswer": {"@type": "Answer", "text": "It captures any game window in borderless windowed mode, so Classic clients work the same way. Retail is what it is measured against."}}
+  ]
+}
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Alegreya+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#0b0a08;--panel:#13110d;--line:#5a4a2c;--gold:#c8aa6e;--gold-hi:#f4dfa8;--yellow:#ffd100;--text:#e8e0ce;--muted:#a39a86;--green:#1eff00;--epic:#c98bff;--red:#8e1b12}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--text);font:18px/1.65 "Alegreya Sans",system-ui,sans-serif}
+a{color:var(--gold-hi)}
+.wrap{max-width:1040px;margin:0 auto;padding:0 20px}
+header.top{border-bottom:1px solid var(--line);background:#0e0c09}
+header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:14px;padding-bottom:14px}
+.brand{font:700 18px Cinzel,serif;letter-spacing:.12em;color:var(--gold-hi);text-decoration:none}
+nav a{color:var(--muted);text-decoration:none;margin-left:18px;font-size:16px}
+nav a:hover{color:var(--gold-hi)}
+.hero{padding:64px 0 40px;text-align:center}
+h1,h2,h3{font-family:Cinzel,serif;font-weight:700;color:var(--gold-hi);letter-spacing:.03em;line-height:1.2}
+h1{font-size:clamp(30px,5vw,52px);margin:0 0 14px}
+h1 span{display:block;font-size:.5em;color:var(--yellow);letter-spacing:.14em;margin-top:8px}
+.lede{max-width:720px;margin:0 auto 28px;font-size:20px;color:var(--text)}
+.btn{display:inline-block;font:700 15px Cinzel,serif;letter-spacing:.08em;text-decoration:none;padding:13px 26px;margin:6px;border:2px solid var(--gold);outline:1px solid #2a0604}
+.btn.primary{background:var(--red);color:var(--yellow)}
+.btn.ghost{background:transparent;color:var(--gold-hi)}
+.btn:hover{border-color:var(--gold-hi)}
+.small{font-size:14px;color:var(--muted)}
+figure{margin:28px 0;border:1px solid var(--line);background:var(--panel);padding:10px}
+figure img{width:100%;height:auto;display:block}
+figcaption{font-size:15px;color:var(--muted);padding:10px 4px 2px}
+section{padding:36px 0;border-top:1px solid #221c12}
+h2{font-size:28px;margin:0 0 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);padding:18px}
+.card h3{font-size:17px;margin:0 0 6px}
+.card p{margin:0;font-size:16px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:16px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid #2a2418;vertical-align:top}
+th{color:var(--gold);font-weight:500}
+kbd{font:500 14px ui-monospace,Consolas,monospace;background:#0c0e14;border:1px solid #3a3f4e;border-bottom-width:3px;padding:2px 7px;color:var(--gold-hi);white-space:nowrap}
+details{background:var(--panel);border:1px solid var(--line);padding:14px 18px;margin-bottom:10px}
+summary{cursor:pointer;font-weight:700;color:var(--gold-hi)}
+details p{margin:10px 0 0;color:var(--text)}
+footer{border-top:1px solid var(--line);padding:28px 0 48px;font-size:14px;color:var(--muted)}
+.compare{position:relative;margin:24px 0 8px;border:1px solid var(--line);background:#000;overflow:hidden;aspect-ratio:16/9;touch-action:none;user-select:none}
+.compare img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.compare .after{clip-path:inset(0 0 0 var(--split,50%))}
+.compare .handle{position:absolute;top:0;bottom:0;left:var(--split,50%);width:2px;background:var(--gold-hi);transform:translateX(-1px);pointer-events:none}
+.compare .handle::after{content:"\2194";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:40px;height:40px;border-radius:50%;background:var(--red);border:2px solid var(--gold);color:var(--yellow);display:flex;align-items:center;justify-content:center;font-size:20px}
+.compare .tag{position:absolute;top:10px;padding:3px 10px;background:rgba(0,0,0,.65);border:1px solid var(--line);font:700 13px Cinzel,serif;color:var(--gold-hi);pointer-events:none}
+.compare .tag.l{left:10px}.compare .tag.r{right:10px}
+.compare input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:ew-resize;margin:0}
+.shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.shots figure{margin:0}
+.langs{font-size:17px;color:var(--text)}
+@media (max-width:640px){nav{display:none}.hero{padding-top:40px}}
+</style>
+</head>
+<body>
+<header class="top"><div class="wrap">
+  <a class="brand" href="./">DLSS 5 Sidecar</a>
+  <nav><a href="#compare">Before / after</a><a href="#how">How it works</a><a href="#safety">Safety</a><a href="#hotkeys">Hotkeys</a><a href="#faq">FAQ</a><a href="https://github.com/xilla420/dlss5-wow-sidecar">GitHub</a></nav>
+</div></header>
+
+<main>
+<div class="wrap hero">
+  <h1>DLSS 5 for World of Warcraft<span>without touching the game</span></h1>
+  <p class="lede">A free, open-source overlay that runs NVIDIA DLSS 5 Neural Rendering over WoW on RTX 40 and RTX 50 GPUs. It does not load a single byte of code into <code>Wow.exe</code>: no DLL injection, no hooks, and no ReShade in your game folder.</p>
+  <a class="btn primary" href="https://github.com/xilla420/dlss5-wow-sidecar/releases/latest">Download for Windows</a>
+  <a class="btn ghost" href="https://github.com/xilla420/dlss5-wow-sidecar">View source on GitHub</a>
+  <p class="small">Windows 11 · NVIDIA GeForce RTX 40 / 50 · MIT license · English, Русский, Español, Deutsch, Français, Türkçe, العربية, 简体中文, 日本語, 한국어</p>
+
+  <figure>
+    <img src="screenshots/dlss-face-comparison.png" alt="World of Warcraft character face with DLSS 5 Neural Rendering off on the left and on on the right" width="1956" height="908" loading="eager">
+    <figcaption>Retail WoW on an RTX 4080 at 2560×1440, game anti-aliasing off, zoomed 2.4×. Left: untouched. Right: DLSS 5 Neural Rendering. The stair-stepping goes; the image also gets darker, which is a matter of taste.</figcaption>
+  </figure>
+</div>
+
+<section id="compare"><div class="wrap">
+  <h2>DLSS 5 off / on</h2>
+  <p>Drag across the picture. The same moment in retail WoW, captured a third of a second apart with the overlay toggled: left of the line is the game as it is, right of it is DLSS 5 Neural Rendering.</p>
+  <div class="compare" id="slider" style="--split:50%">
+    <img src="screenshots/dlss-off.jpg" alt="World of Warcraft in Orgrimmar without DLSS 5" width="1920" height="1080" loading="lazy">
+    <img class="after" src="screenshots/dlss-on.jpg" alt="The same Orgrimmar scene with DLSS 5 Neural Rendering" width="1920" height="1080" loading="lazy">
+    <span class="tag l">Off</span><span class="tag r">DLSS 5</span>
+    <div class="handle"></div>
+    <input type="range" min="0" max="100" value="50" step="0.1" aria-label="Move the before and after divider">
+  </div>
+  <p class="small">1920×1080 frames, RTX 4080. In motion and at 1:1 the effect is subtler than any zoomed crop: judge it in the app with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd>.</p>
+  <figure>
+    <img src="screenshots/dlss-comparison.png" alt="A second off and on comparison showing cloth and an NPC face" width="1716" height="1452" loading="lazy">
+    <figcaption>A second scene: cloth and an NPC face, off and on.</figcaption>
+  </figure>
+</div></section>
+
+<section id="strength"><div class="wrap">
+  <h2>Choose the strength: 1×, 2× or 3×</h2>
+  <p>DLSS 5 can run more than once over every frame. One pass is subtle and closest to the game. Two or three push the picture further, towards the heavily processed look of the demo videos. Each extra pass costs roughly one more pass of GPU time.</p>
+  <figure><img src="screenshots/strength.png" alt="The neural strength setting with 1x, 2x and 3x options" width="1264" height="334" loading="lazy"></figure>
+</div></section>
+
+<section id="themes"><div class="wrap">
+  <h2>Easy to start. Advanced when you need it.</h2><p>Pick a look and strength in Easy mode. Switch to Advanced for detailed tuning, hotkeys and diagnostics. Your settings stay with you. Three themes and ten languages remain available.</p>
+  <div class="shots">
+    <figure><img src="screenshots/theme-stormwind.png" alt="The manager in the Stormwind theme" width="1264" height="384" loading="lazy"><figcaption>Stormwind: stone and gold</figcaption></figure>
+    <figure><img src="screenshots/theme-questlog.png" alt="The manager in the Quest log parchment theme" width="1264" height="384" loading="lazy"><figcaption>Quest log: parchment and ink</figcaption></figure>
+    <figure><img src="screenshots/theme-dragonflight.png" alt="The manager in the Dragonflight theme" width="1264" height="384" loading="lazy"><figcaption>Dragonflight: the modern UI</figcaption></figure>
+  </div>
+  <figure><img src="screenshots/languages.png" alt="The manager in Japanese, Arabic, Chinese and Korean" width="1264" height="390" loading="lazy"><figcaption>Japanese, Arabic, Chinese and Korean. Also English, Russian, Spanish, German, French and Turkish.</figcaption></figure>
+</div></section>
+
+<section id="how"><div class="wrap">
+  <h2>How it works</h2>
+  <div class="grid">
+    <div class="card"><h3>Capture</h3><p>Windows Graphics Capture reads WoW's finished frame from the desktop compositor, the same way OBS does.</p></div>
+    <div class="card"><h3>Neural pass</h3><p>A separate process estimates motion with NVIDIA optical flow and runs DLSS 5 Neural Rendering on the frame.</p></div>
+    <div class="card"><h3>Present</h3><p>The result is drawn in a click-through overlay over the game window. You play normally underneath it.</p></div>
+    <div class="card"><h3>A/B in one key</h3><p>Hide the overlay with a hotkey to compare against the untouched game, instantly, mid-fight.</p></div>
+  </div>
+  <p class="small">Measured on an RTX 4080 at 1440p: 11.6 ms p50, 12.6 ms p99 capture-to-present. It changes how the game looks; it does not raise your frame rate.</p>
+</div></section>
+
+<section id="safety"><div class="wrap">
+  <h2>Why it's shaped like this</h2>
+  <p>ReShade next to <code>Wow.exe</code> is how WoW accounts get banned. So this tool never goes near the game process. The rules are checked against the built programs on every build, not just promised:</p>
+  <table>
+    <tr><th>Never</th><th>Checked by</th></tr>
+    <tr><td>Reads or writes another process's memory</td><td>Import table scan in CI</td></tr>
+    <tr><td>Installs window or keyboard hooks</td><td>Import table scan in CI</td></tr>
+    <tr><td>Synthesises input</td><td>Import table scan in CI</td></tr>
+    <tr><td>Touches the network</td><td>Import table scan in CI</td></tr>
+    <tr><td>Installs next to <code>Wow.exe</code>, or runs with an injector present</td><td>Unit-tested checks at startup</td></tr>
+  </table>
+  <p class="small">No third-party tool can guarantee you will never be banned. This one does not do the things people get banned for.</p>
+</div></section>
+
+<section id="hotkeys"><div class="wrap">
+  <h2>Hotkeys</h2>
+  <table>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd></td><td>Start or stop the overlay</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd></td><td>Show or hide the overlay, for an instant before/after</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>H</kbd></td><td>Show or hide the frame-time HUD</td></tr>
+    <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Backspace</kbd></td><td>Panic switch: take the overlay down from anywhere</td></tr>
+  </table>
+  <p class="small">The first three are rebindable in the app. They use plain <code>RegisterHotKey</code>, with no keyboard hook.</p>
+</div></section>
+
+<section id="requirements"><div class="wrap">
+  <h2>What you need</h2>
+  <div class="grid">
+    <div class="card"><h3>GPU</h3><p>NVIDIA GeForce RTX 40 (Ada) or RTX 50 (Blackwell).</p></div>
+    <div class="card"><h3>System</h3><p>Windows 11.</p></div>
+    <div class="card"><h3>Game</h3><p>World of Warcraft in borderless windowed mode. Retail and Classic clients both work.</p></div>
+    <div class="card"><h3>Install</h3><p>Unzip anywhere except your WoW folder and run <code>wowsidecar-manager.exe</code>.</p></div>
+  </div>
+</div></section>
+
+<section id="faq"><div class="wrap">
+  <h2>Frequently asked questions</h2>
+  <details open><summary>Can I get banned for using DLSS 5 in WoW?</summary><p>No third-party tool can promise that. This one never loads into Wow.exe, never places ReShade or a DLL in the WoW folder, and never reads the game's memory. It reads the finished frame from Windows, like OBS or Discord screen share.</p></details>
+  <details><summary>Does DLSS 5 increase FPS in World of Warcraft?</summary><p>No. DLSS 5 Neural Rendering is a filter that changes how the image looks, not Super Resolution or Frame Generation. It costs frames rather than gaining them, and the app shows you exactly where each millisecond goes.</p></details>
+  <details><summary>Which graphics cards are supported?</summary><p>NVIDIA GeForce RTX 40 series and RTX 50 series. Older NVIDIA cards, AMD and Intel GPUs cannot run DLSS 5.</p></details>
+  <details><summary>Is it a WoW addon?</summary><p>No. Addons are Lua inside the game's interface. This is a separate Windows program that sits over the game window.</p></details>
+  <details><summary>Why not use ReShade with a DLSS 5 addon?</summary><p>Because ReShade next to Wow.exe is what gets accounts banned. Here ReShade loads into the sidecar's own process, never the game's.</p></details>
+</div></section>
+</main>
+
+<footer><div class="wrap">
+  DLSS 5 Sidecar is an independent open-source project, MIT licensed. It is not affiliated with or endorsed by NVIDIA or Blizzard Entertainment. DLSS is a trademark of NVIDIA Corporation; World of Warcraft is a trademark of Blizzard Entertainment.
+  · <a href="https://github.com/xilla420/dlss5-wow-sidecar">Source</a> · <a href="https://github.com/xilla420/dlss5-wow-sidecar/releases">Releases</a> · <a href="https://github.com/xilla420/dlss5-wow-sidecar/blob/main/CHANGELOG.md">Changelog</a>
+</div></footer>
+<script>
+(function () {
+  var box = document.getElementById("slider");
+  if (!box) return;
+  var input = box.querySelector("input");
+  function set(v) { box.style.setProperty("--split", v + "%"); }
+  input.addEventListener("input", function () { set(input.value); });
+})();
+</script>
+</body>
+</html>

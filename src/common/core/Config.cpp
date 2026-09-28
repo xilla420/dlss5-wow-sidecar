@@ -2,6 +2,7 @@
 
 #include <toml++/toml.h>
 
+#include "core/Hotkey.h"
 #include "core/I18n.h"
 
 #include <algorithm>
@@ -16,11 +17,11 @@ namespace {
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
-constexpr std::array<std::string_view, 13> kKnownKeys = {
+constexpr std::array<std::string_view, 16> kKnownKeys = {
     "show_hud",     "show_overlay",   "flow_grid_size", "neural_pass",
     "dlss_preset",  "synthetic_depth", "ui_mask",       "ui_mask_feather",
     "neural",       "wow_dir",       "language",      "ui_scale",
-    "neural_passes"};
+    "neural_passes", "hotkeys", "theme", "advanced_mode"};
 
 bool IsKnown(std::string_view key) {
   return std::find(kKnownKeys.begin(), kKnownKeys.end(), key) != kKnownKeys.end();
@@ -138,6 +139,7 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
   }
 
   ReadBool(root, "show_hud", config.showHud, warnings);
+  ReadBool(root, "advanced_mode", config.advancedMode, warnings);
   ReadBool(root, "show_overlay", config.showOverlay, warnings);
 
   if (const auto node = root.get("flow_grid_size")) {
@@ -183,6 +185,14 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
     }
   }
 
+  if (const auto node = root.get("theme")) {
+    if (auto value = node->value<std::string>()) {
+      config.theme = *value;
+    } else {
+      warnings.emplace_back("theme: expected a string; using \"stormwind\"");
+    }
+  }
+
   // Not checked for existence here. A folder that has gone away is something to
   // report on the checks board, where it can be re-pointed, rather than a
   // reason to drop the setting on load and make the operator find it again.
@@ -207,6 +217,34 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
       }
     } else {
       warnings.emplace_back("ui_scale: expected a number; deciding automatically");
+    }
+  }
+
+  // Each one validated on its own, so one typo costs that hotkey its default
+  // and leaves the others alone. An empty string is a deliberate "off".
+  if (const auto node = root.get("hotkeys")) {
+    if (const auto* table = node->as_table()) {
+      const auto readHotkey = [&](std::string_view key, std::string& target) {
+        const auto entry = table->get(key);
+        if (!entry) return;
+        const auto value = entry->value<std::string>();
+        if (!value) {
+          warnings.emplace_back("hotkeys." + std::string(key) +
+                                ": expected a string; keeping " + target);
+        } else if (value->empty()) {
+          target.clear();
+        } else if (const auto parsed = ParseHotkey(*value)) {
+          target = FormatHotkey(*parsed);
+        } else {
+          warnings.emplace_back("hotkeys." + std::string(key) + ": \"" + *value +
+                                "\" is not a key combination; keeping " + target);
+        }
+      };
+      readHotkey("toggle_overlay", config.hotkeys.toggleOverlay);
+      readHotkey("toggle_hud", config.hotkeys.toggleHud);
+      readHotkey("start_stop", config.hotkeys.startStop);
+    } else {
+      warnings.emplace_back("hotkeys: expected a table; keeping the defaults");
     }
   }
 
@@ -293,6 +331,8 @@ std::string SerializeConfig(const Config& config) {
          "# the next launch and overwritten on the next save.\n\n";
 
   out << "language = " << TomlString(config.language) << "\n";
+  out << "theme = " << TomlString(config.theme) << "\n";
+  out << "advanced_mode = " << Boolean(config.advancedMode) << "\n";
   out << "neural_pass = \"" << config.neuralPass << "\"\n";
   out << "dlss_preset = \"" << config.dlssPreset << "\"\n";
   out << "show_hud = " << Boolean(config.showHud) << "\n";
@@ -311,6 +351,13 @@ std::string SerializeConfig(const Config& config) {
   if (!config.wowDir.empty()) {
     out << "wow_dir = " << TomlString(config.wowDir) << "\n";
   }
+
+  out << "\n# Global hotkeys. An empty string switches one off. Ctrl+Alt+Backspace\n"
+         "# is the panic switch and is not configurable.\n";
+  out << "[hotkeys]\n";
+  out << "toggle_overlay = " << TomlString(config.hotkeys.toggleOverlay) << "\n";
+  out << "toggle_hud = " << TomlString(config.hotkeys.toggleHud) << "\n";
+  out << "start_stop = " << TomlString(config.hotkeys.startStop) << "\n";
 
   const auto& n = config.neural;
   out << "\n# Passed through to the RenoDX DLSS 5 add-on's [RenoDX.DLSS5]\n"
@@ -347,7 +394,20 @@ bool SaveConfig(const std::filesystem::path& path, const Config& config) {
   if (!file) return false;
   const std::string text = SerializeConfig(config);
   file.write(text.data(), static_cast<std::streamsize>(text.size()));
+  file.flush();
   return file.good();
+}
+
+void ResetRenderingSettings(Config& config) {
+  const Config defaults;
+  config.showHud = defaults.showHud;
+  config.showOverlay = defaults.showOverlay;
+  config.flowGridSize = defaults.flowGridSize;
+  config.neuralPass = defaults.neuralPass;
+  config.dlssPreset = defaults.dlssPreset;
+  config.syntheticDepth = defaults.syntheticDepth;
+  config.neuralPasses = defaults.neuralPasses;
+  config.neural = defaults.neural;
 }
 
 }  // namespace sidecar

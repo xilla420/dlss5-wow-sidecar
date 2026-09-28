@@ -186,3 +186,23 @@ def test_warnings_do_not_mask_an_error_in_the_same_table(tmp_path):
 
 if __name__ == "__main__":
     sys.exit(pytest.main([__file__, "-v"]))
+
+
+def test_every_language_table_is_checked_not_only_russian(tmp_path, capsys):
+    # A broken specifier in a second language has to fail the run just as one
+    # in Russian does -- a table the checker never opens is a table nobody
+    # checks.
+    build(
+        tmp_path,
+        '    {"%zu files", "%zu файлов"},\n',
+        'ImGui::Text(Tr("%zu files"), n);\n',
+    )
+    (checker.TABLE.parent / "I18nDe.cpp").write_text(
+        "const TranslationPair kGermanTable[] = {\n"
+        '    {"%zu files", "%s Dateien"},\n'
+        "};\n",
+        encoding="utf-8",
+    )
+    assert [path.name for path in checker.tables()] == ["I18nRu.cpp", "I18nDe.cpp"]
+    assert checker.main() == 1
+    assert "I18nDe.cpp" in capsys.readouterr().out
