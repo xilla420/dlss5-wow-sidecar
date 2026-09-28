@@ -29,6 +29,7 @@ add_executable(sidecar_tests
   test_neural_pass_factory.cpp
   test_panic_switch.cpp
   test_hotkey.cpp
+  test_bidi.cpp
   test_wow_install.cpp
   test_utf8.cpp
   test_config_paths.cpp

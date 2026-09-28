@@ -614,6 +614,44 @@ const TranslationPair kRussianTable[] = {
     {"Show / hide overlay", "Показать / скрыть оверлей"},
     {"Show / hide HUD", "Показать / скрыть HUD"},
     {"not a key combination", "не сочетание клавиш"},
+
+    // ------------------------------------------------- themes and strength
+    {"Language",
+     "Язык"},
+    {"Interface theme",
+     "Тема интерфейса"},
+    {"Stormwind",
+     "Штормград"},
+    {"Quest log",
+     "Журнал заданий"},
+    {"Neural strength",
+     "Нейронная сила"},
+    {"How many times DLSS 5 runs over each frame. One pass is subtle. Two or "
+     "three push the picture further from the original -- closer to the heavily "
+     "processed look in demonstration videos -- and each extra pass costs another "
+     "full neural pass of GPU time.",
+     "Сколько раз DLSS 5 проходит по каждому кадру. Один проход едва заметен. Два "
+     "или три уводят картинку дальше от оригинала — ближе к сильно обработанному "
+     "виду демонстрационных роликов, — и каждый дополнительный проход стоит ещё "
+     "одного полного нейронного прохода времени GPU."},
+    {"1x  Natural",
+     "1x  Естественно"},
+    {"2x  Stronger",
+     "2x  Сильнее"},
+    {"3x  Strongest",
+     "3x  Максимум"},
+    {"Closest to the game",
+     "Ближе всего к игре"},
+    {"About twice the GPU time",
+     "Примерно вдвое больше времени GPU"},
+    {"About three times the GPU time",
+     "Примерно втрое больше времени GPU"},
+    {"Four passes, set in sidecar.toml. Pick one above to go back.",
+     "Четыре прохода, заданы в sidecar.toml. Выберите один выше, чтобы вернуться."},
+    {"The Off preset runs no neural pass, so this has no effect until you pick "
+     "another look.",
+     "Пресет «Выкл.» не запускает нейронный проход, поэтому это не действует, "
+     "пока вы не выберете другой вид."},
 };
 
 const size_t kRussianTableSize = sizeof(kRussianTable) / sizeof(kRussianTable[0]);

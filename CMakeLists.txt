@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 # The version lives here and nowhere else. cmake/Version.h.in carries it into
 # the binaries, so the window title, the release tag and the changelog heading
 # cannot drift apart.
-project(dlss5-wow-sidecar VERSION 0.2.0 LANGUAGES CXX)
+project(dlss5-wow-sidecar VERSION 0.3.0 LANGUAGES CXX)
 
 configure_file(cmake/Version.h.in ${CMAKE_BINARY_DIR}/generated/core/Version.h @ONLY)
 
@@ -85,6 +85,15 @@ target_sources(sidecar_common PRIVATE
   src/common/core/Utf8.cpp
   src/common/core/I18n.cpp
   src/common/core/I18nRu.cpp
+  src/common/core/I18nEs.cpp
+  src/common/core/I18nDe.cpp
+  src/common/core/I18nFr.cpp
+  src/common/core/I18nTr.cpp
+  src/common/core/I18nAr.cpp
+  src/common/core/I18nZh.cpp
+  src/common/core/I18nJa.cpp
+  src/common/core/I18nKo.cpp
+  src/common/core/Bidi.cpp
   src/common/gpu/DeviceBridge.cpp
   src/common/gpu/FormatNormalize.cpp
   src/common/gpu/Luminance.cpp
@@ -179,6 +188,7 @@ add_invariant_check(wowsidecar)
 
 add_executable(wowsidecar-manager WIN32
   src/sidecar.rc
+  src/manager/ManagerArt.rc
   src/manager/main.cpp
   src/manager/Install.cpp
   src/manager/Probes.cpp
@@ -195,7 +205,7 @@ add_executable(wowsidecar-manager WIN32
   ${imgui_SOURCE_DIR}/backends/imgui_impl_dx11.cpp)
 target_include_directories(wowsidecar-manager PRIVATE
   src ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
-target_link_libraries(wowsidecar-manager PRIVATE sidecar_common shell32 comdlg32 dwmapi)
+target_link_libraries(wowsidecar-manager PRIVATE sidecar_common shell32 comdlg32 dwmapi windowscodecs ole32)
 
 # Keep ReShade out of the manager.
 #

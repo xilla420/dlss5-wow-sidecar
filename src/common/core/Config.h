@@ -55,6 +55,11 @@ struct Config {
   // does not match them is a worse introduction than one in a second language.
   std::string language = "en";
 
+  // Which of the manager's three looks: "stormwind", "questlog" or
+  // "dragonflight". Checked by the manager, which owns the themes; the
+  // runtime never reads it.
+  std::string theme = "stormwind";
+
   // How much bigger than the design size the interface is drawn, on top of
   // whatever the monitor's DPI already asks for. One means "the DPI's answer
   // is right"; the operator raises it when the DPI's answer is not, which is
