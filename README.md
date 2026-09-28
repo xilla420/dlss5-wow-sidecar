@@ -1,11 +1,19 @@
-**English** | [Русский](README.ru.md)
-
-[Changelog](CHANGELOG.md)
+**English** | [Русский](README.ru.md) · [Website](https://xilla420.github.io/dlss5-wow-sidecar/) · [Changelog](CHANGELOG.md)
 
 # DLSS 5 Sidecar for World of Warcraft
 
-Runs NVIDIA's DLSS 5 Neural Rendering over a live World of Warcraft frame —
-**without loading a single byte of code into `Wow.exe`**.
+[![Latest release](https://img.shields.io/github/v/release/xilla420/dlss5-wow-sidecar?label=download&color=c8aa6e)](https://github.com/xilla420/dlss5-wow-sidecar/releases/latest)
+[![CI](https://github.com/xilla420/dlss5-wow-sidecar/actions/workflows/ci.yml/badge.svg)](https://github.com/xilla420/dlss5-wow-sidecar/actions/workflows/ci.yml)
+[![Downloads](https://img.shields.io/github/downloads/xilla420/dlss5-wow-sidecar/total?color=1eff00)](https://github.com/xilla420/dlss5-wow-sidecar/releases)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+![Windows 11](https://img.shields.io/badge/Windows-11-0078D4)
+![NVIDIA RTX 40 / 50](https://img.shields.io/badge/NVIDIA-RTX%2040%20%2F%2050-76B900)
+
+**DLSS 5 for WoW, without touching the game.** A free, open-source overlay that
+runs NVIDIA's DLSS 5 Neural Rendering over World of Warcraft (retail) on RTX 40
+and RTX 50 series GPUs — **without loading a single byte of code into
+`Wow.exe`**. No ReShade next to the game, no DLL injection, no hooks, no memory
+reads.
 
 The game is captured out of the Windows compositor, processed in a separate
 process, and the result is presented back over the top through an opaque
@@ -129,8 +137,21 @@ or replaced file is a named problem with a remedy rather than a silent failure.
 click straight through to it and never takes focus. If the keyboard stops
 reaching the game, alt-tab to WoW once.
 
-**Ctrl+Alt+Backspace** takes the overlay down from anywhere, without needing the
-manager window — it is a panic switch, and it works even if the manager is gone.
+### Hotkeys
+
+Everything you need mid-game is on a key, so the manager can stay minimised:
+
+| Keys | Does |
+|---|---|
+| **Ctrl+Alt+S** | Start or stop the overlay (while the manager is open, even minimised) |
+| **Ctrl+Alt+D** | Show or hide the overlay — an instant A/B against the untouched game |
+| **Ctrl+Alt+H** | Show or hide the frame-time HUD |
+| **Ctrl+Alt+Backspace** | Panic switch: takes the overlay down from anywhere, even if the manager is gone |
+
+The first three can be changed or switched off on the **Tuning** page, or under
+`[hotkeys]` in `sidecar.toml`. Every one is a plain `RegisterHotKey` — no
+keyboard hook, nothing near the game — and Windows keeps the combination from
+reaching WoW, which is why each needs Ctrl, Alt or Win.
 
 ### Tuning
 
@@ -348,6 +369,39 @@ than one in a second language.
 Log lines stay English in every interface language. The log is what travels
 back to the maintainer in a bug report, and a translated one makes that report
 harder to act on rather than easier.
+
+---
+
+## FAQ
+
+**Can I get banned for using DLSS 5 in World of Warcraft with this?**
+Nobody can promise that for any third-party tool. What this one does not do is
+the thing people are banned for: it never loads into `Wow.exe`, never places
+ReShade or any DLL in the WoW folder, and never reads or writes the game's
+memory. It only reads the finished frame from Windows, the same way OBS or
+Discord screen share does. The build fails if either executable imports an API
+that could do otherwise.
+
+**Does it increase FPS in WoW?**
+No. This is DLSS 5 *Neural Rendering* — a filter that changes how the image
+looks — not DLSS Super Resolution or Frame Generation. It costs frames rather
+than gaining them; see [About frame rate](#about-frame-rate).
+
+**Which GPUs are supported?**
+NVIDIA GeForce RTX 40 series (Ada, e.g. RTX 4060–4090) and RTX 50 series (Blackwell,
+e.g. RTX 5060–5090). Older cards, AMD and Intel GPUs cannot run DLSS 5.
+
+**Does it work with WoW Classic, Cataclysm Classic or private servers?**
+It captures any window running in borderless windowed mode, so any client that
+runs in that mode works the same way. Retail is what it is measured against.
+
+**Is it an addon?**
+No. WoW addons are Lua inside the game's UI; this is a separate Windows program
+that sits over the game window.
+
+**Why not just use ReShade with a DLSS 5 addon?**
+Because ReShade beside `Wow.exe` is exactly what gets WoW accounts banned. Here
+ReShade loads into the sidecar's own process, never the game's.
 
 ---
 

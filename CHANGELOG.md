@@ -31,6 +31,21 @@ is what the reader is looking for.
 
 ## Unreleased
 
+### Added
+
+**Hotkeys for everything you do mid-game.** Ctrl+Alt+D shows or hides the
+overlay — the A/B comparison, without alt-tabbing to the manager. Ctrl+Alt+H
+does the same for the frame-time HUD, and Ctrl+Alt+S starts or stops the overlay
+while the manager sits minimised. All three can be rebound or switched off on
+the Tuning page or under `[hotkeys]` in `sidecar.toml`; Ctrl+Alt+Backspace stays
+the panic switch. They are `RegisterHotKey`, like the panic switch — no keyboard
+hook, and the import scan still passes.
+
+**A project website** at https://xilla420.github.io/dlss5-wow-sidecar/, so
+people searching for DLSS 5 in WoW find this rather than a forum thread telling
+them to put ReShade next to `Wow.exe`. The README gained an FAQ for the same
+reason.
+
 ## 0.2.0
 
 Three things that were broken or missing rather than merely unpolished, and the

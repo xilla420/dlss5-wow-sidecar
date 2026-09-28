@@ -21,6 +21,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -31,6 +32,7 @@
 
 #include "core/Config.h"
 #include "core/ControlChannel.h"
+#include "core/Hotkey.h"
 #include "core/I18n.h"
 #include "core/Log.h"
 #include "core/Utf8.h"
@@ -756,9 +758,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
   std::vector<std::string> overlayLog;
   double overlayLogReadAt = -1.0;
 
+  // Declared ahead of save(), which re-registers the start/stop hotkey.
+  std::function<void()> onSaved;
   const auto save = [&]() {
     if (SaveConfig(configPath, config)) {
       dirty = false;
+      if (onSaved) onSaved();
       GlobalLog().Info("settings saved");
       WriteNeuralSettings(sidecarDir / "ReShade.ini", config.neural);
     } else {
@@ -780,9 +785,36 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     ShowWindow(hwnd, SW_MINIMIZE);
   };
 
+  // Start/stop from anywhere, including from inside the game while this window
+  // is minimised. The manager owns it because the overlay cannot start itself;
+  // the overlay owns the show/hide toggles. Re-registered whenever the setting
+  // is saved, so a change takes effect without a restart.
+  constexpr int kStartStopHotkeyId = 0xB00F;
+  bool startStopRequested = false;
+  bool startStopRegistered = false;
+  const auto registerStartStop = [&]() {
+    UnregisterHotKey(nullptr, kStartStopHotkeyId);
+    startStopRegistered = false;
+    if (config.hotkeys.startStop.empty()) return;
+    if (const auto hotkey = ParseHotkey(config.hotkeys.startStop)) {
+      startStopRegistered = RegisterThreadHotkey(kStartStopHotkeyId, *hotkey);
+    }
+    if (!startStopRegistered) {
+      GlobalLog().Warn("start/stop hotkey " + config.hotkeys.startStop +
+                       " could not be registered; another program may own it");
+    }
+  };
+  registerStartStop();
+  onSaved = registerStartStop;
+
   MSG msg{};
   while (msg.message != WM_QUIT) {
     if (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+      if (msg.message == WM_HOTKEY && msg.hwnd == nullptr &&
+          msg.wParam == kStartStopHotkeyId) {
+        startStopRequested = true;
+        continue;
+      }
       TranslateMessage(&msg);
       DispatchMessageW(&msg);
       continue;
@@ -795,6 +827,19 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       if (!component.required) continue;
       if (!fs::exists(sidecarDir / std::string(component.installedAs), ec) || ec) {
         ++missingComponents;
+      }
+    }
+
+    // Handled here rather than in the message loop because it needs the same
+    // gates as the button: the notice read, no blocking check, WoW running.
+    if (startStopRequested) {
+      startStopRequested = false;
+      if (live.overlayRunning) {
+        control::Send(SidecarCommand::Stop);
+      } else if (noticeAcknowledged && !blocked && live.wowRunning) {
+        startOverlay();
+      } else {
+        GlobalLog().Info("start/stop hotkey ignored: the overlay cannot start yet");
       }
     }
 
@@ -1227,6 +1272,32 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
            "alt-tab to World of Warcraft once.\n\n"
            "Ctrl+Alt+Backspace takes the overlay down from anywhere, without "
            "needing this window.");
+
+      ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
+      SectionHeading("Hotkeys");
+      if (ImGui::BeginTable("hotkeys", 2, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH)) {
+        ImGui::TableSetupColumn("keys", ImGuiTableColumnFlags_WidthFixed, S(190.0f));
+        ImGui::TableSetupColumn("does", ImGuiTableColumnFlags_WidthStretch);
+        const auto row = [&](const std::string& keys, const char* does) {
+          ImGui::TableNextRow();
+          ImGui::TableNextColumn();
+          if (g_fonts.mono) ImGui::PushFont(g_fonts.mono);
+          if (keys.empty()) {
+            ImGui::TextDisabled("%s", Tr("off"));
+          } else {
+            ImGui::TextColored(Rgb(g_colors.goldBright), "%s", keys.c_str());
+          }
+          if (g_fonts.mono) ImGui::PopFont();
+          ImGui::TableNextColumn();
+          ImGui::TextUnformatted(Tr(does));
+        };
+        row(config.hotkeys.startStop, "Start or stop the overlay (while this window is open)");
+        row(config.hotkeys.toggleOverlay, "Show or hide the overlay: instant A/B against the untouched game");
+        row(config.hotkeys.toggleHud, "Show or hide the frame-time HUD");
+        row("Ctrl+Alt+Backspace", "Panic: take the overlay down, always");
+        ImGui::EndTable();
+      }
+      Hint("Change them on the Tuning page.");
     }
 
     if (section == Section::Setup) {
@@ -1484,6 +1555,35 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         ImGui::PopStyleColor(2);
         ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
       }
+
+      SectionHeading("Hotkeys");
+      Hint("Written like Ctrl+Alt+D or Shift+Alt+F9. Each needs Ctrl, Alt or Win, "
+           "because Windows takes the combination away from the game. Leave one "
+           "empty to switch it off.");
+      ImGui::Dummy(ImVec2(0.0f, S(4.0f)));
+      {
+        const auto hotkeyField = [&](const char* id, const char* label, std::string& value) {
+          ImGui::AlignTextToFramePadding();
+          ImGui::TextUnformatted(Tr(label));
+          ImGui::SameLine(S(240.0f));
+          ImGui::SetNextItemWidth(S(200.0f));
+          if (g_fonts.mono) ImGui::PushFont(g_fonts.mono);
+          if (ImGui::InputText(id, &value)) dirty = true;
+          if (g_fonts.mono) ImGui::PopFont();
+          ImGui::SameLine();
+          if (value.empty()) {
+            ImGui::TextDisabled("%s", Tr("off"));
+          } else if (const auto parsed = ParseHotkey(value)) {
+            ImGui::TextColored(Rgb(g_colors.ok), "%s", FormatHotkey(*parsed).c_str());
+          } else {
+            ImGui::TextColored(Rgb(g_colors.fail), "%s", Tr("not a key combination"));
+          }
+        };
+        hotkeyField("##hk_startstop", "Start / stop overlay", config.hotkeys.startStop);
+        hotkeyField("##hk_overlay", "Show / hide overlay", config.hotkeys.toggleOverlay);
+        hotkeyField("##hk_hud", "Show / hide HUD", config.hotkeys.toggleHud);
+      }
+      ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
 
       const float saveWidth =
           ImGui::CalcTextSize(Tr("Save settings")).x + ImGui::GetStyle().FramePadding.x * 2.0f +

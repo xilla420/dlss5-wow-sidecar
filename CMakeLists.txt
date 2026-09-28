@@ -81,6 +81,7 @@ target_sources(sidecar_common PRIVATE
   src/common/core/Log.cpp
   src/common/core/Sha256.cpp
   src/common/core/PanicSwitch.cpp
+  src/common/core/Hotkey.cpp
   src/common/core/Utf8.cpp
   src/common/core/I18n.cpp
   src/common/core/I18nRu.cpp
