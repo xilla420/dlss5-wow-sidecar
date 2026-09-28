@@ -31,6 +31,37 @@ is what the reader is looking for.
 
 ## Unreleased
 
+## 0.4.0
+
+The manager now separates everyday use from detailed tuning, with an illustrated
+welcome page and settings controls that stay within reach.
+
+### Added
+
+- **Easy / Advanced modes.** Easy is the default; Advanced reveals individual
+  rendering settings, editable hotkeys, timing diagnostics and logs. Existing
+  setup, checks, presets, strength choices, themes and languages remain available.
+  Switching modes preserves every rendering value.
+- **Original generated citadel artwork**, embedded in the executable, with
+  theme-aware shading. The header separates preferences from the main action.
+- **Persistent Save / Discard controls** on every page, visible save errors, and
+  an unsaved-change dialog on close. Interface preferences save independently
+  from unfinished rendering edits.
+- Keyboard navigation for primary actions, presets and strength buttons.
+- Regression tests for mode persistence, rendering resets and preset detection.
+
+### Fixed
+
+- Resetting rendering now preserves language, theme, mode, scale, WoW path,
+  hotkeys and mask calibration.
+- Custom hook, HDR and optional strength values no longer appear as Recommended.
+- Start is cancelled when pending settings cannot be saved; add-on settings
+  write failures are reported rather than silently ignored.
+- Fixed the first-run dialog position on scaled displays.
+
+Includes the previously unreleased 0.3.0 changes below: three themes, ten
+languages, 1x/2x/3x neural strength, configurable hotkeys and the project website.
+
 ## 0.3.0
 
 A new face for the manager, in ten languages, and a way to make the neural pass

@@ -20,6 +20,26 @@
 namespace sidecar {
 
 const TranslationPair kRussianTable[] = {
+    {"Interface mode",
+     "Режим интерфейса"},
+    {"Easy",
+     "Простой"},
+    {"All controls and diagnostics.",
+     "Все настройки и диагностика."},
+    {"Everyday controls. Settings are preserved.",
+     "Основные функции. Настройки сохраняются."},
+    {"Your next adventure",
+     "Твоё следующее приключение"},
+    {"Choose a look. Check your setup. Start playing.",
+     "Выбери стиль. Проверь настройку. Начни игру."},
+    {"Discard changes",
+     "Отменить изменения"},
+    {"Settings saved.",
+     "Настройки сохранены."},
+    {"Could not save settings. Check folder permissions and try again.",
+     "Не удалось сохранить настройки. Проверьте права доступа к папке и повторите попытку."},
+    {"Cancel",
+     "Отмена"},
     // ---------------------------------------------------------------- shell
     {"Status", "Состояние"},
     {"Setup", "Установка"},
@@ -420,9 +440,6 @@ const TranslationPair kRussianTable[] = {
 
     {"Save settings", "Сохранить настройки"},
     {"Changes are not saved yet.", "Изменения ещё не сохранены."},
-    {"Nothing here reaches the picture until it is written to sidecar.toml.",
-     "Ничего отсюда не дойдёт до картинки, пока не будет записано в "
-     "sidecar.toml."},
     {"Restart the overlay to apply.", "Перезапустите оверлей, чтобы применить."},
     {"Every individual setting", "Все настройки по отдельности"},
     {"Nothing in here is needed for normal use.",

@@ -97,6 +97,9 @@ void DrawThemeFrame(ImDrawList* draw, ImVec2 min, ImVec2 max, ThemeId theme, flo
 // The emblem, tinted to the theme's accent, as a square of side `size`.
 void DrawEmblem(ImDrawList* draw, ImVec2 at, float size, ThemeId theme);
 
+// Original scenic art, with a theme-owned scrim for readable overlaid text.
+void DrawWelcomeArt(ImDrawList* draw, ImVec2 min, ImVec2 max, ThemeId theme);
+
 // The primary action, drawn the way the theme draws its big buttons. `danger`
 // is the stop variant. Returns true when pressed, like ImGui::Button.
 bool ThemedPrimaryButton(const char* label, ImVec2 size, ThemeId theme, bool danger,

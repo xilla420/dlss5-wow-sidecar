@@ -16,6 +16,7 @@ add_executable(sidecar_tests
   test_nvofa_flow.cpp
   test_motion_vector_math.cpp
   test_config.cpp
+  test_manager_settings.cpp
   test_addon_settings.cpp
   test_install.cpp
   test_log.cpp

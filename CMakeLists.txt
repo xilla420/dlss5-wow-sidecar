@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.28)
 # The version lives here and nowhere else. cmake/Version.h.in carries it into
 # the binaries, so the window title, the release tag and the changelog heading
 # cannot drift apart.
-project(dlss5-wow-sidecar VERSION 0.3.0 LANGUAGES CXX)
+project(dlss5-wow-sidecar VERSION 0.4.0 LANGUAGES CXX)
 
 configure_file(cmake/Version.h.in ${CMAKE_BINARY_DIR}/generated/core/Version.h @ONLY)
 
