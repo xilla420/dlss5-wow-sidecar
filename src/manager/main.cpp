@@ -18,6 +18,7 @@
 #include <wrl/client.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -30,6 +31,7 @@
 #include <imgui_impl_win32.h>
 #include <misc/cpp/imgui_stdlib.h>
 
+#include "core/Bidi.h"
 #include "core/Config.h"
 #include "core/ControlChannel.h"
 #include "core/Hotkey.h"
@@ -238,6 +240,91 @@ ImVec4 StateColor(ProbeState state, const ThemeColors& colors) {
 
 ThemeFonts g_fonts;
 ThemeColors g_colors;
+ThemeId g_theme = ThemeId::Stormwind;
+
+// The theme's frame around whatever was just drawn -- a child window, usually.
+void FrameLastItem() {
+  DrawThemeFrame(ImGui::GetWindowDrawList(), ImGui::GetItemRectMin(), ImGui::GetItemRectMax(),
+                 g_theme, g_scale);
+}
+
+// Wrapped text that also wraps right to left. ImGui's own wrapping walks a
+// string from its first byte, which for visual-order Arabic is the end of the
+// sentence -- so the last line would be drawn first. Here the words are taken
+// back into reading order, packed into lines, and each line is drawn in visual
+// order against the right edge.
+void Wrapped(const char* text) {
+  if (!(VisualOrdering() && IsRightToLeft(CurrentLanguage()) && ContainsArabic(text))) {
+    ImGui::TextWrapped("%s", text);
+    return;
+  }
+  const float width = ImGui::GetContentRegionAvail().x;
+  const float space = ImGui::CalcTextSize(" ").x;
+  const std::string_view all(text);
+  std::vector<std::string> lines;
+  size_t paragraphStart = 0;
+  while (paragraphStart <= all.size()) {
+    size_t paragraphEnd = all.find('\n', paragraphStart);
+    if (paragraphEnd == std::string_view::npos) paragraphEnd = all.size();
+    const std::string_view paragraph = all.substr(paragraphStart, paragraphEnd - paragraphStart);
+
+    // Visual order is reading order reversed, word by word -- except that a run
+    // of left-to-right words ("World of Warcraft") is already in its own order
+    // and has to stay one unit, or a line break would split and flip it.
+    std::vector<std::string> words;
+    bool lastWasLatin = false;
+    for (size_t i = 0; i < paragraph.size();) {
+      const size_t next = paragraph.find(' ', i);
+      const size_t end = next == std::string_view::npos ? paragraph.size() : next;
+      if (end > i) {
+        const std::string_view word = paragraph.substr(i, end - i);
+        const bool latin = !ContainsArabic(word);
+        if (latin && lastWasLatin && !words.empty()) {
+          words.back() += ' ';
+          words.back().append(word);
+        } else {
+          words.emplace_back(word);
+        }
+        lastWasLatin = latin;
+      }
+      i = end + 1;
+    }
+    std::reverse(words.begin(), words.end());
+
+    std::vector<const std::string*> line;
+    float lineWidth = 0.0f;
+    const auto flush = [&]() {
+      std::string visual;
+      for (auto it = line.rbegin(); it != line.rend(); ++it) {
+        if (!visual.empty()) visual += ' ';
+        visual += **it;
+      }
+      lines.push_back(std::move(visual));
+      line.clear();
+      lineWidth = 0.0f;
+    };
+    for (const auto& word : words) {
+      const float w = ImGui::CalcTextSize(word.c_str()).x;
+      if (!line.empty() && lineWidth + space + w > width) flush();
+      lineWidth += (line.empty() ? 0.0f : space) + w;
+      line.push_back(&word);
+    }
+    if (!line.empty() || paragraph.empty()) flush();
+    paragraphStart = paragraphEnd + 1;
+  }
+
+  // Set like one paragraph of wrapped text: lines touch, and only the last one
+  // takes the usual gap to whatever follows.
+  const ImVec2 spacing = ImGui::GetStyle().ItemSpacing;
+  for (size_t i = 0; i < lines.size(); ++i) {
+    const bool last = i + 1 == lines.size();
+    if (!last) ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacing.x, 0.0f));
+    const float w = ImGui::CalcTextSize(lines[i].c_str()).x;
+    ImGui::SetCursorPosX(ImGui::GetCursorPosX() + std::max(0.0f, width - w));
+    ImGui::TextUnformatted(lines[i].c_str());
+    if (!last) ImGui::PopStyleVar();
+  }
+}
 
 // A bronze rule across the available width. The game separates everything with
 // one of these, and it does more for the resemblance than any amount of colour.
@@ -263,7 +350,7 @@ void SectionHeading(const char* text) {
 void Hint(const char* text) {
   if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
   ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-  ImGui::TextWrapped("%s", Tr(text));
+  Wrapped(Tr(text));
   ImGui::PopStyleColor();
   if (g_fonts.caption) ImGui::PopFont();
 }
@@ -525,7 +612,7 @@ void DrawBoard(const std::vector<ProbeResult>& results) {
     ImGui::TextUnformatted(r.title.c_str());
 
     ImGui::TableSetColumnIndex(2);
-    ImGui::TextWrapped("%s", r.detail.c_str());
+    Wrapped(r.detail.c_str());
     if (r.state != ProbeState::Ok && !r.remedy.empty()) Hint(r.remedy.c_str());
   }
   ImGui::EndTable();
@@ -581,19 +668,25 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
   // against -- the accent wins. So the caption is painted explicitly instead,
   // in the panel's own colours. Every attribute here is Windows 11; on anything
   // older the calls fail harmlessly and the bar stays as the system drew it.
-  {
-    const BOOL darkTitleBar = TRUE;
+  //
+  // Painted again whenever the theme changes, so the caption always matches the
+  // page under it.
+  const auto paintCaption = [hwnd]() {
+    const ThemeColors colors = CurrentThemeColors(g_theme);
+    const BOOL darkTitleBar = colors.light ? FALSE : TRUE;
     DwmSetWindowAttribute(hwnd, 20 /* USE_IMMERSIVE_DARK_MODE */, &darkTitleBar,
                           sizeof(darkTitleBar));
-    // COLORREF is 0x00BBGGRR, so these are the theme's colours byte-reversed.
-    const COLORREF caption = 0x00120C0B;   // 0x0B0C12, the window background
-    const COLORREF text = 0x00CEE0E8;      // parchment
-    const COLORREF border = 0x006EAAC8;    // bronze
+    // COLORREF is 0x00BBGGRR, so the theme's 0xRRGGBB is byte-reversed.
+    const auto ref = [](unsigned int rgb) {
+      return static_cast<COLORREF>(((rgb & 0xFF) << 16) | (rgb & 0xFF00) | ((rgb >> 16) & 0xFF));
+    };
+    const COLORREF caption = ref(colors.light ? 0x3B2A17 : colors.window);
+    const COLORREF text = ref(colors.light ? 0xF3D9A4 : colors.parchment);
+    const COLORREF border = ref(colors.accent);
     DwmSetWindowAttribute(hwnd, 35 /* CAPTION_COLOR */, &caption, sizeof(caption));
     DwmSetWindowAttribute(hwnd, 36 /* TEXT_COLOR */, &text, sizeof(text));
     DwmSetWindowAttribute(hwnd, 34 /* BORDER_COLOR */, &border, sizeof(border));
-  }
-  ShowWindow(hwnd, show);
+  };
 
   const fs::path sidecarDir = ExecutableDirectory();
   const fs::path configPath = sidecarDir / "sidecar.toml";
@@ -613,6 +706,23 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
   Config config;
   if (auto loaded = LoadConfig(configPath, warnings)) config = *loaded;
   for (const auto& warning : warnings) GlobalLog().Warn("config: " + warning);
+
+  // Before the fonts, which carry only the glyphs the chosen language needs.
+  {
+    Language stored = Language::English;
+    if (ParseLanguageTag(config.language, stored)) SetLanguage(stored);
+    ThemeId theme = ThemeId::Stormwind;
+    if (ParseThemeTag(config.theme, theme)) {
+      g_theme = theme;
+    } else {
+      GlobalLog().Warn("config: unknown theme \"" + config.theme + "\"; using Stormwind");
+    }
+  }
+  // ImGui cannot shape Arabic or lay it out right to left, so this process
+  // asks for text already in visual order.
+  SetVisualOrdering(true);
+  paintCaption();
+  ShowWindow(hwnd, show);
 
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
@@ -663,10 +773,14 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
   kHeaderHeight *= appliedScale;
   kPad *= appliedScale;
 
-  g_fonts = LoadThemeFonts(appliedScale);   // before the backend builds its atlas
-  ApplySidecarTheme(true);
+  // Before the backend builds its atlas.
+  g_fonts = LoadThemeFonts(g_theme, appliedScale, CurrentLanguage());
+  ApplySidecarTheme(g_theme);
   ImGui::GetStyle().ScaleAllSizes(appliedScale);
-  g_colors = CurrentThemeColors(true);
+  g_colors = CurrentThemeColors(g_theme);
+  if (!LoadThemeArt(g_device.Get())) {
+    GlobalLog().Warn("could not decode the theme art; drawing on flat colour");
+  }
   ImGui_ImplWin32_Init(hwnd);
   ImGui_ImplDX11_Init(g_device.Get(), g_context.Get());
 
@@ -712,11 +826,6 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     }
   }
 
-  {
-    Language stored = Language::English;
-    if (ParseLanguageTag(config.language, stored)) SetLanguage(stored);
-  }
-
   auto results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
 
   // Which page opens first. An optional command-line argument names it, which
@@ -740,6 +849,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     if (argv) LocalFree(argv);
   }
   bool dirty = false;
+  // Set when the theme or language changes. Both change the font atlas -- a
+  // theme brings its own faces, a language its own glyphs -- and the atlas can
+  // only be rebuilt between frames.
+  bool restyle = false;
   std::string setupMessage;
   bool setupMessageIsError = false;
   bool confirmUninstall = false;
@@ -843,11 +956,24 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       }
     }
 
+    if (restyle) {
+      restyle = false;
+      ImGui_ImplDX11_InvalidateDeviceObjects();   // recreated by NewFrame
+      g_fonts = LoadThemeFonts(g_theme, g_scale, CurrentLanguage());
+      ApplySidecarTheme(g_theme);
+      ImGui::GetStyle().ScaleAllSizes(g_scale);
+      g_colors = CurrentThemeColors(g_theme);
+      paintCaption();
+    }
+
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
 
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    DrawThemeBackdrop(ImGui::GetBackgroundDrawList(), viewport->Pos,
+                      ImVec2(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y),
+                      g_theme, g_scale);
     ImGui::SetNextWindowPos(viewport->WorkPos);
     ImGui::SetNextWindowSize(viewport->WorkSize);
     ImGui::Begin("shell", nullptr,
@@ -857,7 +983,15 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
     // ------------------------------------------------------------- header band
     ImGui::BeginChild("header", ImVec2(0.0f, kHeaderHeight));
-    ImGui::Indent(kPad);
+    // The seal sits left of the name, as a crest does on a banner.
+    const float emblemSize = kHeaderHeight - S(30.0f);
+    const float headerIndent = kPad + emblemSize + S(16.0f);
+    {
+      const ImVec2 origin = ImGui::GetCursorScreenPos();
+      DrawEmblem(ImGui::GetWindowDrawList(), ImVec2(origin.x + kPad, origin.y + S(16.0f)),
+                 emblemSize, g_theme);
+    }
+    ImGui::Indent(headerIndent);
     ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
 
     if (g_fonts.title) ImGui::PushFont(g_fonts.title);
@@ -885,45 +1019,58 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     };
 
     // Both labels, because the button swaps between them and must not resize
-    // under the cursor when the overlay starts.
+    // under the cursor when the overlay starts. Measured in the face the button
+    // is drawn in.
+    if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
     const float buttonWidth =
-        widestOf({Tr("Start overlay"), Tr("Stop overlay")}) + style.FramePadding.x * 2.0f + S(28.0f);
+        widestOf({Tr("Start overlay"), Tr("Stop overlay")}) + style.FramePadding.x * 2.0f + S(36.0f);
+    if (g_fonts.heading) ImGui::PopFont();
 
     // Each language names itself. "Russian" in an English list is no help to
-    // someone who cannot read the list. Declared here so the combo can be
-    // measured before the button is placed.
-    const char* languageNames[] = {"English", "Русский"};
+    // someone who cannot read the list. Visual order, because Arabic names
+    // itself right to left.
+    std::array<std::string, kLanguageCount> languageNames;
+    float widestLanguage = 0.0f;
+    for (size_t i = 0; i < kLanguageCount; ++i) {
+      languageNames[i] = ArabicForDisplay(NativeLanguageName(static_cast<Language>(i)));
+      widestLanguage = std::max(widestLanguage, ImGui::CalcTextSize(languageNames[i].c_str()).x);
+    }
     // The arrow is a square the height of the frame, and it is drawn inside the
     // width the combo is given rather than beside it.
-    const float languageWidth = widestOf({languageNames[0], languageNames[1]}) +
-                                ImGui::GetFrameHeight() + style.FramePadding.x * 2.0f + S(10.0f);
+    const float languageWidth =
+        widestLanguage + ImGui::GetFrameHeight() + style.FramePadding.x * 2.0f + S(10.0f);
+
+    float widestTheme = 0.0f;
+    for (int i = 0; i < static_cast<int>(ThemeId::Count); ++i) {
+      widestTheme = std::max(
+          widestTheme, ImGui::CalcTextSize(Tr(ThemeDisplayName(static_cast<ThemeId>(i)))).x);
+    }
+    const float themeWidth =
+        widestTheme + ImGui::GetFrameHeight() + style.FramePadding.x * 2.0f + S(10.0f);
 
     ImGui::SameLine();
     ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth - kPad);
     ImGui::SetCursorPosY(S(30.0f));
 
     if (!noticeAcknowledged) ImGui::BeginDisabled();
+    if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
     if (live.overlayRunning) {
-      ImGui::PushStyleColor(ImGuiCol_Button, Rgb(g_colors.fail, 0.20f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Rgb(g_colors.fail, 0.36f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonActive, Rgb(g_colors.fail, 0.50f));
-      if (ImGui::Button(Tr("Stop overlay"), ImVec2(buttonWidth, S(42.0f)))) {
+      if (ThemedPrimaryButton(Tr("Stop overlay"), ImVec2(buttonWidth, S(46.0f)), g_theme, true,
+                              g_scale)) {
         if (!control::Send(SidecarCommand::Stop)) {
           GlobalLog().Warn("the overlay did not answer; it may already be closing");
         }
       }
-      ImGui::PopStyleColor(3);
     } else {
       const bool canStart = !blocked && live.wowRunning;
       if (!canStart) ImGui::BeginDisabled();
-      ImGui::PushStyleColor(ImGuiCol_Button, Rgb(g_colors.accent, 0.26f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Rgb(g_colors.accent, 0.42f));
-      ImGui::PushStyleColor(ImGuiCol_ButtonActive, Rgb(g_colors.goldBright, 0.55f));
-      ImGui::PushStyleColor(ImGuiCol_Text, Rgb(g_colors.goldBright));
-      if (ImGui::Button(Tr("Start overlay"), ImVec2(buttonWidth, S(42.0f)))) startOverlay();
-      ImGui::PopStyleColor(4);
+      if (ThemedPrimaryButton(Tr("Start overlay"), ImVec2(buttonWidth, S(46.0f)), g_theme, false,
+                              g_scale)) {
+        startOverlay();
+      }
       if (!canStart) ImGui::EndDisabled();
     }
+    if (g_fonts.heading) ImGui::PopFont();
     if (!noticeAcknowledged) ImGui::EndDisabled();
 
     // Left of the primary action, and outside the notice's disabled block: a
@@ -933,10 +1080,44 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                          S(16.0f));
     ImGui::SetCursorPosY(S(36.0f));
     ImGui::SetNextItemWidth(languageWidth);
-    int languageIndex = CurrentLanguage() == Language::Russian ? 1 : 0;
-    if (ImGui::Combo("##language", &languageIndex, languageNames, 2)) {
-      const Language chosen = languageIndex == 1 ? Language::Russian : Language::English;
+    int languageIndex = static_cast<int>(CurrentLanguage());
+    bool languageChanged = false;
+    if (ImGui::BeginCombo("##language", languageNames[languageIndex].c_str())) {
+      for (int i = 0; i < static_cast<int>(kLanguageCount); ++i) {
+        if (ImGui::Selectable(languageNames[i].c_str(), i == languageIndex)) {
+          languageChanged = i != languageIndex;
+          languageIndex = i;
+        }
+      }
+      ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Tr("Language"));
+
+    // The look, left of the language. A preference about the tool, saved at once
+    // like the language is.
+    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth - kPad - languageWidth -
+                         S(16.0f) - themeWidth - S(10.0f));
+    ImGui::SetCursorPosY(S(36.0f));
+    ImGui::SetNextItemWidth(themeWidth);
+    if (ImGui::BeginCombo("##theme", Tr(ThemeDisplayName(g_theme)))) {
+      for (int i = 0; i < static_cast<int>(ThemeId::Count); ++i) {
+        const auto candidate = static_cast<ThemeId>(i);
+        if (ImGui::Selectable(Tr(ThemeDisplayName(candidate)), candidate == g_theme) &&
+            candidate != g_theme) {
+          g_theme = candidate;
+          config.theme = TagForTheme(candidate);
+          save();
+          restyle = true;
+        }
+      }
+      ImGui::EndCombo();
+    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Tr("Interface theme"));
+
+    if (languageChanged) {
+      const Language chosen = static_cast<Language>(languageIndex);
       SetLanguage(chosen);
+      restyle = true;   // the atlas has to carry the new language's glyphs
       config.language = TagForLanguage(chosen);
       // Saved immediately rather than left to the Save button on another page:
       // this is a preference about the tool, not a setting for the pipeline,
@@ -950,7 +1131,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     }
 
 
-    ImGui::Unindent(kPad);
+    ImGui::Unindent(headerIndent);
     ImGui::EndChild();
 
     ImGui::Indent(kPad);
@@ -963,7 +1144,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
     // ---------------------------------------------------------------- nav rail
     ImGui::Indent(kPad);
-    ImGui::BeginChild("nav", ImVec2(kNavWidth, -kPad));
+    // Both panels pad their contents, so the theme's frame drawn round them has
+    // room to breathe and never sits on top of the first letter.
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(10.0f), S(14.0f)));
+    ImGui::BeginChild("nav", ImVec2(kNavWidth, -kPad), ImGuiChildFlags_AlwaysUseWindowPadding);
+    ImGui::PopStyleVar();   // read at Begin; nested cards keep their own
 
     // A gutter the width of the marker, so the marker has somewhere to be that
     // is not on top of the first letter. Applied to every row rather than only
@@ -1035,8 +1220,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     if (g_fonts.caption) ImGui::PopFont();
     ImGui::EndChild();
 
+    FrameLastItem();
     ImGui::SameLine(0.0f, kPad);
-    ImGui::BeginChild("content", ImVec2(-kPad, -kPad));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(20.0f), S(16.0f)));
+    ImGui::BeginChild("content", ImVec2(-kPad, -kPad), ImGuiChildFlags_AlwaysUseWindowPadding);
+    ImGui::PopStyleVar();   // read at Begin; nested cards keep their own
 
     // ---------------------------------------------------------------- sections
     if (section == Section::Status) {
@@ -1281,13 +1469,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         const auto row = [&](const std::string& keys, const char* does) {
           ImGui::TableNextRow();
           ImGui::TableNextColumn();
-          if (g_fonts.mono) ImGui::PushFont(g_fonts.mono);
           if (keys.empty()) {
             ImGui::TextDisabled("%s", Tr("off"));
           } else {
+            if (g_fonts.mono) ImGui::PushFont(g_fonts.mono);
             ImGui::TextColored(Rgb(g_colors.goldBright), "%s", keys.c_str());
+            if (g_fonts.mono) ImGui::PopFont();
           }
-          if (g_fonts.mono) ImGui::PopFont();
           ImGui::TableNextColumn();
           ImGui::TextUnformatted(Tr(does));
         };
@@ -1555,6 +1743,61 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         ImGui::PopStyleColor(2);
         ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
       }
+
+      SectionHeading("Neural strength");
+      Hint("How many times DLSS 5 runs over each frame. One pass is subtle. Two or "
+           "three push the picture further from the original -- closer to the "
+           "heavily processed look in demonstration videos -- and each extra pass "
+           "costs another full neural pass of GPU time.");
+      ImGui::Dummy(ImVec2(0.0f, S(4.0f)));
+      {
+        struct Strength { uint32_t passes; const char* name; const char* note; };
+        const Strength strengths[] = {
+            {1, "1x  Natural", "Closest to the game"},
+            {2, "2x  Stronger", "About twice the GPU time"},
+            {3, "3x  Strongest", "About three times the GPU time"},
+        };
+        const float cardWidth = (ImGui::GetContentRegionAvail().x - S(20.0f)) / 3.0f;
+        for (size_t i = 0; i < std::size(strengths); ++i) {
+          const Strength& strength = strengths[i];
+          const bool selected = config.neuralPasses == strength.passes;
+          if (i > 0) ImGui::SameLine();
+          ImGui::PushID(static_cast<int>(i));
+          if (selected) {
+            ImGui::PushStyleColor(ImGuiCol_Border, Rgb(g_colors.goldBright, 0.95f));
+            ImGui::PushStyleColor(ImGuiCol_ChildBg, Rgb(g_colors.accent, 0.20f));
+          }
+          ImGui::BeginChild("strength", ImVec2(cardWidth, S(70.0f)), ImGuiChildFlags_Border,
+                            ImGuiWindowFlags_NoScrollbar);
+          ImGui::SetCursorPos(ImVec2(S(12.0f), S(8.0f)));
+          // The body face, not the heading one: the display faces draw their
+          // numerals old-style, and a small-caps "1x" reads as "Ix".
+          ImGui::TextColored(selected ? Rgb(g_colors.goldBright) : Rgb(g_colors.parchment), "%s",
+                             Tr(strength.name));
+          ImGui::SetCursorPosX(S(12.0f));
+          if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
+          ImGui::TextDisabled("%s", Tr(strength.note));
+          if (g_fonts.caption) ImGui::PopFont();
+          ImGui::EndChild();
+          // The whole card is the control.
+          if (ImGui::IsItemClicked() && !selected) {
+            config.neuralPasses = strength.passes;
+            dirty = true;
+          }
+          if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+          if (selected) ImGui::PopStyleColor(2);
+          ImGui::PopID();
+        }
+        if (config.neuralPasses > 3) {
+          ImGui::TextColored(Rgb(g_colors.warn), "%s",
+                             Tr("Four passes, set in sidecar.toml. Pick one above to go back."));
+        }
+        if (config.neuralPass == "passthrough") {
+          Hint("The Off preset runs no neural pass, so this has no effect until you pick "
+               "another look.");
+        }
+      }
+      ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
 
       SectionHeading("Hotkeys");
       Hint("Written like Ctrl+Alt+D or Shift+Alt+F9. Each needs Ctrl, Alt or Win, "
@@ -1853,6 +2096,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     }
 
     ImGui::EndChild();
+    FrameLastItem();
     ImGui::Unindent(kPad);
     if (!noticeAcknowledged) ImGui::EndDisabled();
     ImGui::End();
@@ -1873,7 +2117,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         ImGui::TextColored(Rgb(g_colors.goldBright), "%s", Tr(kFirstRunTitle));
         if (g_fonts.heading) ImGui::PopFont();
         GoldRule(0.45f, 10.0f);
-        ImGui::TextWrapped("%s", Tr(kFirstRunBody));
+        Wrapped(Tr(kFirstRunBody));
         ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
         ImGui::PushStyleColor(ImGuiCol_Text, Rgb(g_colors.goldBright));
         if (ImGui::Button(Tr("I understand"), ImVec2(S(170.0f), S(34.0f)))) {
@@ -1885,13 +2129,19 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
           ImGui::CloseCurrentPopup();
         }
         ImGui::PopStyleColor();
+        DrawThemeFrame(ImGui::GetWindowDrawList(), ImGui::GetWindowPos(),
+                       ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowSize().x,
+                              ImGui::GetWindowPos().y + ImGui::GetWindowSize().y),
+                       g_theme, g_scale);
         ImGui::EndPopup();
       }
       ImGui::PopStyleVar();
     }
 
     ImGui::Render();
-    const float clear[4] = {0.043f, 0.047f, 0.071f, 1.0f};
+    const float clear[4] = {((g_colors.window >> 16) & 0xFF) / 255.0f,
+                            ((g_colors.window >> 8) & 0xFF) / 255.0f,
+                            (g_colors.window & 0xFF) / 255.0f, 1.0f};
     ID3D11RenderTargetView* rtv = g_backBufferRtv.Get();
     g_context->OMSetRenderTargets(1, &rtv, nullptr);
     g_context->ClearRenderTargetView(rtv, clear);

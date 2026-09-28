@@ -17,11 +17,11 @@ namespace {
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
-constexpr std::array<std::string_view, 14> kKnownKeys = {
+constexpr std::array<std::string_view, 15> kKnownKeys = {
     "show_hud",     "show_overlay",   "flow_grid_size", "neural_pass",
     "dlss_preset",  "synthetic_depth", "ui_mask",       "ui_mask_feather",
     "neural",       "wow_dir",       "language",      "ui_scale",
-    "neural_passes", "hotkeys"};
+    "neural_passes", "hotkeys", "theme"};
 
 bool IsKnown(std::string_view key) {
   return std::find(kKnownKeys.begin(), kKnownKeys.end(), key) != kKnownKeys.end();
@@ -184,6 +184,14 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
     }
   }
 
+  if (const auto node = root.get("theme")) {
+    if (auto value = node->value<std::string>()) {
+      config.theme = *value;
+    } else {
+      warnings.emplace_back("theme: expected a string; using \"stormwind\"");
+    }
+  }
+
   // Not checked for existence here. A folder that has gone away is something to
   // report on the checks board, where it can be re-pointed, rather than a
   // reason to drop the setting on load and make the operator find it again.
@@ -322,6 +330,7 @@ std::string SerializeConfig(const Config& config) {
          "# the next launch and overwritten on the next save.\n\n";
 
   out << "language = " << TomlString(config.language) << "\n";
+  out << "theme = " << TomlString(config.theme) << "\n";
   out << "neural_pass = \"" << config.neuralPass << "\"\n";
   out << "dlss_preset = \"" << config.dlssPreset << "\"\n";
   out << "show_hud = " << Boolean(config.showHud) << "\n";
