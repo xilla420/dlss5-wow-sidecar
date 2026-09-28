@@ -41,6 +41,7 @@
 #include "core/Version.h"
 #include "manager/Install.h"
 #include "manager/Probes.h"
+#include "manager/Presets.h"
 #include "manager/Theme.h"
 #include "manager/WowInstall.h"
 #include "neural/AddonSettings.h"
@@ -63,12 +64,13 @@ namespace {
 constexpr int kWindowWidth = 1180;
 constexpr int kWindowHeight = 820;
 float kNavWidth = 208.0f;
-float kHeaderHeight = 104.0f;
+float kHeaderHeight = 152.0f;
 float kPad = 22.0f;
 
 // How much bigger than the design size everything is drawn. Read by S() below,
 // set once the window exists and the DPI can be asked for.
 float g_scale = 1.0f;
+bool g_closeRequested = false;
 
 // A length in design pixels, in the pixels it is actually drawn at.
 inline float S(float designPixels) { return designPixels * g_scale; }
@@ -154,6 +156,9 @@ bool CreateDeviceAndSwapChain(HWND hwnd) {
 LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
   if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wp, lp)) return 1;
   switch (msg) {
+    case WM_CLOSE:
+      g_closeRequested = true;
+      return 0;
     case WM_SIZE:
       if (g_swapChain && wp != SIZE_MINIMIZED) {
         g_backBufferRtv.Reset();
@@ -477,95 +482,6 @@ LiveState PollLiveState() {
 
 enum class Section { Status, Setup, Checks, Tuning, Log, Count };
 
-// The whole tuning surface, as four choices instead of nine sliders.
-//
-// Almost nobody wants to reason about transfer strength against paper-white
-// scale. They want the good one, a gentler one, one that stops the smearing,
-// and a way to see what it is doing at all. The sliders still exist under
-// Advanced for the people who do -- these just set coherent bundles of them,
-// so no combination anyone lands on by accident is one we have never tried.
-struct Preset {
-  const char* name;
-  const char* summary;
-  const char* detail;
-  void (*apply)(Config&);
-};
-
-const Preset kPresets[] = {
-    {"Recommended",
-     "The tuned default. Start here.",
-     "Full neural intensity with the CNN F render preset, which clamps temporal "
-     "history hard -- the right choice when motion vectors are estimated from "
-     "colour rather than rendered by the game.",
-     [](Config& c) {
-       c.neuralPass = "reshade";
-       c.dlssPreset = "cnn-f";
-       c.flowGridSize = 4;
-       c.syntheticDepth = 0.5f;
-       c.neural = NeuralSettings{};   // every add-on knob at its own default
-     }},
-    {"Softer",
-     "Half strength. Use if the picture looks over-processed.",
-     "The same pipeline with the neural result mixed in at 60%. Cheaper on the "
-     "eyes for interface-heavy scenes, and the first thing to try if faces or "
-     "text look waxy.",
-     [](Config& c) {
-       c.neuralPass = "reshade";
-       c.dlssPreset = "cnn-f";
-       c.flowGridSize = 4;
-       c.syntheticDepth = 0.5f;
-       c.neural = NeuralSettings{};
-       c.neural.intensity = 0.60f;
-     }},
-    {"Most stable",
-     "For smearing, or flicker on flames and lights.",
-     "Switches to CNN E, which clamps temporal history hardest, and eases the "
-     "intensity. This is the preset for when motion looks smeared -- the "
-     "estimated motion vectors are being confidently wrong and this contains "
-     "them.",
-     [](Config& c) {
-       c.neuralPass = "reshade";
-       c.dlssPreset = "cnn-e";
-       // Grid 2 rather than 4: a finer motion field is the one thing that
-       // genuinely helps a smearing complaint, and it is worth the millisecond
-       // in the preset whose whole job is stability.
-       c.flowGridSize = 2;
-       c.syntheticDepth = 0.5f;
-       c.neural = NeuralSettings{};
-       c.neural.intensity = 0.85f;
-     }},
-    {"Off (A/B baseline)",
-     "Capture and present, untouched.",
-     "No neural work at all, on the same capture and present path. This is the "
-     "honest comparison: whatever you see here is what the overlay costs you "
-     "before any neural rendering happens.",
-     [](Config& c) { c.neuralPass = "passthrough"; }},
-};
-
-// Which preset the current config corresponds to, or npos when the operator has
-// hand-edited their way off the map. Compared on the fields the presets set, so
-// an unrelated change -- the HUD toggle, a mask rectangle -- does not read as
-// "custom".
-size_t MatchingPreset(const Config& config) {
-  for (size_t i = 0; i < std::size(kPresets); ++i) {
-    Config candidate;
-    kPresets[i].apply(candidate);
-    if (candidate.neuralPass != config.neuralPass) continue;
-    if (candidate.neuralPass == "passthrough") return i;
-    if (candidate.dlssPreset == config.dlssPreset &&
-        candidate.flowGridSize == config.flowGridSize &&
-        candidate.syntheticDepth == config.syntheticDepth &&
-        candidate.neural.intensity == config.neural.intensity &&
-        candidate.neural.colorStrength == config.neural.colorStrength &&
-        candidate.neural.preset == config.neural.preset &&
-        candidate.neural.style == config.neural.style &&
-        candidate.neural.upscaling == config.neural.upscaling) {
-      return i;
-    }
-  }
-  return static_cast<size_t>(-1);
-}
-
 // The page's identity, in English, always. This is what the optional
 // command-line argument is matched against, so translating it would break
 // `wowsidecar-manager.exe Checks` in every language but one -- and that
@@ -727,6 +643,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
   ImGui::GetIO().IniFilename = nullptr;   // no state file next to the binary
+  ImGui::GetIO().ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
   // How big to draw everything, decided here and not changed again.
   //
@@ -843,12 +760,16 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                                                                     strlen(SectionId(candidate)))
                                   .c_str()) == 0) {
           section = candidate;
+          if (section == Section::Log) config.advancedMode = true;
         }
       }
     }
     if (argv) LocalFree(argv);
   }
   bool dirty = false;
+  Config savedConfig = config;
+  std::string saveMessage;
+  bool saveFailed = false;
   // Set when the theme or language changes. Both change the font atlas -- a
   // theme brings its own faces, a language its own glyphs -- and the atlas can
   // only be rebuilt between frames.
@@ -873,19 +794,43 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
   // Declared ahead of save(), which re-registers the start/stop hotkey.
   std::function<void()> onSaved;
-  const auto save = [&]() {
-    if (SaveConfig(configPath, config)) {
-      dirty = false;
-      if (onSaved) onSaved();
-      GlobalLog().Info("settings saved");
-      WriteNeuralSettings(sidecarDir / "ReShade.ini", config.neural);
+  const auto save = [&]() -> bool {
+    // Write the projection first: if it fails, the authoritative TOML stays
+    // unchanged. The runtime reprojects that TOML on every launch.
+    if (!WriteNeuralSettings(sidecarDir / "ReShade.ini", config.neural) ||
+        !SaveConfig(configPath, config)) {
+      dirty = true;
+      saveFailed = true;
+      saveMessage = "Could not save settings. Check folder permissions and try again.";
+      GlobalLog().Error(saveMessage);
+      return false;
+    }
+    dirty = false;
+    savedConfig = config;
+    saveFailed = false;
+    saveMessage = "Settings saved.";
+    if (onSaved) onSaved();
+    GlobalLog().Info("settings saved");
+    return true;
+  };
+  const auto savePreferences = [&]() {
+    Config preferences = savedConfig;
+    preferences.theme = config.theme;
+    preferences.language = config.language;
+    preferences.advancedMode = config.advancedMode;
+    if (SaveConfig(configPath, preferences)) {
+      savedConfig = preferences;
+      saveFailed = false;
+      saveMessage.clear();
     } else {
-      GlobalLog().Error("could not write sidecar.toml");
+      dirty = true;
+      saveFailed = true;
+      saveMessage = "Could not save settings. Check folder permissions and try again.";
     }
   };
 
   const auto startOverlay = [&]() {
-    if (dirty) save();
+    if (dirty && !save()) return;
     // The runtime has to be able to hand the foreground back to the game, and a
     // launched process only inherits that right from the process that owned the
     // foreground -- which, at this instant, is this one.
@@ -982,9 +927,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                      ImGuiWindowFlags_NoBringToFrontOnFocus);
 
     // ------------------------------------------------------------- header band
-    ImGui::BeginChild("header", ImVec2(0.0f, kHeaderHeight));
+    ImGui::BeginChild("header", ImVec2(0.0f, kHeaderHeight), ImGuiChildFlags_NavFlattened);
     // The seal sits left of the name, as a crest does on a banner.
-    const float emblemSize = kHeaderHeight - S(30.0f);
+    const float emblemSize = S(66.0f);
     const float headerIndent = kPad + emblemSize + S(16.0f);
     {
       const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -999,7 +944,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     if (g_fonts.title) ImGui::PopFont();
 
     if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-    ImGui::TextDisabled(Tr("Neural rendering for World of Warcraft, from outside the game process"));
+    ImGui::PushTextWrapPos(ImGui::GetWindowWidth() - S(300.0f));
+    Wrapped(Tr("Neural rendering for World of Warcraft, from outside the game process"));
+    ImGui::PopTextWrapPos();
     if (g_fonts.caption) ImGui::PopFont();
 
     // The primary action lives in the header and never moves, so it is in the
@@ -1076,9 +1023,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     // Left of the primary action, and outside the notice's disabled block: a
     // person who cannot read the notice has to be able to change the language
     // before agreeing to it.
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth - kPad - languageWidth -
-                         S(16.0f));
-    ImGui::SetCursorPosY(S(36.0f));
+    ImGui::SetCursorPosX(headerIndent + themeWidth + S(16.0f));
+    ImGui::SetCursorPosY(S(100.0f));
     ImGui::SetNextItemWidth(languageWidth);
     int languageIndex = static_cast<int>(CurrentLanguage());
     bool languageChanged = false;
@@ -1095,9 +1041,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
     // The look, left of the language. A preference about the tool, saved at once
     // like the language is.
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth - kPad - languageWidth -
-                         S(16.0f) - themeWidth - S(10.0f));
-    ImGui::SetCursorPosY(S(36.0f));
+    ImGui::SetCursorPosX(headerIndent);
+    ImGui::SetCursorPosY(S(100.0f));
     ImGui::SetNextItemWidth(themeWidth);
     if (ImGui::BeginCombo("##theme", Tr(ThemeDisplayName(g_theme)))) {
       for (int i = 0; i < static_cast<int>(ThemeId::Count); ++i) {
@@ -1106,7 +1051,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
             candidate != g_theme) {
           g_theme = candidate;
           config.theme = TagForTheme(candidate);
-          save();
+          savePreferences();
           restyle = true;
         }
       }
@@ -1122,7 +1067,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       // Saved immediately rather than left to the Save button on another page:
       // this is a preference about the tool, not a setting for the pipeline,
       // and losing it on exit would make the switch look broken.
-      save();
+      savePreferences();
       // The board holds finished strings rather than keys -- a probe's detail
       // is often a sentence with a driver version built into it, which no
       // lookup could translate after the fact. So the probes run again. They
@@ -1147,18 +1092,31 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     // Both panels pad their contents, so the theme's frame drawn round them has
     // room to breathe and never sits on top of the first letter.
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(10.0f), S(14.0f)));
-    ImGui::BeginChild("nav", ImVec2(kNavWidth, -kPad), ImGuiChildFlags_AlwaysUseWindowPadding);
+    ImGui::BeginChild("nav", ImVec2(kNavWidth, -kPad), ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened);
     ImGui::PopStyleVar();   // read at Begin; nested cards keep their own
 
     // A gutter the width of the marker, so the marker has somewhere to be that
     // is not on top of the first letter. Applied to every row rather than only
     // the selected one: text that shifts sideways when a row is chosen reads as
     // a glitch.
+    SectionHeading("Interface mode");
+    for (int mode = 0; mode < 2; ++mode) {
+      const bool advanced = mode == 1;
+      if (ImGui::RadioButton(Tr(advanced ? "Advanced" : "Easy"), config.advancedMode == advanced)) {
+        config.advancedMode = advanced;
+        if (!advanced && section == Section::Log) section = Section::Status;
+        savePreferences();
+      }
+    }
+    const float modeHintY = ImGui::GetCursorPosY();
+    Hint(config.advancedMode ? "All controls and diagnostics." : "Everyday controls. Settings are preserved.");
+    ImGui::SetCursorPosY(std::max(ImGui::GetCursorPosY(), modeHintY + S(52)));
     const float markerGutter = S(12.0f);
     ImGui::Indent(markerGutter);
 
     for (int i = 0; i < static_cast<int>(Section::Count); ++i) {
       const auto candidate = static_cast<Section>(i);
+      if (candidate == Section::Log && !config.advancedMode) continue;
       const bool selected = candidate == section;
       if (selected) ImGui::PushStyleColor(ImGuiCol_Text, Rgb(g_colors.goldBright));
       const ImVec2 rowAt = ImGui::GetCursorScreenPos();
@@ -1205,7 +1163,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     // The rail's foot is where the live state belongs: it is true regardless of
     // which page is open.
     ImGui::Unindent(markerGutter);
-    ImGui::SetCursorPosY(ImGui::GetWindowHeight() - S(124.0f));
+    ImGui::SetCursorPosY(std::max(ImGui::GetCursorPosY() + S(18.0f),
+                                ImGui::GetWindowHeight() - S(124.0f)));
     GoldRule(0.30f, 8.0f);
     if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
     Dot(live.wowRunning && live.wowBorderless,
@@ -1222,12 +1181,31 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
     FrameLastItem();
     ImGui::SameLine(0.0f, kPad);
+    ImGui::BeginGroup();
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(20.0f), S(16.0f)));
-    ImGui::BeginChild("content", ImVec2(-kPad, -kPad), ImGuiChildFlags_AlwaysUseWindowPadding);
+    ImGui::BeginChild("content", ImVec2(-kPad, -kPad - S(90.0f)), ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened);
     ImGui::PopStyleVar();   // read at Begin; nested cards keep their own
 
     // ---------------------------------------------------------------- sections
-    if (section == Section::Status) {
+    const Section drawnSection = section;
+    if (drawnSection == Section::Status) {
+      const ImVec2 heroAt = ImGui::GetCursorScreenPos();
+      const float heroWidth = ImGui::GetContentRegionAvail().x;
+      DrawWelcomeArt(ImGui::GetWindowDrawList(), heroAt,
+                     ImVec2(heroAt.x + heroWidth, heroAt.y + S(154)), g_theme);
+      ImGui::SetCursorScreenPos(ImVec2(heroAt.x + S(20), heroAt.y + S(20)));
+      ImGui::BeginGroup();
+      if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
+      ImGui::TextColored(Rgb(g_colors.goldBright), "%s", Tr("Your next adventure"));
+      if (g_fonts.heading) ImGui::PopFont();
+      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + heroWidth * 0.65f);
+      Wrapped(Tr("Choose a look. Check your setup. Start playing."));
+      ImGui::PopTextWrapPos();
+      if (ImGui::Button(Tr("Choose a look"))) section = Section::Tuning;
+      ImGui::SameLine();
+      if (ImGui::Button(Tr("Checks"))) section = Section::Checks;
+      ImGui::EndGroup();
+      ImGui::SetCursorScreenPos(ImVec2(heroAt.x, heroAt.y + S(170)));
       SectionHeading("Live");
       if (live.status) {
         const auto& s = *live.status;
@@ -1338,6 +1316,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         ImGui::Unindent(S(10.0f));
         ImGui::EndChild();
 
+        if (config.advancedMode) {
         // Memory, as a plain reading. The advisory above owns the alarm; this is
         // just the number, and its height never changes.
         if (s.vramBudgetMb > 0) {
@@ -1432,6 +1411,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                            : verdict == GateVerdict::Marginal ? Tr("marginal")
                                                               : Tr("too slow"));
 
+        }  // advanced diagnostics
+
         if (*s.lastError) {
           ImGui::Dummy(ImVec2(0.0f, S(10.0f)));
           ImGui::TextColored(Rgb(g_colors.fail), "The overlay reported");
@@ -1450,6 +1431,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                  ? "Start World of Warcraft in borderless windowed mode, then press "
                    "Start overlay."
                  : "Press Start overlay.");
+        if (blocked || missingComponents > 0) {
+          if (ImGui::Button(Tr(missingComponents > 0 ? "Setup" : "Checks"))) {
+            section = missingComponents > 0 ? Section::Setup : Section::Checks;
+          }
+        }
       }
 
       ImGui::Dummy(ImVec2(0.0f, S(20.0f)));
@@ -1488,7 +1474,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       Hint("Change them on the Tuning page.");
     }
 
-    if (section == Section::Setup) {
+    if (drawnSection == Section::Setup) {
       SectionHeading("Required files");
       Hint("Three files have to sit next to the sidecar. None of them is ours "
            "to redistribute and nothing here downloads anything -- neither "
@@ -1583,7 +1569,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       }
     }
 
-    if (section == Section::Checks) {
+    if (drawnSection == Section::Checks) {
       SectionHeading("System checks");
       Hint("Nothing here opens, reads, writes or hooks the game process. The "
            "import table of every binary is checked against that claim at "
@@ -1639,7 +1625,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       DrawBoard(results);
     }
 
-    if (section == Section::Tuning) {
+    if (drawnSection == Section::Tuning) {
       SectionHeading("Choose a look");
       Hint("Pick one. Every setting below is chosen for you, and the combinations "
            "here are ones that have actually been run -- unlike most of the "
@@ -1647,63 +1633,30 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
 
       const size_t active = MatchingPreset(config);
+      const bool twoColumns = ImGui::GetContentRegionAvail().x >= S(680);
+      const float presetWidth = twoColumns
+          ? (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x) / 2
+          : ImGui::GetContentRegionAvail().x;
       for (size_t i = 0; i < std::size(kPresets); ++i) {
-        const bool selected = i == active;
+        if (twoColumns && i % 2 == 1) ImGui::SameLine();
         ImGui::PushID(static_cast<int>(i));
-
-        // The whole card carries the state, not a sliver at its edge. A border
-        // and a ground the operator can see from across the room beats a
-        // three-pixel rule and a shade of gold.
-        if (selected) {
-          ImGui::PushStyleColor(ImGuiCol_Border, Rgb(g_colors.goldBright, 0.95f));
-          ImGui::PushStyleColor(ImGuiCol_ChildBg, Rgb(g_colors.accent, 0.18f));
-          ImGui::PushStyleVar(ImGuiStyleVar_ChildBorderSize, S(2.0f));
-        }
-        ImGui::BeginChild("preset", ImVec2(0.0f, S(104.0f)), ImGuiChildFlags_Border);
-        ImGui::Dummy(ImVec2(0.0f, S(2.0f)));
-        ImGui::Indent(S(12.0f));
-
-        if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
-        ImGui::TextColored(selected ? Rgb(g_colors.goldBright) : Rgb(g_colors.parchment),
-                           "%s", Tr(kPresets[i].name));
-        if (g_fonts.heading) ImGui::PopFont();
-
-        // Said in words as well as in colour. Somebody who cannot pick the
-        // chosen card out of four by its border should not have to.
-        if (selected) {
-          ImGui::SameLine();
-          if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-          ImGui::TextColored(Rgb(g_colors.ok), "  %s", Tr("IN USE"));
-          if (g_fonts.caption) ImGui::PopFont();
-        }
-
-        ImGui::TextUnformatted(Tr(kPresets[i].summary));
-        Hint(kPresets[i].detail);
-
-        ImGui::Unindent(S(12.0f));
-        ImGui::EndChild();
-
-        // Hover plus a click, rather than IsItemClicked on the child: a child
-        // window with content of its own does not reliably report the click,
-        // and a preset that silently refuses to be picked is worse than one
-        // that is merely hard to see.
-        // Against the card's own rectangle rather than through IsItemHovered.
-        // A child window's hover state is about the child, and the flag that
-        // would have widened it -- ChildWindows -- is only legal on
-        // IsWindowHovered; passing it to IsItemHovered puts ImGui's own error
-        // panel over the interface, which is what it is for.
-        const bool hovered =
-            ImGui::IsMouseHoveringRect(ImGui::GetItemRectMin(), ImGui::GetItemRectMax());
-        if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !selected) {
+        const bool selected = active == i;
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, Rgb(selected ? g_colors.accent : g_colors.panel,
+                                                 selected ? 0.18f : 0.7f));
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(12), S(10)));
+        ImGui::BeginChild("preset", ImVec2(presetWidth, S(config.advancedMode ? 204.0f : 138.0f)),
+                          ImGuiChildFlags_Border | ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened);
+        ImGui::PopStyleVar();
+        if (ImGui::Button(Tr(kPresets[i].name), ImVec2(-1, S(36)))) {
           kPresets[i].apply(config);
           dirty = true;
         }
-        if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
-
-        if (selected) {
-          ImGui::PopStyleVar();
-          ImGui::PopStyleColor(2);
-        }
+        if (selected) ImGui::TextColored(Rgb(g_colors.ok), "%s", Tr("IN USE"));
+        else ImGui::Dummy(ImVec2(0, ImGui::GetTextLineHeight()));
+        Hint(kPresets[i].summary);
+        if (config.advancedMode) Hint(kPresets[i].detail);
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
         ImGui::PopID();
       }
       if (active == static_cast<size_t>(-1)) {
@@ -1719,30 +1672,6 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       }
 
       ImGui::Dummy(ImVec2(0.0f, S(14.0f)));
-
-      // An unsaved change is easy to walk away from here: nothing on this page
-      // takes effect until it is written, and the file is only read again at
-      // the overlay's next start. So the ask is a band across the page in the
-      // warning colour rather than four small words beside a button.
-      if (dirty) {
-        ImGui::PushStyleColor(ImGuiCol_ChildBg, Rgb(g_colors.warn, 0.16f));
-        ImGui::PushStyleColor(ImGuiCol_Border, Rgb(g_colors.warn, 0.75f));
-        ImGui::BeginChild("unsaved", ImVec2(0.0f, S(58.0f)), ImGuiChildFlags_Border);
-        ImGui::Dummy(ImVec2(0.0f, S(4.0f)));
-        ImGui::Indent(S(12.0f));
-        if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
-        ImGui::TextColored(Rgb(g_colors.warn), "%s", Tr("Changes are not saved yet."));
-        if (g_fonts.heading) ImGui::PopFont();
-        if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-        ImGui::TextDisabled("%s",
-                            Tr("Nothing here reaches the picture until it is written to "
-                               "sidecar.toml."));
-        if (g_fonts.caption) ImGui::PopFont();
-        ImGui::Unindent(S(12.0f));
-        ImGui::EndChild();
-        ImGui::PopStyleColor(2);
-        ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
-      }
 
       SectionHeading("Neural strength");
       Hint("How many times DLSS 5 runs over each frame. One pass is subtle. Two or "
@@ -1765,26 +1694,17 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
           ImGui::PushID(static_cast<int>(i));
           if (selected) {
             ImGui::PushStyleColor(ImGuiCol_Border, Rgb(g_colors.goldBright, 0.95f));
-            ImGui::PushStyleColor(ImGuiCol_ChildBg, Rgb(g_colors.accent, 0.20f));
+            ImGui::PushStyleColor(ImGuiCol_Button, Rgb(g_colors.accent, 0.35f));
           }
-          ImGui::BeginChild("strength", ImVec2(cardWidth, S(70.0f)), ImGuiChildFlags_Border,
-                            ImGuiWindowFlags_NoScrollbar);
-          ImGui::SetCursorPos(ImVec2(S(12.0f), S(8.0f)));
-          // The body face, not the heading one: the display faces draw their
-          // numerals old-style, and a small-caps "1x" reads as "Ix".
-          ImGui::TextColored(selected ? Rgb(g_colors.goldBright) : Rgb(g_colors.parchment), "%s",
-                             Tr(strength.name));
-          ImGui::SetCursorPosX(S(12.0f));
-          if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-          ImGui::TextDisabled("%s", Tr(strength.note));
-          if (g_fonts.caption) ImGui::PopFont();
-          ImGui::EndChild();
-          // The whole card is the control.
-          if (ImGui::IsItemClicked() && !selected) {
+          ImGui::BeginGroup();
+          if (ImGui::Button(Tr(strength.name), ImVec2(cardWidth, S(44)))) {
             config.neuralPasses = strength.passes;
             dirty = true;
           }
-          if (ImGui::IsItemHovered()) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+          ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + cardWidth);
+          Hint(strength.note);
+          ImGui::PopTextWrapPos();
+          ImGui::EndGroup();
           if (selected) ImGui::PopStyleColor(2);
           ImGui::PopID();
         }
@@ -1799,6 +1719,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       }
       ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
 
+      if (config.advancedMode) {
       SectionHeading("Hotkeys");
       Hint("Written like Ctrl+Alt+D or Shift+Alt+F9. Each needs Ctrl, Alt or Win, "
            "because Windows takes the combination away from the game. Leave one "
@@ -1828,26 +1749,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       }
       ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
 
-      const float saveWidth =
-          ImGui::CalcTextSize(Tr("Save settings")).x + ImGui::GetStyle().FramePadding.x * 2.0f +
-          S(28.0f);
-      if (!dirty) ImGui::BeginDisabled();
-      // Filled while there is something to save, so the button is the brightest
-      // thing on the page exactly when it needs pressing.
-      if (dirty) {
-        ImGui::PushStyleColor(ImGuiCol_Button, Rgb(g_colors.accent, 0.55f));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, Rgb(g_colors.goldBright, 0.65f));
-      }
-      ImGui::PushStyleColor(ImGuiCol_Text, Rgb(g_colors.goldBright));
-      if (ImGui::Button(Tr("Save settings"), ImVec2(saveWidth, S(38.0f)))) save();
-      ImGui::PopStyleColor(dirty ? 3 : 1);
-      if (!dirty) ImGui::EndDisabled();
-      ImGui::SameLine();
-      if (!dirty && live.overlayRunning) {
-        ImGui::TextDisabled(Tr("Restart the overlay to apply."));
-      }
+      }  // advanced hotkeys
 
       ImGui::Dummy(ImVec2(0.0f, S(16.0f)));
+      if (config.advancedMode) {
       if (!ImGui::TreeNode(Tr("Every individual setting"))) {
         Hint("Nothing in here is needed for normal use.");
       } else {
@@ -2023,16 +1928,15 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
       ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
       if (ImGui::Button(Tr("Reset to defaults"), ImVec2(S(170.0f), S(30.0f)))) {
-        const auto mask = config.uiMaskRects;   // calibration is not a setting
-        config = Config{};
-        config.uiMaskRects = mask;
+        ResetRenderingSettings(config);
         dirty = true;
       }
       ImGui::TreePop();
       }
+      }  // advanced settings
     }
 
-    if (section == Section::Log) {
+    if (drawnSection == Section::Log) {
       SectionHeading("Log");
       const std::string lastError = GlobalLog().LastError();
       if (!lastError.empty()) {
@@ -2097,14 +2001,63 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
     ImGui::EndChild();
     FrameLastItem();
+    ImGui::SetCursorPosX(kPad + kNavWidth + kPad);
+    ImGui::BeginChild("savebar", ImVec2(-kPad, S(82)), ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened);
+    const bool wasDirty = dirty;
+    ImGui::BeginDisabled(!wasDirty);
+    if (ImGui::Button(Tr("Save settings"), ImVec2(0, S(34)))) save();
+    ImGui::SameLine();
+    if (ImGui::Button(Tr("Discard changes"), ImVec2(0, S(34)))) {
+      config = savedConfig;
+      ParseThemeTag(config.theme, g_theme);
+      Language restoredLanguage;
+      if (ParseLanguageTag(config.language, restoredLanguage)) SetLanguage(restoredLanguage);
+      restyle = true;
+      if (!config.advancedMode && section == Section::Log) section = Section::Status;
+      results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
+      dirty = false;
+      saveFailed = false;
+      saveMessage.clear();
+    }
+    ImGui::EndDisabled();
+    // Feedback gets its own line so long translations cannot cover actions.
+    ImGui::TextColored(Rgb(saveFailed ? g_colors.fail : dirty ? g_colors.warn : g_colors.ok),
+                       "%s", Tr(saveFailed ? saveMessage.c_str() : dirty ? "Changes are not saved yet."
+                               : live.overlayRunning ? "Restart the overlay to apply."
+                               : saveMessage.empty() ? "Settings saved." : saveMessage.c_str()));
+    ImGui::EndChild();
+    ImGui::EndGroup();
     ImGui::Unindent(kPad);
     if (!noticeAcknowledged) ImGui::EndDisabled();
     ImGui::End();
 
+    if (g_closeRequested) {
+      g_closeRequested = false;
+      if (dirty) ImGui::OpenPopup("##unsaved-close");
+      else PostQuitMessage(0);
+    }
+    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+    ImGui::SetNextWindowSize(ImVec2(S(560), 0));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(24), S(20)));
+    if (ImGui::BeginPopupModal("##unsaved-close", nullptr,
+                               ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoTitleBar)) {
+      SectionHeading("Changes are not saved yet.");
+      if (ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+      if (ImGui::Button(Tr("Cancel"))) ImGui::CloseCurrentPopup();
+      ImGui::SetItemDefaultFocus();
+      ImGui::SameLine();
+      if (ImGui::Button(Tr("Save settings")) && save()) PostQuitMessage(0);
+      ImGui::SameLine();
+      if (ImGui::Button(Tr("Discard changes"))) PostQuitMessage(0);
+      if (saveFailed) Wrapped(Tr(saveMessage.c_str()));
+      ImGui::EndPopup();
+    }
+    ImGui::PopStyleVar();
+
     if (!noticeAcknowledged) {
       ImGui::OpenPopup(kFirstRunTitle);
       const ImVec2 center = viewport->GetCenter();
-      ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(S(0.5f), S(0.5f)));
+      ImGui::SetNextWindowPos(center, ImGuiCond_Always, ImVec2(0.5f, 0.5f));
       ImGui::SetNextWindowSize(ImVec2(S(600.0f), 0.0f));
       ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(24.0f), S(20.0f)));
       // No title bar: the heading below is the title, and ImGui's own bar would

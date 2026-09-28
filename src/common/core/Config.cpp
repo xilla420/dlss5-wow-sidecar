@@ -17,11 +17,11 @@ namespace {
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
-constexpr std::array<std::string_view, 15> kKnownKeys = {
+constexpr std::array<std::string_view, 16> kKnownKeys = {
     "show_hud",     "show_overlay",   "flow_grid_size", "neural_pass",
     "dlss_preset",  "synthetic_depth", "ui_mask",       "ui_mask_feather",
     "neural",       "wow_dir",       "language",      "ui_scale",
-    "neural_passes", "hotkeys", "theme"};
+    "neural_passes", "hotkeys", "theme", "advanced_mode"};
 
 bool IsKnown(std::string_view key) {
   return std::find(kKnownKeys.begin(), kKnownKeys.end(), key) != kKnownKeys.end();
@@ -139,6 +139,7 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
   }
 
   ReadBool(root, "show_hud", config.showHud, warnings);
+  ReadBool(root, "advanced_mode", config.advancedMode, warnings);
   ReadBool(root, "show_overlay", config.showOverlay, warnings);
 
   if (const auto node = root.get("flow_grid_size")) {
@@ -331,6 +332,7 @@ std::string SerializeConfig(const Config& config) {
 
   out << "language = " << TomlString(config.language) << "\n";
   out << "theme = " << TomlString(config.theme) << "\n";
+  out << "advanced_mode = " << Boolean(config.advancedMode) << "\n";
   out << "neural_pass = \"" << config.neuralPass << "\"\n";
   out << "dlss_preset = \"" << config.dlssPreset << "\"\n";
   out << "show_hud = " << Boolean(config.showHud) << "\n";
@@ -392,7 +394,20 @@ bool SaveConfig(const std::filesystem::path& path, const Config& config) {
   if (!file) return false;
   const std::string text = SerializeConfig(config);
   file.write(text.data(), static_cast<std::streamsize>(text.size()));
+  file.flush();
   return file.good();
+}
+
+void ResetRenderingSettings(Config& config) {
+  const Config defaults;
+  config.showHud = defaults.showHud;
+  config.showOverlay = defaults.showOverlay;
+  config.flowGridSize = defaults.flowGridSize;
+  config.neuralPass = defaults.neuralPass;
+  config.dlssPreset = defaults.dlssPreset;
+  config.syntheticDepth = defaults.syntheticDepth;
+  config.neuralPasses = defaults.neuralPasses;
+  config.neural = defaults.neural;
 }
 
 }  // namespace sidecar

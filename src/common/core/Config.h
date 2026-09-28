@@ -60,6 +60,9 @@ struct Config {
   // runtime never reads it.
   std::string theme = "stormwind";
 
+  // Presentation only. Switching modes never rewrites rendering settings.
+  bool advancedMode = false;
+
   // How much bigger than the design size the interface is drawn, on top of
   // whatever the monitor's DPI already asks for. One means "the DPI's answer
   // is right"; the operator raises it when the DPI's answer is not, which is
@@ -145,5 +148,8 @@ std::string SerializeConfig(const Config& config);
 // Writes SerializeConfig to disk. False means the file could not be written --
 // a read-only directory, most likely -- and the caller has to say so.
 bool SaveConfig(const std::filesystem::path& path, const Config& config);
+
+// Reset rendering only; keep installation, interface, hotkeys and calibration.
+void ResetRenderingSettings(Config& config);
 
 }  // namespace sidecar

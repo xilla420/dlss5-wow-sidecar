@@ -18,3 +18,4 @@
 #define IDR_ART_PARCHMENT         302
 #define IDR_ART_SLATE             303
 #define IDR_ART_EMBLEM            304
+#define IDR_ART_CITADEL           305

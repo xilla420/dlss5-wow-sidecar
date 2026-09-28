@@ -30,6 +30,20 @@ and nothing goes in your WoW folder.
 Everything you need is in the zip. The **Checks** page tells you if something is
 wrong, and how to fix it.
 
+## Easy or Advanced
+
+The manager opens in **Easy** mode: pick a look and neural strength on **Tuning**,
+check **Setup** and **Checks**, then start the overlay. Switch to **Advanced** in
+the sidebar for individual rendering settings, hotkey editing, detailed timings
+and logs. Switching modes keeps your settings.
+
+**Save settings** and **Discard changes** stay visible on every page. Rendering
+changes apply the next time the overlay starts. Theme, language and mode are
+saved separately, without committing unfinished tuning changes.
+
+The welcome page uses original generated artwork. Presets, strength controls and
+the primary action support keyboard navigation with visible focus.
+
 **You need:** Windows 11 · an NVIDIA **RTX 40** or **RTX 50** card · WoW in borderless windowed mode.
 
 ## Hotkeys
@@ -41,7 +55,7 @@ wrong, and how to fix it.
 | **Ctrl+Alt+H** | Show or hide the frame-time HUD |
 | **Ctrl+Alt+Backspace** | Panic button: take the overlay down, always |
 
-You can change the first three on the **Tuning** page.
+You can change the first three on the **Tuning** page in **Advanced** mode.
 
 ## Strength: 1×, 2× or 3×
 

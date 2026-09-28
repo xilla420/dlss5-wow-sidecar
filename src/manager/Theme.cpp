@@ -244,7 +244,7 @@ ImFont* AddFace(const FaceSpec& spec, float px, bool serifFallback, bool withCjk
 // ------------------------------------------------------------------- art
 
 struct Art {
-  ComPtr<ID3D11ShaderResourceView> stone, parchment, slate, emblem;
+  ComPtr<ID3D11ShaderResourceView> stone, parchment, slate, emblem, citadel;
   float tile = 512.0f;
 };
 
@@ -552,10 +552,26 @@ bool LoadThemeArt(ID3D11Device* device) {
     art.parchment = DecodePng(device, wic.Get(), IDR_ART_PARCHMENT);
     art.slate = DecodePng(device, wic.Get(), IDR_ART_SLATE);
     art.emblem = DecodePng(device, wic.Get(), IDR_ART_EMBLEM);
+    art.citadel = DecodePng(device, wic.Get(), IDR_ART_CITADEL);
   }
   wic.Reset();
   if (SUCCEEDED(init)) CoUninitialize();
-  return ok;
+  const Art& art = TheArt();
+  return ok && art.stone && art.parchment && art.slate && art.emblem && art.citadel;
+}
+
+void DrawWelcomeArt(ImDrawList* draw, ImVec2 min, ImVec2 max, ThemeId theme) {
+  const auto colors = CurrentThemeColors(theme);
+  draw->AddRectFilled(min, max, U32(colors.panel));
+  if (TheArt().citadel) {
+    // Crop vertically to a panorama, preserving the image's 3:2 proportions.
+    const float visible = std::clamp((max.y - min.y) / (max.x - min.x) * 1.5f, 0.0f, 1.0f);
+    const float top = (1.0f - visible) * 0.35f;
+    draw->AddImage(Tex(TheArt().citadel), min, max, ImVec2(0, top), ImVec2(1, top + visible));
+  }
+  draw->AddRectFilledMultiColor(min, max, U32(colors.panel, 0.97f),
+      U32(colors.panel, 0.12f), U32(colors.panel, 0.25f), U32(colors.panel, 0.97f));
+  draw->AddRect(min, max, U32(colors.accent, 0.55f));
 }
 
 void DrawThemeBackdrop(ImDrawList* draw, ImVec2 min, ImVec2 max, ThemeId theme, float scale) {
@@ -679,7 +695,9 @@ bool ThemedPrimaryButton(const char* label, ImVec2 size, ThemeId theme, bool dan
   const float s = std::max(scale, 1.0f);
 
   ImGui::PushID(label);
-  const bool pressed = ImGui::InvisibleButton("##primary", size);
+  // A real button retains keyboard activation and disabled behavior. Paint
+  // over its face below, then draw the focus ring above the artwork.
+  const bool pressed = ImGui::Button("##primary", size);
   ImGui::PopID();
   const bool hovered = ImGui::IsItemHovered();
   const bool held = ImGui::IsItemActive();
@@ -745,6 +763,12 @@ bool ThemedPrimaryButton(const char* label, ImVec2 size, ThemeId theme, bool dan
     draw->AddText(ImVec2(textAt.x + 1 * s, textAt.y + 1 * s), U32(0x000000, 0.8f), label, end);
   }
   draw->AddText(textAt, U32(text), label, end);
+  if (ImGui::IsItemFocused()) {
+    draw->AddRect(ImVec2(min.x + 5 * s, min.y + 5 * s),
+                  ImVec2(max.x - 5 * s, max.y - 5 * s),
+                  U32(colors.goldBright), rounding, 0, 2 * s);
+  }
+  if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
   return pressed;
 }
 
