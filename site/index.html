@@ -41,7 +41,10 @@
   "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
   "image": "https://xilla420.github.io/dlss5-wow-sidecar/og.png",
   "screenshot": "https://xilla420.github.io/dlss5-wow-sidecar/screenshots/dlss-face-comparison.png",
-  "softwareRequirements": "NVIDIA GeForce RTX 40 or RTX 50 series GPU"
+  "softwareRequirements": "NVIDIA GeForce RTX 40 or RTX 50 series GPU",
+  "softwareVersion": "0.3.0",
+  "inLanguage": ["en", "ru", "es", "de", "fr", "tr", "ar", "zh", "ja", "ko"],
+  "featureList": ["DLSS 5 Neural Rendering overlay", "1x, 2x or 3x neural passes", "Instant before/after hotkey", "Three WoW-style themes", "No injection into Wow.exe"]
 }
 </script>
 <script type="application/ld+json">
@@ -103,13 +106,24 @@ details{background:var(--panel);border:1px solid var(--line);padding:14px 18px;m
 summary{cursor:pointer;font-weight:700;color:var(--gold-hi)}
 details p{margin:10px 0 0;color:var(--text)}
 footer{border-top:1px solid var(--line);padding:28px 0 48px;font-size:14px;color:var(--muted)}
+.compare{position:relative;margin:24px 0 8px;border:1px solid var(--line);background:#000;overflow:hidden;aspect-ratio:16/9;touch-action:none;user-select:none}
+.compare img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.compare .after{clip-path:inset(0 0 0 var(--split,50%))}
+.compare .handle{position:absolute;top:0;bottom:0;left:var(--split,50%);width:2px;background:var(--gold-hi);transform:translateX(-1px);pointer-events:none}
+.compare .handle::after{content:"\2194";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:40px;height:40px;border-radius:50%;background:var(--red);border:2px solid var(--gold);color:var(--yellow);display:flex;align-items:center;justify-content:center;font-size:20px}
+.compare .tag{position:absolute;top:10px;padding:3px 10px;background:rgba(0,0,0,.65);border:1px solid var(--line);font:700 13px Cinzel,serif;color:var(--gold-hi);pointer-events:none}
+.compare .tag.l{left:10px}.compare .tag.r{right:10px}
+.compare input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:ew-resize;margin:0}
+.shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.shots figure{margin:0}
+.langs{font-size:17px;color:var(--text)}
 @media (max-width:640px){nav{display:none}.hero{padding-top:40px}}
 </style>
 </head>
 <body>
 <header class="top"><div class="wrap">
   <a class="brand" href="./">DLSS 5 Sidecar</a>
-  <nav><a href="#how">How it works</a><a href="#safety">Safety</a><a href="#hotkeys">Hotkeys</a><a href="#faq">FAQ</a><a href="https://github.com/xilla420/dlss5-wow-sidecar">GitHub</a></nav>
+  <nav><a href="#compare">Before / after</a><a href="#how">How it works</a><a href="#safety">Safety</a><a href="#hotkeys">Hotkeys</a><a href="#faq">FAQ</a><a href="https://github.com/xilla420/dlss5-wow-sidecar">GitHub</a></nav>
 </div></header>
 
 <main>
@@ -118,13 +132,46 @@ footer{border-top:1px solid var(--line);padding:28px 0 48px;font-size:14px;color
   <p class="lede">A free, open-source overlay that runs NVIDIA DLSS 5 Neural Rendering over WoW on RTX 40 and RTX 50 GPUs. It does not load a single byte of code into <code>Wow.exe</code>: no DLL injection, no hooks, and no ReShade in your game folder.</p>
   <a class="btn primary" href="https://github.com/xilla420/dlss5-wow-sidecar/releases/latest">Download for Windows</a>
   <a class="btn ghost" href="https://github.com/xilla420/dlss5-wow-sidecar">View source on GitHub</a>
-  <p class="small">Windows 11 · NVIDIA GeForce RTX 40 / 50 · MIT license</p>
+  <p class="small">Windows 11 · NVIDIA GeForce RTX 40 / 50 · MIT license · English, Русский, Español, Deutsch, Français, Türkçe, العربية, 简体中文, 日本語, 한국어</p>
 
   <figure>
     <img src="screenshots/dlss-face-comparison.png" alt="World of Warcraft character face with DLSS 5 Neural Rendering off on the left and on on the right" width="1956" height="908" loading="eager">
     <figcaption>Retail WoW on an RTX 4080 at 2560×1440, game anti-aliasing off, zoomed 2.4×. Left: untouched. Right: DLSS 5 Neural Rendering. The stair-stepping goes; the image also gets darker, which is a matter of taste.</figcaption>
   </figure>
 </div>
+
+<section id="compare"><div class="wrap">
+  <h2>DLSS 5 off / on</h2>
+  <p>Drag across the picture. The same moment in retail WoW, captured a third of a second apart with the overlay toggled: left of the line is the game as it is, right of it is DLSS 5 Neural Rendering.</p>
+  <div class="compare" id="slider" style="--split:50%">
+    <img src="screenshots/dlss-off.jpg" alt="World of Warcraft in Orgrimmar without DLSS 5" width="1920" height="1080" loading="lazy">
+    <img class="after" src="screenshots/dlss-on.jpg" alt="The same Orgrimmar scene with DLSS 5 Neural Rendering" width="1920" height="1080" loading="lazy">
+    <span class="tag l">Off</span><span class="tag r">DLSS 5</span>
+    <div class="handle"></div>
+    <input type="range" min="0" max="100" value="50" step="0.1" aria-label="Move the before and after divider">
+  </div>
+  <p class="small">1920×1080 frames, RTX 4080. In motion and at 1:1 the effect is subtler than any zoomed crop: judge it in the app with <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>D</kbd>.</p>
+  <figure>
+    <img src="screenshots/dlss-comparison.png" alt="A second off and on comparison showing cloth and an NPC face" width="1716" height="1452" loading="lazy">
+    <figcaption>A second scene: cloth and an NPC face, off and on.</figcaption>
+  </figure>
+</div></section>
+
+<section id="strength"><div class="wrap">
+  <h2>Choose the strength: 1×, 2× or 3×</h2>
+  <p>DLSS 5 can run more than once over every frame. One pass is subtle and closest to the game. Two or three push the picture further, towards the heavily processed look of the demo videos. Each extra pass costs roughly one more pass of GPU time.</p>
+  <figure><img src="screenshots/strength.png" alt="The neural strength setting with 1x, 2x and 3x options" width="1264" height="334" loading="lazy"></figure>
+</div></section>
+
+<section id="themes"><div class="wrap">
+  <h2>Three looks, ten languages</h2>
+  <div class="shots">
+    <figure><img src="screenshots/theme-stormwind.png" alt="The manager in the Stormwind theme" width="1264" height="384" loading="lazy"><figcaption>Stormwind: stone and gold</figcaption></figure>
+    <figure><img src="screenshots/theme-questlog.png" alt="The manager in the Quest log parchment theme" width="1264" height="384" loading="lazy"><figcaption>Quest log: parchment and ink</figcaption></figure>
+    <figure><img src="screenshots/theme-dragonflight.png" alt="The manager in the Dragonflight theme" width="1264" height="384" loading="lazy"><figcaption>Dragonflight: the modern UI</figcaption></figure>
+  </div>
+  <figure><img src="screenshots/languages.png" alt="The manager in Japanese, Arabic, Chinese and Korean" width="1264" height="390" loading="lazy"><figcaption>Japanese, Arabic, Chinese and Korean. Also English, Russian, Spanish, German, French and Turkish.</figcaption></figure>
+</div></section>
 
 <section id="how"><div class="wrap">
   <h2>How it works</h2>
@@ -159,7 +206,7 @@ footer{border-top:1px solid var(--line);padding:28px 0 48px;font-size:14px;color
     <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>H</kbd></td><td>Show or hide the frame-time HUD</td></tr>
     <tr><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Backspace</kbd></td><td>Panic switch: take the overlay down from anywhere</td></tr>
   </table>
-  <p class="small">All rebindable in the app. They use plain <code>RegisterHotKey</code>, with no keyboard hook.</p>
+  <p class="small">The first three are rebindable in the app. They use plain <code>RegisterHotKey</code>, with no keyboard hook.</p>
 </div></section>
 
 <section id="requirements"><div class="wrap">
@@ -186,5 +233,14 @@ footer{border-top:1px solid var(--line);padding:28px 0 48px;font-size:14px;color
   DLSS 5 Sidecar is an independent open-source project, MIT licensed. It is not affiliated with or endorsed by NVIDIA or Blizzard Entertainment. DLSS is a trademark of NVIDIA Corporation; World of Warcraft is a trademark of Blizzard Entertainment.
   · <a href="https://github.com/xilla420/dlss5-wow-sidecar">Source</a> · <a href="https://github.com/xilla420/dlss5-wow-sidecar/releases">Releases</a> · <a href="https://github.com/xilla420/dlss5-wow-sidecar/blob/main/CHANGELOG.md">Changelog</a>
 </div></footer>
+<script>
+(function () {
+  var box = document.getElementById("slider");
+  if (!box) return;
+  var input = box.querySelector("input");
+  function set(v) { box.style.setProperty("--split", v + "%"); }
+  input.addEventListener("input", function () { set(input.value); });
+})();
+</script>
 </body>
 </html>

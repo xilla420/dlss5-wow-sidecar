@@ -30,7 +30,7 @@ jobs:
         run: |
           mkdir -p _site/screenshots
           cp -r site/. _site/
-          cp docs/screenshots/*.png _site/screenshots/
+          cp docs/screenshots/*.png docs/screenshots/*.jpg _site/screenshots/
           cp assets/icon.ico _site/favicon.ico
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
