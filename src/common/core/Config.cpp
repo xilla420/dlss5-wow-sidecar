@@ -17,11 +17,11 @@ namespace {
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
-constexpr std::array<std::string_view, 16> kKnownKeys = {
+constexpr std::array<std::string_view, 18> kKnownKeys = {
     "show_hud",     "show_overlay",   "flow_grid_size", "neural_pass",
     "dlss_preset",  "synthetic_depth", "ui_mask",       "ui_mask_feather",
     "neural",       "wow_dir",       "language",      "ui_scale",
-    "neural_passes", "hotkeys", "theme", "advanced_mode"};
+    "neural_passes", "hotkeys", "theme", "advanced_mode", "client", "wotlk_dir"};
 
 bool IsKnown(std::string_view key) {
   return std::find(kKnownKeys.begin(), kKnownKeys.end(), key) != kKnownKeys.end();
@@ -193,6 +193,21 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
     }
   }
 
+  if (const auto node = root.get("client")) {
+    const auto value = node->value<std::string>();
+    if (!value || !ParseGameClientTag(*value, config.client)) {
+      warnings.emplace_back("client: expected \"retail\" or \"wotlk\"; using \"retail\"");
+    }
+  }
+
+  if (const auto node = root.get("wotlk_dir")) {
+    if (auto value = node->value<std::string>()) {
+      config.wotlkDir = *value;
+    } else {
+      warnings.emplace_back("wotlk_dir: expected a string; leaving it unset");
+    }
+  }
+
   // Not checked for existence here. A folder that has gone away is something to
   // report on the checks board, where it can be re-pointed, rather than a
   // reason to drop the setting on load and make the operator find it again.
@@ -333,6 +348,7 @@ std::string SerializeConfig(const Config& config) {
   out << "language = " << TomlString(config.language) << "\n";
   out << "theme = " << TomlString(config.theme) << "\n";
   out << "advanced_mode = " << Boolean(config.advancedMode) << "\n";
+  out << "client = " << TomlString(TagForGameClient(config.client)) << "\n";
   out << "neural_pass = \"" << config.neuralPass << "\"\n";
   out << "dlss_preset = \"" << config.dlssPreset << "\"\n";
   out << "show_hud = " << Boolean(config.showHud) << "\n";
@@ -350,6 +366,9 @@ std::string SerializeConfig(const Config& config) {
   // that reads as "configured to nothing".
   if (!config.wowDir.empty()) {
     out << "wow_dir = " << TomlString(config.wowDir) << "\n";
+  }
+  if (!config.wotlkDir.empty()) {
+    out << "wotlk_dir = " << TomlString(config.wotlkDir) << "\n";
   }
 
   out << "\n# Global hotkeys. An empty string switches one off. Ctrl+Alt+Backspace\n"
@@ -396,6 +415,16 @@ bool SaveConfig(const std::filesystem::path& path, const Config& config) {
   file.write(text.data(), static_cast<std::streamsize>(text.size()));
   file.flush();
   return file.good();
+}
+
+const char* TagForGameClient(GameClient client) {
+  return client == GameClient::Wotlk ? "wotlk" : "retail";
+}
+
+bool ParseGameClientTag(std::string_view tag, GameClient& out) {
+  if (tag == "retail") { out = GameClient::Modern; return true; }
+  if (tag == "wotlk") { out = GameClient::Wotlk; return true; }
+  return false;
 }
 
 void ResetRenderingSettings(Config& config) {

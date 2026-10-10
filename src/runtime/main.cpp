@@ -78,6 +78,13 @@ Target ResolveTarget(int argc, wchar_t** argv) {
   auto wow = FindWowWindow();
   if (!wow) return {nullptr, WideFromUtf8(Tr("World of Warcraft is not running."))};
   if (!wow->borderless) {
+    // 3.3.5a has no option called borderless, so telling its players to pick
+    // one sends them looking for something that is not there.
+    if (wow->client == GameClient::Wotlk) {
+      return {nullptr,
+              WideFromUtf8(Tr("World of Warcraft 3.3.5a must run windowed and maximized.\n"
+                              "In Video options, tick Windowed Mode and Maximized."))};
+    }
     return {nullptr,
             WideFromUtf8(Tr("World of Warcraft must run in borderless windowed mode.\n"
                             "Exclusive fullscreen has no compositor surface to capture."))};

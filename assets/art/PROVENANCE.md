@@ -5,7 +5,13 @@
 with quiet space at left for live interface text. No game screenshots, logos,
 characters or franchise landmarks were supplied as references.
 
-The PNG is embedded by ManagerArt.rc and cropped at draw time by
+`northrend.png` was generated locally with Qwen-Image 2.1 on 2026-10-10 for
+this project, from a written prompt only: an original frozen fortress on a
+glacier under an aurora, with quiet space at left for interface text. No game
+screenshots, logos, characters or reference images were supplied. It is shown
+on the welcome panel while the 3.3.5a client is selected.
+
+The PNGs are embedded by ManagerArt.rc and cropped at draw time by
 DrawWelcomeArt. Theme scrims, button bevels, hover highlights and keyboard
 focus rings are rendered by Theme.cpp, keeping artwork separate from controls.
 

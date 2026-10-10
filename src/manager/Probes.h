@@ -4,7 +4,9 @@
 #include <string_view>
 #include <vector>
 
+#include "core/Config.h"
 #include "core/GpuProfile.h"
+#include "present/WindowTracker.h"
 
 namespace sidecar {
 
@@ -32,6 +34,20 @@ bool PathLooksLikeWowInstall(const std::filesystem::path& path);
 // these files is ever opened.
 std::vector<std::string> FindInjectorLoaders(const std::vector<std::string>& filenames);
 
+// d3d9.dll beside a 3.3.5a Wow.exe. The client imports Direct3D 9, so that name
+// is the proxy slot -- and it is filled by DXVK at least as often as by
+// ReShade. A name cannot tell the two apart, so it is reported as a warning on
+// its own rather than lumped in with the loaders above.
+std::vector<std::string> FindLegacyProxies(const std::vector<std::string>& filenames);
+
+// Does a folder listing hold a game executable? Wow.exe, or one of the modern
+// branches' renamed copies. Names only.
+bool ListingHoldsWowExe(const std::vector<std::string>& filenames);
+
+// The window row, given what FindWowWindow returned and which client the
+// operator selected. Pure, so every combination is testable without a game.
+ProbeResult WowWindowVerdict(const std::optional<TargetWindow>& wow, GameClient selected);
+
 // The neural-runtime verdict, given a digest rather than a file. Split out
 // because the recognised path cannot otherwise be tested: producing a file that
 // hashes to a manifest entry would mean inverting SHA-256. An empty digest means
@@ -50,12 +66,14 @@ ProbeResult ProbeWindows();
 ProbeResult ProbeRefreshRate();
 ProbeResult ProbeNeuralRuntime(const std::filesystem::path& sidecarDir);
 ProbeResult ProbeReshade(const std::filesystem::path& sidecarDir);
-ProbeResult ProbeWowWindow();
-ProbeResult ProbeInjectorScan(const std::filesystem::path& wowDir);
+ProbeResult ProbeWowWindow(GameClient client);
+ProbeResult ProbeWowFolder(const std::filesystem::path& wowDir, GameClient client);
+ProbeResult ProbeInjectorScan(const std::filesystem::path& wowDir, GameClient client);
 ProbeResult ProbeSidecarPath(const std::filesystem::path& sidecarDir,
                              const std::filesystem::path& wowDir);
 
 std::vector<ProbeResult> RunAllProbes(const std::filesystem::path& sidecarDir,
-                                      const std::filesystem::path& wowDir);
+                                      const std::filesystem::path& wowDir,
+                                      GameClient client = GameClient::Modern);
 
 }  // namespace sidecar

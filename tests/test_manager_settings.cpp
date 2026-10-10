@@ -82,3 +82,39 @@ TEST_CASE("preset matching accounts for every owned neural value", "[unit]") {
   custom([](auto& n) { n.localTone = 1.0f; });
   custom([](auto& n) { n.skinStructure = 1.0f; });
 }
+
+TEST_CASE("the game client and both folders survive a round trip", "[unit]") {
+  Config config;
+  REQUIRE(config.client == GameClient::Modern);
+  config.client = GameClient::Wotlk;
+  config.wowDir = "D:\\Games\\World of Warcraft\\_retail_";
+  config.wotlkDir = "G:\\Games\\WoW 3.3.5a";
+  std::vector<std::string> warnings;
+  const Config back = ParseConfig(SerializeConfig(config), warnings);
+  REQUIRE(warnings.empty());
+  REQUIRE(back.client == GameClient::Wotlk);
+  REQUIRE(back.wowDir == config.wowDir);
+  REQUIRE(back.wotlkDir == config.wotlkDir);
+  REQUIRE(back.ActiveWowDir() == config.wotlkDir);
+}
+
+TEST_CASE("an unknown client tag warns and keeps the modern default", "[unit]") {
+  std::vector<std::string> warnings;
+  REQUIRE(ParseConfig("client = \"cataclysm\"", warnings).client == GameClient::Modern);
+  REQUIRE(warnings.size() == 1);
+  warnings.clear();
+  REQUIRE(ParseConfig("client = \"wotlk\"", warnings).client == GameClient::Wotlk);
+  REQUIRE(warnings.empty());
+}
+
+TEST_CASE("the active folder follows the selected client", "[unit]") {
+  Config config;
+  config.wowDir = "retail";
+  config.wotlkDir = "wotlk";
+  REQUIRE(config.ActiveWowDir() == "retail");
+  config.client = GameClient::Wotlk;
+  REQUIRE(config.ActiveWowDir() == "wotlk");
+  config.ActiveWowDir() = "changed";
+  REQUIRE(config.wotlkDir == "changed");
+  REQUIRE(config.wowDir == "retail");
+}

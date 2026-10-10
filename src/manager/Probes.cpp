@@ -62,6 +62,24 @@ bool PathLooksLikeWowInstall(const fs::path& path) {
   return false;
 }
 
+std::vector<std::string> FindLegacyProxies(const std::vector<std::string>& filenames) {
+  std::vector<std::string> found;
+  for (const auto& name : filenames) {
+    if (ToLower(name) == "d3d9.dll") found.push_back(name);
+  }
+  return found;
+}
+
+bool ListingHoldsWowExe(const std::vector<std::string>& filenames) {
+  for (const auto& name : filenames) {
+    const std::string lowered = ToLower(name);
+    for (const char* exe : {"wow.exe", "wowclassic.exe", "wowb.exe", "wowt.exe"}) {
+      if (lowered == exe) return true;
+    }
+  }
+  return false;
+}
+
 std::vector<std::string> FindInjectorLoaders(const std::vector<std::string>& filenames) {
   std::vector<std::string> found;
   for (const auto& name : filenames) {
@@ -286,11 +304,10 @@ ProbeResult ProbeReshade(const fs::path& sidecarDir) {
   return r;
 }
 
-ProbeResult ProbeWowWindow() {
+ProbeResult WowWindowVerdict(const std::optional<TargetWindow>& wow, GameClient selected) {
   ProbeResult r;
   r.title = Tr("World of Warcraft window");
 
-  const auto wow = FindWowWindow();
   if (!wow) {
     r.state = ProbeState::Warn;
     r.detail = Tr("WoW is not running.");
@@ -302,19 +319,93 @@ ProbeResult ProbeWowWindow() {
   const auto height = wow->clientScreen.bottom - wow->clientScreen.top;
   r.detail = std::to_string(width) + "x" + std::to_string(height);
 
-  if (wow->borderless) {
-    r.state = ProbeState::Ok;
-    r.detail += Tr(" borderless windowed");
+  // The guidance follows the client that is actually running, not the one
+  // selected: its own options menu is the one the player has in front of them.
+  const bool wotlk = wow->client == GameClient::Wotlk;
+  if (!wow->borderless) {
+    r.state = ProbeState::Fail;
+    r.detail += Tr(" windowed with a border, or exclusive fullscreen");
+    r.remedy = wotlk
+        ? Tr("In the game's Video options, tick Windowed Mode and Maximized. "
+             "Exclusive fullscreen has no compositor surface to capture.")
+        : Tr("Set WoW to borderless windowed. Exclusive fullscreen has no "
+             "compositor surface to capture and yields black frames.");
     return r;
   }
-  r.state = ProbeState::Fail;
-  r.detail += Tr(" windowed with a border, or exclusive fullscreen");
-  r.remedy = Tr("Set WoW to borderless windowed. Exclusive fullscreen has no "
-             "compositor surface to capture and yields black frames.");
+
+  r.detail += wotlk ? Tr(" windowed, maximized") : Tr(" borderless windowed");
+  if (wow->client != selected) {
+    // Capture works either way -- the window is found by class -- but the
+    // folder being scanned and the guidance on every page are for the other
+    // client, so it is worth one click to put right.
+    r.state = ProbeState::Warn;
+    r.remedy = wotlk ? Tr("A 3.3.5a client is running, but Retail & Classic is selected. "
+                          "Switch the client at the top of the window.")
+                     : Tr("A Retail or Classic client is running, but 3.3.5a is selected. "
+                          "Switch the client at the top of the window.");
+    return r;
+  }
+  r.state = ProbeState::Ok;
   return r;
 }
 
-ProbeResult ProbeInjectorScan(const fs::path& wowDir) {
+ProbeResult ProbeWowWindow(GameClient client) { return WowWindowVerdict(FindWowWindow(), client); }
+
+namespace {
+
+// File and folder names directly inside dir. Names only: nothing is opened (I5).
+std::vector<std::string> ListNames(const fs::path& dir) {
+  std::vector<std::string> names;
+  std::error_code ec;
+  for (const auto& entry : fs::directory_iterator(dir, ec)) {
+    if (ec) break;
+    names.push_back(entry.path().filename().string());
+  }
+  return names;
+}
+
+}  // namespace
+
+ProbeResult ProbeWowFolder(const fs::path& wowDir, GameClient client) {
+  ProbeResult r;
+  r.title = Tr("WoW folder");
+  const bool wotlk = client == GameClient::Wotlk;
+
+  std::error_code ec;
+  if (wowDir.empty()) {
+    r.state = ProbeState::Warn;
+    r.detail = Tr("No WoW folder set.");
+    r.remedy = wotlk ? Tr("Choose the folder that holds Wow.exe on the Setup page. A 3.3.5a "
+                          "client is not registered with Windows, so it cannot be detected.")
+                     : Tr("Choose the folder that holds Wow.exe on the Setup page, or press "
+                          "Detect there.");
+    return r;
+  }
+  r.detail = wowDir.generic_string();
+  if (!fs::is_directory(wowDir, ec) || ec) {
+    r.state = ProbeState::Warn;
+    r.remedy = Tr("This folder does not exist any more. Choose it again on the Setup page.");
+    return r;
+  }
+  if (!ListingHoldsWowExe(ListNames(wowDir))) {
+    r.state = ProbeState::Warn;
+    r.remedy = Tr("There is no Wow.exe in this folder. Choose the folder Wow.exe sits in, "
+                  "not its parent.");
+    return r;
+  }
+  // A 3.3.5a install keeps its data in MPQ archives; the modern clients do
+  // not. Existence only -- the archive is never opened.
+  if (wotlk && !fs::exists(wowDir / "Data" / "common.MPQ", ec)) {
+    r.state = ProbeState::Warn;
+    r.remedy = Tr("Wow.exe is here, but Data/common.MPQ is not, so this does not look like a "
+                  "3.3.5a client. Check that the right client is selected at the top.");
+    return r;
+  }
+  r.state = ProbeState::Ok;
+  return r;
+}
+
+ProbeResult ProbeInjectorScan(const fs::path& wowDir, GameClient client) {
   ProbeResult r;
   r.title = Tr("Injector scan of the WoW folder");
 
@@ -335,18 +426,28 @@ ProbeResult ProbeInjectorScan(const fs::path& wowDir) {
   }
 
   const auto found = FindInjectorLoaders(filenames);
-  if (found.empty()) {
+  const auto proxies =
+      client == GameClient::Wotlk ? FindLegacyProxies(filenames) : std::vector<std::string>{};
+  if (found.empty() && proxies.empty()) {
     r.state = ProbeState::Ok;
     r.detail = Tr("No injector loaders found.");
     return r;
   }
 
-  r.state = ProbeState::Fail;
+  const auto& listed = found.empty() ? proxies : found;
   r.detail = Tr("Found: ");
-  for (size_t i = 0; i < found.size(); ++i) {
+  for (size_t i = 0; i < listed.size(); ++i) {
     if (i) r.detail += ", ";
-    r.detail += found[i];
+    r.detail += listed[i];
   }
+  if (found.empty()) {
+    r.state = ProbeState::Warn;
+    r.remedy = Tr("A d3d9.dll beside a 3.3.5a client is usually DXVK, sometimes ReShade, "
+                  "and only its name is checked. DXVK is fine. ReShade is an injector: "
+                  "remove it.");
+    return r;
+  }
+  r.state = ProbeState::Fail;
   r.remedy = Tr("Remove these from your WoW folder. Blizzard bans accounts for "
              "in-process injectors, and this tool refuses to run alongside one.");
   return r;
@@ -369,15 +470,17 @@ ProbeResult ProbeSidecarPath(const fs::path& sidecarDir, const fs::path& wowDir)
   return r;
 }
 
-std::vector<ProbeResult> RunAllProbes(const fs::path& sidecarDir, const fs::path& wowDir) {
+std::vector<ProbeResult> RunAllProbes(const fs::path& sidecarDir, const fs::path& wowDir,
+                                      GameClient client) {
   return {
       ProbeGpu(),
       ProbeDriver(),
       ProbeWindows(),
       ProbeRefreshRate(),
-      ProbeWowWindow(),
+      ProbeWowWindow(client),
+      ProbeWowFolder(wowDir, client),
       ProbeSidecarPath(sidecarDir, wowDir),
-      ProbeInjectorScan(wowDir),
+      ProbeInjectorScan(wowDir, client),
       ProbeNeuralRuntime(sidecarDir),
       ProbeReshade(sidecarDir),
   };

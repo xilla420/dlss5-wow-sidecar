@@ -244,7 +244,7 @@ ImFont* AddFace(const FaceSpec& spec, float px, bool serifFallback, bool withCjk
 // ------------------------------------------------------------------- art
 
 struct Art {
-  ComPtr<ID3D11ShaderResourceView> stone, parchment, slate, emblem, citadel;
+  ComPtr<ID3D11ShaderResourceView> stone, parchment, slate, emblem, citadel, northrend;
   float tile = 512.0f;
 };
 
@@ -553,6 +553,7 @@ bool LoadThemeArt(ID3D11Device* device) {
     art.slate = DecodePng(device, wic.Get(), IDR_ART_SLATE);
     art.emblem = DecodePng(device, wic.Get(), IDR_ART_EMBLEM);
     art.citadel = DecodePng(device, wic.Get(), IDR_ART_CITADEL);
+    art.northrend = DecodePng(device, wic.Get(), IDR_ART_NORTHREND);
   }
   wic.Reset();
   if (SUCCEEDED(init)) CoUninitialize();
@@ -560,14 +561,21 @@ bool LoadThemeArt(ID3D11Device* device) {
   return ok && art.stone && art.parchment && art.slate && art.emblem && art.citadel;
 }
 
-void DrawWelcomeArt(ImDrawList* draw, ImVec2 min, ImVec2 max, ThemeId theme) {
+void DrawWelcomeArt(ImDrawList* draw, ImVec2 min, ImVec2 max, ThemeId theme, bool frozen) {
   const auto colors = CurrentThemeColors(theme);
   draw->AddRectFilled(min, max, U32(colors.panel));
-  if (TheArt().citadel) {
-    // Crop vertically to a panorama, preserving the image's 3:2 proportions.
-    const float visible = std::clamp((max.y - min.y) / (max.x - min.x) * 1.5f, 0.0f, 1.0f);
-    const float top = (1.0f - visible) * 0.35f;
-    draw->AddImage(Tex(TheArt().citadel), min, max, ImVec2(0, top), ImVec2(1, top + visible));
+  const Art& art = TheArt();
+  // The frozen panorama falls back to the citadel rather than to nothing.
+  const bool useFrozen = frozen && art.northrend;
+  const auto& texture = useFrozen ? art.northrend : art.citadel;
+  if (texture) {
+    // Crop vertically to the box, preserving the image's own proportions:
+    // the citadel is 3:2, the frozen panorama much wider.
+    const float imageAspect = useFrozen ? 1536.0f / 650.0f : 1.5f;
+    const float visible =
+        std::clamp((max.y - min.y) / (max.x - min.x) * imageAspect, 0.0f, 1.0f);
+    const float top = (1.0f - visible) * (useFrozen ? 0.30f : 0.35f);
+    draw->AddImage(Tex(texture), min, max, ImVec2(0, top), ImVec2(1, top + visible));
   }
   draw->AddRectFilledMultiColor(min, max, U32(colors.panel, 0.97f),
       U32(colors.panel, 0.12f), U32(colors.panel, 0.25f), U32(colors.panel, 0.97f));
@@ -770,6 +778,165 @@ bool ThemedPrimaryButton(const char* label, ImVec2 size, ThemeId theme, bool dan
   }
   if (hovered) ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
   return pressed;
+}
+
+void DrawIcon(ImDrawList* draw, Icon icon, ImVec2 c, float size, ImU32 col) {
+  // Drawn on a unit grid of side `size`, centred on c. Strokes are a tenth of
+  // the side, which reads at the rail's size and does not clot when larger.
+  const float h = size * 0.5f;
+  const float w = std::max(1.0f, size * 0.10f);
+  const auto P = [&](float x, float y) { return ImVec2(c.x + x * h, c.y + y * h); };
+  switch (icon) {
+    case Icon::Home: {
+      const ImVec2 roof[] = {P(-0.95f, -0.05f), P(0.0f, -0.85f), P(0.95f, -0.05f)};
+      draw->AddPolyline(roof, 3, col, ImDrawFlags_None, w);
+      draw->AddRect(P(-0.65f, -0.20f), P(0.65f, 0.85f), col, 0.0f, 0, w);
+      draw->AddRectFilled(P(-0.18f, 0.30f), P(0.18f, 0.85f), col);
+      break;
+    }
+    case Icon::Setup: {
+      // A tray with an arrow into it: files being put in place.
+      const ImVec2 tray[] = {P(-0.85f, 0.20f), P(-0.85f, 0.85f), P(0.85f, 0.85f), P(0.85f, 0.20f)};
+      draw->AddPolyline(tray, 4, col, ImDrawFlags_None, w);
+      draw->AddLine(P(0.0f, -0.90f), P(0.0f, 0.35f), col, w);
+      const ImVec2 head[] = {P(-0.42f, -0.05f), P(0.0f, 0.38f), P(0.42f, -0.05f)};
+      draw->AddPolyline(head, 3, col, ImDrawFlags_None, w);
+      break;
+    }
+    case Icon::Checks: {
+      const ImVec2 shield[] = {P(0.0f, -0.92f), P(0.80f, -0.60f), P(0.72f, 0.20f),
+                               P(0.0f, 0.92f), P(-0.72f, 0.20f), P(-0.80f, -0.60f)};
+      draw->AddPolyline(shield, 6, col, ImDrawFlags_Closed, w);
+      const ImVec2 tick[] = {P(-0.38f, 0.00f), P(-0.08f, 0.30f), P(0.42f, -0.28f)};
+      draw->AddPolyline(tick, 3, col, ImDrawFlags_None, w * 1.2f);
+      break;
+    }
+    case Icon::Tuning: {
+      const float rows[] = {-0.60f, 0.0f, 0.60f};
+      const float knobs[] = {0.35f, -0.40f, 0.10f};
+      for (int i = 0; i < 3; ++i) {
+        draw->AddLine(P(-0.90f, rows[i]), P(0.90f, rows[i]), col, w);
+        draw->AddCircleFilled(P(knobs[i], rows[i]), size * 0.11f, col);
+      }
+      break;
+    }
+    case Icon::Log: {
+      draw->AddRect(P(-0.70f, -0.90f), P(0.70f, 0.90f), col, size * 0.06f, 0, w);
+      for (float y : {-0.45f, -0.05f, 0.35f}) {
+        draw->AddLine(P(-0.40f, y), P(y > 0.2f ? 0.10f : 0.40f, y), col, w);
+      }
+      break;
+    }
+    case Icon::Sword: {
+      draw->AddLine(P(-0.62f, 0.62f), P(0.85f, -0.85f), col, w * 1.3f);
+      draw->AddLine(P(-0.62f, 0.12f), P(-0.12f, 0.62f), col, w * 1.3f);   // crossguard
+      draw->AddLine(P(-0.62f, 0.62f), P(-0.90f, 0.90f), col, w * 1.6f);   // grip
+      break;
+    }
+    case Icon::Snowflake: {
+      for (int i = 0; i < 3; ++i) {
+        const float a = 3.14159265f * (0.5f + i / 3.0f);
+        const float dx = std::cos(a), dy = std::sin(a);
+        draw->AddLine(P(-dx * 0.92f, -dy * 0.92f), P(dx * 0.92f, dy * 0.92f), col, w);
+        for (float sign : {1.0f, -1.0f}) {
+          // A pair of barbs near each tip.
+          const float tx = sign * dx * 0.58f, ty = sign * dy * 0.58f;
+          const float bx = sign * dx * 0.86f, by = sign * dy * 0.86f;
+          draw->AddLine(P(tx, ty), P(bx - dy * 0.26f, by + dx * 0.26f), col, w * 0.85f);
+          draw->AddLine(P(tx, ty), P(bx + dy * 0.26f, by - dx * 0.26f), col, w * 0.85f);
+        }
+      }
+      break;
+    }
+    case Icon::Folder:
+    default: {
+      const ImVec2 outline[] = {P(-0.90f, -0.65f), P(-0.30f, -0.65f), P(-0.15f, -0.45f),
+                                P(0.90f, -0.45f), P(0.90f, 0.75f), P(-0.90f, 0.75f)};
+      draw->AddPolyline(outline, 6, col, ImDrawFlags_Closed, w);
+      break;
+    }
+  }
+}
+
+bool SegmentedControl(const char* id, const char* const* labels, const Icon* icons, int count,
+                      int& selected, ImVec2 size, ThemeId theme, float scale) {
+  const ThemeColors colors = CurrentThemeColors(theme);
+  const float s = std::max(scale, 1.0f);
+  ImDrawList* draw = ImGui::GetWindowDrawList();
+  const ImVec2 origin = ImGui::GetCursorScreenPos();
+  const float rounding = theme == ThemeId::QuestLog ? 6.0f * s
+                         : theme == ThemeId::Dragonflight ? 3.0f * s
+                                                          : 1.0f * s;
+  const ImVec2 end(origin.x + size.x, origin.y + size.y);
+  draw->AddRectFilled(origin, end, U32(colors.light ? 0x5A3A10 : 0x05060A,
+                                       colors.light ? 0.10f : 0.80f), rounding);
+
+  // Segments share the width in proportion to what they hold, so a long label
+  // in one language takes room from a short neighbour instead of being cut.
+  const float iconPart = icons ? size.y * 0.42f + 8.0f * s : 0.0f;
+  float natural = 0.0f;
+  for (int i = 0; i < count; ++i) natural += ImGui::CalcTextSize(labels[i]).x + iconPart + 16.0f * s;
+  const float stretch = natural > 0.0f ? size.x / natural : 1.0f;
+
+  bool changed = false;
+  ImGui::PushID(id);
+  float x = origin.x;
+  for (int i = 0; i < count; ++i) {
+    const float segment = (ImGui::CalcTextSize(labels[i]).x + iconPart + 16.0f * s) * stretch;
+    const ImVec2 min(x, origin.y);
+    const ImVec2 max(i + 1 == count ? end.x : x + segment, end.y);
+    x = max.x;
+    ImGui::SetCursorScreenPos(min);
+    ImGui::PushID(i);
+    if (ImGui::InvisibleButton("##segment", ImVec2(max.x - min.x, size.y)) && selected != i) {
+      selected = i;
+      changed = true;
+    }
+    const bool hovered = ImGui::IsItemHovered();
+    const bool focused = ImGui::IsItemFocused();
+    ImGui::PopID();
+
+    const bool on = selected == i;
+    const float inset = 3.0f * s;
+    const ImVec2 innerMin(min.x + inset, min.y + inset);
+    const ImVec2 innerMax(max.x - inset, max.y - inset);
+    if (on) {
+      const unsigned int face = colors.light ? colors.buttonFace : colors.accent;
+      draw->AddRectFilled(innerMin, innerMax, U32(face, colors.light ? 0.92f : 0.30f),
+                          rounding * 0.8f);
+      draw->AddRect(innerMin, innerMax, U32(colors.goldBright, 0.85f), rounding * 0.8f, 0,
+                    1.0f * s);
+    } else if (hovered) {
+      draw->AddRectFilled(innerMin, innerMax, U32(colors.accent, 0.14f), rounding * 0.8f);
+      ImGui::SetMouseCursor(ImGuiMouseCursor_Hand);
+    }
+    if (focused) {
+      draw->AddRect(innerMin, innerMax, U32(colors.goldBright), rounding * 0.8f, 0, 2.0f * s);
+    }
+
+    const unsigned int textColour = on ? (colors.light ? colors.buttonText : colors.goldBright)
+                                       : colors.muted;
+    const float iconSize = icons ? size.y * 0.42f : 0.0f;
+    const float gap = icons ? 8.0f * s : 0.0f;
+    const ImVec2 textSize = ImGui::CalcTextSize(labels[i]);
+    const float contentWidth = iconSize + gap + textSize.x;
+    const float left = min.x + std::max(inset, (max.x - min.x - contentWidth) * 0.5f);
+    const float midY = min.y + size.y * 0.5f;
+    if (icons) {
+      DrawIcon(draw, icons[i], ImVec2(left + iconSize * 0.5f, midY), iconSize, U32(textColour));
+    }
+    draw->PushClipRect(innerMin, innerMax, true);
+    draw->AddText(ImVec2(left + iconSize + gap, midY - textSize.y * 0.5f), U32(textColour),
+                  labels[i]);
+    draw->PopClipRect();
+  }
+  ImGui::PopID();
+  draw->AddRect(origin, end, U32(colors.accent, colors.light ? 0.65f : 0.55f), rounding, 0,
+                1.0f * s);
+  // Leave the cursor where a single item of this size would have left it.
+  ImGui::SetCursorScreenPos(origin);
+  ImGui::Dummy(size);
+  return changed;
 }
 
 }  // namespace sidecar

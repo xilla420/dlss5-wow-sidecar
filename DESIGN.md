@@ -61,11 +61,17 @@ pairs. Windows fonts provide Arabic and CJK fallback. Labels stay live text,
 never baked into art. Japanese uses the existing CJK atlas and no italic prose.
 
 ## Layout
-Header identity and start/stop action occupy the first row; theme and language
-occupy a second row. Navigation owns mode selection. Content scrolls independently
-above a persistent save/discard region. Presets use two columns above 680 design
-pixels of content width, otherwise one. Values scale with the existing DPI logic.
-Minimum native window remains 900 by 620 pixels; this is not a mobile website.
+One compact header row: identity at the left, then the game client switch
+(Retail & Classic or 3.3.5a Wrath) and the start/stop action at the right edge.
+The navigation rail owns the Easy/Advanced switch, icon-led page rows, the live
+status, and the theme and language pickers at its foot. Content scrolls
+independently above a one-row save/discard bar. Presets use two columns above
+680 design pixels of content width, otherwise one. Values scale with the existing
+DPI logic. Minimum native window is 880 by 600 pixels; this is not a mobile website.
+
+The client switch decides which folder is scanned, which window check and
+remedy apply, the Setup instructions, and the welcome art. It never changes
+rendering settings.
 
 ## Elevation & Depth
 Tinted panels, fine metal borders and the original generated citadel image.

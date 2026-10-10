@@ -145,3 +145,24 @@ TEST_CASE("both the retail and Classic window classes are recognised", "[unit]")
   REQUIRE(retail);
   REQUIRE(classic);
 }
+
+TEST_CASE("the Wrath 3.3.5a window classes are recognised", "[unit]") {
+  // 3.3.5a suffixes the class with its graphics API, so the exact match on
+  // "GxWindowClass" never saw it. Read from a live build 12340 client.
+  CHECK(WowWindowMatches(L"GxWindowClassD3d", L"World of Warcraft"));
+  CHECK(WowWindowMatches(L"GxWindowClassD3d9Ex", L"World of Warcraft"));
+  CHECK(WowWindowMatches(L"GxWindowClassOpenGl", L"World of Warcraft"));
+  // Private-server launchers retitle the window; the class alone is enough.
+  CHECK(WowWindowMatches(L"GxWindowClassD3d", L"Some Realm"));
+}
+
+TEST_CASE("a window class says which client family it belongs to", "[unit]") {
+  CHECK(ClientForWindowClass(L"GxWindowClassD3d") == GameClient::Wotlk);
+  CHECK(ClientForWindowClass(L"GxWindowClassD3d9Ex") == GameClient::Wotlk);
+  CHECK(ClientForWindowClass(L"GxWindowClassOpenGl") == GameClient::Wotlk);
+  // Modern Classic still registers the bare name.
+  CHECK(ClientForWindowClass(L"GxWindowClass") == GameClient::Modern);
+  CHECK(ClientForWindowClass(L"waApplication Window") == GameClient::Modern);
+  CHECK(ClientForWindowClass(L"w") == GameClient::Modern);
+  CHECK(ClientForWindowClass(nullptr) == GameClient::Modern);
+}

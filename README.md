@@ -71,10 +71,23 @@ look you see in demo videos. Each extra pass costs roughly one more pass of GPU 
 |---|---|---|
 | ![Stormwind theme](docs/screenshots/theme-stormwind.png) | ![Quest log theme](docs/screenshots/theme-questlog.png) | ![Dragonflight theme](docs/screenshots/theme-dragonflight.png) |
 
-Pick the theme and the language at the top of the window. The interface speaks
+Pick the theme and the language at the foot of the side rail. The interface speaks
 English, Русский, Español, Deutsch, Français, Türkçe, العربية, 简体中文, 日本語 and 한국어.
 
 ![The manager in Japanese, Arabic, Chinese and Korean](docs/screenshots/languages.png)
+
+## WoW 3.3.5a (Wrath private servers)
+
+Pick **3.3.5a Wrath** at the top of the window. Setup and Checks switch to that
+client: its own folder, its own window check, and the steps it needs.
+
+![The manager with the 3.3.5a client selected](docs/screenshots/client-wotlk.png)
+
+3.3.5a has no borderless option. In Video options tick **Windowed Mode** and
+**Maximized**, or add `SET gxWindow "1"` and `SET gxMaximize "1"` to `WTF/Config.wtf`
+while the game is closed. The manager shows both and never edits the file itself.
+
+![Setup for 3.3.5a](docs/screenshots/setup-wotlk.png)
 
 ## Is it safe for my account?
 
@@ -106,6 +119,10 @@ simply doesn't do any of the things people get banned for.
 ## FAQ
 
 **Does it work with WoW Classic?** Yes. Any client in borderless windowed mode works.
+
+**Does it work with 3.3.5a (Wrath private servers)?** Yes. Choose **3.3.5a Wrath** at
+the top of the manager, then in the game's Video options tick **Windowed Mode** and
+**Maximized**. See [WoW 3.3.5a](#wow-335a-wrath-private-servers).
 
 **Is it an addon?** No. It's a separate Windows program that sits over the game window.
 

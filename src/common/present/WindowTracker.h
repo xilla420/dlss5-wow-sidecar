@@ -5,22 +5,32 @@
 #include <memory>
 #include <optional>
 
+#include "core/Config.h"
+
 namespace sidecar {
 
 struct TargetWindow {
   HWND hwnd = nullptr;
   RECT clientScreen{};
   bool borderless = false;
+  // Which client family the window's class belongs to. Read from the class
+  // name alone, so it needs nothing the class lookup did not already have.
+  GameClient client = GameClient::Modern;
 };
 
 // WoW's top-level window classes, observed rather than documented, which is why
-// this list has grown twice. Retail has registered "waApplication Window" and,
-// as of the 2026-08 client, plain "w"; older and Classic clients use
-// "GxWindowClass". Matching by class rather than by process is deliberate: it
-// needs no process handle at all (I2).
+// this list has grown three times. Retail has registered "waApplication Window"
+// and, as of the 2026-08 client, plain "w"; modern Classic uses "GxWindowClass".
+// Wrath 3.3.5a (build 12340) names the class after its graphics API --
+// "GxWindowClassD3d", "GxWindowClassD3d9Ex" or "GxWindowClassOpenGl" -- and an
+// exact match on "GxWindowClass" misses all three. Matching by class rather than
+// by process is deliberate: it needs no process handle at all (I2).
 inline constexpr const wchar_t* kWowWindowClasses[] = {
     L"waApplication Window",
     L"GxWindowClass",
+    L"GxWindowClassD3d",
+    L"GxWindowClassD3d9Ex",
+    L"GxWindowClassOpenGl",
     L"w",
 };
 
@@ -42,6 +52,10 @@ bool ClassNameIsSpecificEnough(const wchar_t* className);
 // Given what can be read from a window without opening its process, does this
 // look like WoW's main window?
 bool WowWindowMatches(const wchar_t* className, const wchar_t* title);
+
+// Which client family registers this class. The 3.3.5a classes are the ones
+// with the graphics API appended; everything else is a modern client.
+GameClient ClientForWindowClass(const wchar_t* className);
 
 std::optional<TargetWindow> FindWowWindow();
 

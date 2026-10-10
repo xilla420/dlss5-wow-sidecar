@@ -206,3 +206,78 @@ TEST_CASE("every probe result carries a remedy when it is not Ok", "[unit]") {
     if (r.state != ProbeState::Ok) REQUIRE(r.remedy.empty() == false);
   }
 }
+
+TEST_CASE("d3d9.dll is reported as a 3.3.5a proxy, not a loader", "[unit]") {
+  const std::vector<std::string> listing = {"Wow.exe", "D3D9.dll", "Data", "dbghelp.dll"};
+  REQUIRE(FindInjectorLoaders(listing).empty());
+  REQUIRE(FindLegacyProxies(listing) == std::vector<std::string>{"D3D9.dll"});
+}
+
+TEST_CASE("a folder listing is checked for a game executable by name", "[unit]") {
+  CHECK(ListingHoldsWowExe({"Data", "Wow.exe"}));
+  CHECK(ListingHoldsWowExe({"WowClassic.exe"}));
+  CHECK_FALSE(ListingHoldsWowExe({"WowError.exe", "Repair.exe", "Data"}));
+  CHECK_FALSE(ListingHoldsWowExe({}));
+}
+
+namespace {
+TargetWindow FakeWow(bool borderless, GameClient client) {
+  TargetWindow t;
+  t.clientScreen = RECT{0, 0, 2560, 1440};
+  t.borderless = borderless;
+  t.client = client;
+  return t;
+}
+}  // namespace
+
+TEST_CASE("the window row follows the running client and the selected one", "[unit]") {
+  SECTION("not running") {
+    const auto r = WowWindowVerdict(std::nullopt, GameClient::Wotlk);
+    CHECK(r.state == ProbeState::Warn);
+    CHECK_FALSE(r.remedy.empty());
+  }
+  SECTION("3.3.5a maximized, 3.3.5a selected") {
+    const auto r = WowWindowVerdict(FakeWow(true, GameClient::Wotlk), GameClient::Wotlk);
+    CHECK(r.state == ProbeState::Ok);
+    CHECK(r.detail.find("2560x1440") == 0);
+  }
+  SECTION("3.3.5a with a border gets the 3.3.5a remedy") {
+    const auto r = WowWindowVerdict(FakeWow(false, GameClient::Wotlk), GameClient::Wotlk);
+    CHECK(r.state == ProbeState::Fail);
+    CHECK(r.remedy.find("Maximized") != std::string::npos);
+  }
+  SECTION("retail with a border gets the borderless remedy") {
+    const auto r = WowWindowVerdict(FakeWow(false, GameClient::Modern), GameClient::Modern);
+    CHECK(r.state == ProbeState::Fail);
+    CHECK(r.remedy.find("borderless") != std::string::npos);
+  }
+  SECTION("the wrong client selected is a warning, not a failure") {
+    const auto r = WowWindowVerdict(FakeWow(true, GameClient::Wotlk), GameClient::Modern);
+    CHECK(r.state == ProbeState::Warn);
+    CHECK_FALSE(r.remedy.empty());
+  }
+}
+
+TEST_CASE("every 3.3.5a probe result carries a remedy when it is not Ok", "[unit]") {
+  const auto results = RunAllProbes("C:/Tools/dlss5-sidecar", "", GameClient::Wotlk);
+  for (const auto& r : results) {
+    INFO("probe: " << r.title);
+    REQUIRE(r.title.empty() == false);
+    if (r.state != ProbeState::Ok) REQUIRE(r.remedy.empty() == false);
+  }
+}
+
+TEST_CASE("the folder row checks a 3.3.5a install by names alone", "[unit]") {
+  namespace fs = std::filesystem;
+  const fs::path root = fs::temp_directory_path() / "sidecar-probe-wotlk";
+  fs::remove_all(root);
+  fs::create_directories(root / "Data");
+  CHECK(ProbeWowFolder(root, GameClient::Wotlk).state == ProbeState::Warn);   // no Wow.exe
+  std::ofstream(root / "Wow.exe").put('x');
+  CHECK(ProbeWowFolder(root, GameClient::Wotlk).state == ProbeState::Warn);   // no MPQ
+  CHECK(ProbeWowFolder(root, GameClient::Modern).state == ProbeState::Ok);
+  std::ofstream(root / "Data" / "common.MPQ").put('x');
+  CHECK(ProbeWowFolder(root, GameClient::Wotlk).state == ProbeState::Ok);
+  CHECK(ProbeWowFolder("", GameClient::Wotlk).state == ProbeState::Warn);
+  fs::remove_all(root);
+}

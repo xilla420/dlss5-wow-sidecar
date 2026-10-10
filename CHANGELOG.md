@@ -31,6 +31,39 @@ is what the reader is looking for.
 
 ## Unreleased
 
+### Added
+
+- **A game client switch: Retail & Classic, or 3.3.5a Wrath.** It sits in the
+  header and decides which folder is scanned, which window check applies, and
+  what Setup tells you to do. Each client keeps its own folder, so switching back
+  and forth loses neither.
+- **3.3.5a setup and checks.** Setup shows the two ways to get a capturable window
+  (Windowed Mode and Maximized in Video options, or `gxWindow` and `gxMaximize` in
+  `Config.wtf`). Checks add a WoW folder row that looks for `Wow.exe` and, for
+  3.3.5a, `Data/common.MPQ`. A `d3d9.dll` beside a 3.3.5a client is reported as a
+  warning, because it is usually DXVK; the other injector names still block. If the
+  game and the selected client disagree, the window row says so.
+- **A "Ready to play" checklist** on Status that ticks itself off: files, checks,
+  game window, start.
+
+### Changed
+
+- **A more compact manager.** One header row, icons in the side rail, the theme and
+  language at the foot of the rail, a one-line save bar, and status pills on the
+  checks board. The welcome panel shows a frozen fortress while 3.3.5a is selected.
+- The first-run notice has its own language picker, so it can be read before it
+  is accepted.
+
+### Fixed
+
+- **WoW 3.3.5a (Wrath, build 12340) was never detected.** Its window class
+  carries the graphics API in its name (`GxWindowClassD3d`, `GxWindowClassD3d9Ex`,
+  `GxWindowClassOpenGl`), and the sidecar only knew the bare `GxWindowClass`, so
+  it reported WoW as not running. 3.3.5a has no "borderless" option: use
+  **Windowed Mode** with **Maximized** ticked in Video options, which gives the
+  same borderless window.
+- In Arabic, text set beside the welcome picture wrapped one letter per line.
+
 ## 0.4.0
 
 The manager now separates everyday use from detailed tuning, with an illustrated

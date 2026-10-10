@@ -54,6 +54,14 @@ bool WowWindowMatches(const wchar_t* className, const wchar_t* title) {
   return title != nullptr && wcscmp(title, kWowWindowTitle) == 0;
 }
 
+GameClient ClientForWindowClass(const wchar_t* className) {
+  if (!className) return GameClient::Modern;
+  for (const wchar_t* legacy : {L"GxWindowClassD3d", L"GxWindowClassD3d9Ex", L"GxWindowClassOpenGl"}) {
+    if (wcscmp(className, legacy) == 0) return GameClient::Wotlk;
+  }
+  return GameClient::Modern;
+}
+
 std::optional<TargetWindow> FindWowWindow() {
   // A client can own several windows of its class, most of them hidden or
   // zero-sized, so take the first visible one with a real client area rather
@@ -77,6 +85,7 @@ std::optional<TargetWindow> FindWowWindow() {
       t.hwnd = hwnd;
       t.clientScreen = *rect;
       t.borderless = IsBorderless(hwnd);
+      t.client = ClientForWindowClass(className);
       return t;
     }
   }

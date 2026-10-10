@@ -48,6 +48,20 @@ struct NeuralSettings {
   float skinStructure = -1.0f;     // NRSkinStructure
 };
 
+// Which family of game client the operator plays. They differ in what the
+// window is called, in how borderless windowed is reached from the game's own
+// options, and in where the install lives -- so setup and checks follow it.
+//
+//   Modern  retail and the modern Classic branches, installed by Battle.net.
+//   Wotlk   the 3.3.5a (build 12340) client private servers run: Direct3D 9,
+//           no Battle.net, and "Windowed Mode" plus "Maximized" in place of a
+//           borderless option.
+enum class GameClient { Modern, Wotlk };
+
+// The tag stored in sidecar.toml: "retail" or "wotlk".
+const char* TagForGameClient(GameClient client);
+bool ParseGameClientTag(std::string_view tag, GameClient& out);
+
 struct Config {
   // Interface language, as a tag the translator understands ("en", "ru").
   // English by default, and deliberately not taken from the Windows locale:
@@ -62,6 +76,10 @@ struct Config {
 
   // Presentation only. Switching modes never rewrites rendering settings.
   bool advancedMode = false;
+
+  // Which client the operator plays. Changes the guidance, the window check
+  // and which folder is scanned, never the rendering.
+  GameClient client = GameClient::Modern;
 
   // How much bigger than the design size the interface is drawn, on top of
   // whatever the monitor's DPI already asks for. One means "the DPI's answer
@@ -87,6 +105,17 @@ struct Config {
   // can be listed and compared against the known loaders, and so the sidecar
   // can refuse to install itself in there.
   std::string wowDir;
+
+  // The 3.3.5a client's folder, kept apart from wowDir so switching clients
+  // back and forth never loses either path. Nothing registers a 3.3.5a
+  // install, so this is only ever what the operator chose.
+  std::string wotlkDir;
+
+  // The folder that belongs to the selected client.
+  const std::string& ActiveWowDir() const {
+    return client == GameClient::Wotlk ? wotlkDir : wowDir;
+  }
+  std::string& ActiveWowDir() { return client == GameClient::Wotlk ? wotlkDir : wowDir; }
 
   // Neural rendering by default, because that is what anyone installing this
   // came for. It is safe as a default precisely because it cannot fail hard:

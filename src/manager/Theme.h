@@ -98,7 +98,23 @@ void DrawThemeFrame(ImDrawList* draw, ImVec2 min, ImVec2 max, ThemeId theme, flo
 void DrawEmblem(ImDrawList* draw, ImVec2 at, float size, ThemeId theme);
 
 // Original scenic art, with a theme-owned scrim for readable overlaid text.
-void DrawWelcomeArt(ImDrawList* draw, ImVec2 min, ImVec2 max, ThemeId theme);
+// `frozen` swaps the twilight citadel for the frozen fortress shown while the
+// 3.3.5a client is selected.
+void DrawWelcomeArt(ImDrawList* draw, ImVec2 min, ImVec2 max, ThemeId theme,
+                    bool frozen = false);
+
+// Small line icons, drawn rather than loaded so they stay sharp at every
+// interface scale and take the theme's colours without a tinted texture.
+enum class Icon { Home, Setup, Checks, Tuning, Log, Sword, Snowflake, Folder };
+
+// The icon centred on `center`, fitting a square of side `size`.
+void DrawIcon(ImDrawList* draw, Icon icon, ImVec2 center, float size, ImU32 color);
+
+// A row of mutually exclusive choices drawn as one framed control, the way
+// the game draws its tab strips. Each segment is a real focusable item, so the
+// keyboard reaches it. Returns true on the frame the selection changes.
+bool SegmentedControl(const char* id, const char* const* labels, const Icon* icons, int count,
+                      int& selected, ImVec2 size, ThemeId theme, float scale);
 
 // The primary action, drawn the way the theme draws its big buttons. `danger`
 // is the stop variant. Returns true when pressed, like ImGui::Button.

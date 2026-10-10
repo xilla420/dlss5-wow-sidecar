@@ -61,11 +61,13 @@ namespace {
 // at whatever the monitor's DPI and the operator's setting ask for, and these
 // are multiplied once at startup rather than at every use, so the hundred or so
 // places that read them need no arithmetic of their own.
-constexpr int kWindowWidth = 1180;
-constexpr int kWindowHeight = 820;
-float kNavWidth = 208.0f;
-float kHeaderHeight = 152.0f;
-float kPad = 22.0f;
+constexpr int kWindowWidth = 1080;
+constexpr int kWindowHeight = 740;
+float kNavWidth = 188.0f;
+float kHeaderHeight = 84.0f;
+float kPad = 14.0f;
+// The save bar under the content. One row: the buttons, then the feedback.
+float kSaveBarHeight = 46.0f;
 
 // How much bigger than the design size everything is drawn. Read by S() below,
 // set once the window exists and the DPI can be asked for.
@@ -168,7 +170,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
       return 0;
     case WM_GETMINMAXINFO:
       // Below this the nav rail and the content start fighting each other.
-      reinterpret_cast<MINMAXINFO*>(lp)->ptMinTrackSize = POINT{900, 620};
+      reinterpret_cast<MINMAXINFO*>(lp)->ptMinTrackSize = POINT{880, 600};
       return 0;
     case WM_DESTROY:
       PostQuitMessage(0);
@@ -258,12 +260,16 @@ void FrameLastItem() {
 // sentence -- so the last line would be drawn first. Here the words are taken
 // back into reading order, packed into lines, and each line is drawn in visual
 // order against the right edge.
-void Wrapped(const char* text) {
+//
+// maxWidth narrows the column, for text set beside something else. The
+// left-to-right path gets the same from the caller's PushTextWrapPos.
+void Wrapped(const char* text, float maxWidth = 0.0f) {
   if (!(VisualOrdering() && IsRightToLeft(CurrentLanguage()) && ContainsArabic(text))) {
     ImGui::TextWrapped("%s", text);
     return;
   }
-  const float width = ImGui::GetContentRegionAvail().x;
+  const float available = ImGui::GetContentRegionAvail().x;
+  const float width = maxWidth > 0.0f ? std::min(maxWidth, available) : available;
   const float space = ImGui::CalcTextSize(" ").x;
   const std::string_view all(text);
   std::vector<std::string> lines;
@@ -321,6 +327,10 @@ void Wrapped(const char* text) {
   // Set like one paragraph of wrapped text: lines touch, and only the last one
   // takes the usual gap to whatever follows.
   const ImVec2 spacing = ImGui::GetStyle().ItemSpacing;
+  // The lines are already broken. A wrap position set by the caller would
+  // break them again -- each one sits right-aligned, past that position, so
+  // ImGui wrapped it one letter per row.
+  ImGui::PushTextWrapPos(-1.0f);
   for (size_t i = 0; i < lines.size(); ++i) {
     const bool last = i + 1 == lines.size();
     if (!last) ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(spacing.x, 0.0f));
@@ -329,6 +339,7 @@ void Wrapped(const char* text) {
     ImGui::TextUnformatted(lines[i].c_str());
     if (!last) ImGui::PopStyleVar();
   }
+  ImGui::PopTextWrapPos();
 }
 
 // A bronze rule across the available width. The game separates everything with
@@ -372,13 +383,21 @@ void Dot(bool good, const char* label, bool warnNotFail = true) {
                         radius, colour);
   ImGui::Dummy(ImVec2(radius * 2.0f + S(8.0f), 0.0f));
   ImGui::SameLine(0.0f, 0.0f);
-  ImGui::TextUnformatted(Tr(label));
+  // Wrapped, because the rail is narrow and some languages are not. Arabic is
+  // the exception: right-aligned it would sit at the far side of the rail from
+  // its own dot, so it stays one line beside it, as before.
+  const char* text = Tr(label);
+  if (VisualOrdering() && IsRightToLeft(CurrentLanguage()) && ContainsArabic(text)) {
+    ImGui::TextUnformatted(text);
+  } else {
+    ImGui::TextWrapped("%s", text);
+  }
 }
 
 // One number, labelled, in a bordered slot. The game shows statistics like
 // this and it beats a run of "label: value" lines for scanning.
 void StatCard(const char* label, const char* value, float width, ImVec4 valueColor) {
-  ImGui::BeginChild(label, ImVec2(width, S(74.0f)), ImGuiChildFlags_Border);
+  ImGui::BeginChild(label, ImVec2(width, S(64.0f)), ImGuiChildFlags_Border);
   ImGui::Dummy(ImVec2(0.0f, S(2.0f)));
   ImGui::Indent(S(12.0f));
   if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
@@ -461,6 +480,7 @@ fs::path AskForFolder(HWND owner, const wchar_t* title, const fs::path& startAt)
 struct LiveState {
   bool wowRunning = false;
   bool wowBorderless = false;
+  GameClient wowClient = GameClient::Modern;
   uint32_t wowWidth = 0;
   uint32_t wowHeight = 0;
   bool overlayRunning = false;
@@ -472,6 +492,7 @@ LiveState PollLiveState() {
   if (auto wow = FindWowWindow()) {
     live.wowRunning = true;
     live.wowBorderless = wow->borderless;
+    live.wowClient = wow->client;
     live.wowWidth = static_cast<uint32_t>(wow->clientScreen.right - wow->clientScreen.left);
     live.wowHeight = static_cast<uint32_t>(wow->clientScreen.bottom - wow->clientScreen.top);
   }
@@ -500,6 +521,16 @@ const char* SectionId(Section section) {
 // What the nav rail shows. Separate from the identity above on purpose.
 const char* SectionLabel(Section section) { return Tr(SectionId(section)); }
 
+Icon SectionIcon(Section section) {
+  switch (section) {
+    case Section::Status: return Icon::Home;
+    case Section::Setup:  return Icon::Setup;
+    case Section::Checks: return Icon::Checks;
+    case Section::Tuning: return Icon::Tuning;
+    default:              return Icon::Log;
+  }
+}
+
 bool AnyBlockingFailure(const std::vector<ProbeResult>& results) {
   for (const auto& r : results) {
     if (r.state == ProbeState::Fail) return true;
@@ -513,15 +544,32 @@ void DrawBoard(const std::vector<ProbeResult>& results) {
                              ImGuiTableFlags_SizingStretchProp)) {
     return;
   }
-  ImGui::TableSetupColumn("state", ImGuiTableColumnFlags_WidthFixed, 88.0f);
-  ImGui::TableSetupColumn("check", ImGuiTableColumnFlags_WidthFixed, 250.0f);
+  // Scaled: these are lengths, and at 2x a fixed 88 pixels clips "BLOCKED".
+  ImGui::TableSetupColumn("state", ImGuiTableColumnFlags_WidthFixed, S(92.0f));
+  ImGui::TableSetupColumn("check", ImGuiTableColumnFlags_WidthFixed, S(220.0f));
   ImGui::TableSetupColumn("detail", ImGuiTableColumnFlags_WidthStretch);
 
   for (const auto& r : results) {
     ImGui::TableNextRow();
     ImGui::TableSetColumnIndex(0);
+    // A pill rather than bare coloured text: the colour carries the state,
+    // the word repeats it for anyone who does not read colour.
     if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-    ImGui::TextColored(StateColor(r.state, g_colors), "%s", StateLabel(r.state));
+    {
+      const ImVec4 colour = StateColor(r.state, g_colors);
+      const char* label = StateLabel(r.state);
+      const ImVec2 at = ImGui::GetCursorScreenPos();
+      const ImVec2 text = ImGui::CalcTextSize(label);
+      const ImVec2 pad(S(7.0f), S(2.0f));
+      ImDrawList* draw = ImGui::GetWindowDrawList();
+      draw->AddRectFilled(at, ImVec2(at.x + text.x + pad.x * 2, at.y + text.y + pad.y * 2),
+                          ImGui::GetColorU32(ImVec4(colour.x, colour.y, colour.z, 0.16f)),
+                          S(3.0f));
+      draw->AddRect(at, ImVec2(at.x + text.x + pad.x * 2, at.y + text.y + pad.y * 2),
+                    ImGui::GetColorU32(ImVec4(colour.x, colour.y, colour.z, 0.55f)), S(3.0f));
+      ImGui::SetCursorScreenPos(ImVec2(at.x + pad.x, at.y + pad.y));
+      ImGui::TextColored(colour, "%s", label);
+    }
     if (g_fonts.caption) ImGui::PopFont();
 
     ImGui::TableSetColumnIndex(1);
@@ -689,6 +737,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
   kNavWidth *= appliedScale;
   kHeaderHeight *= appliedScale;
   kPad *= appliedScale;
+  kSaveBarHeight *= appliedScale;
 
   // Before the backend builds its atlas.
   g_fonts = LoadThemeFonts(g_theme, appliedScale, CurrentLanguage());
@@ -743,7 +792,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     }
   }
 
-  auto results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
+  // Always against the folder and client the operator has selected now, so a
+  // switch of client re-scans the right install rather than the last one.
+  const auto runProbes = [&]() {
+    return RunAllProbes(sidecarDir, PathFromUtf8(config.ActiveWowDir()), config.client);
+  };
+  auto results = runProbes();
 
   // Which page opens first. An optional command-line argument names it, which
   // exists so the README's screenshots can be captured without driving the
@@ -818,6 +872,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     preferences.theme = config.theme;
     preferences.language = config.language;
     preferences.advancedMode = config.advancedMode;
+    preferences.client = config.client;
     if (SaveConfig(configPath, preferences)) {
       savedConfig = preferences;
       saveFailed = false;
@@ -927,35 +982,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                      ImGuiWindowFlags_NoBringToFrontOnFocus);
 
     // ------------------------------------------------------------- header band
-    ImGui::BeginChild("header", ImVec2(0.0f, kHeaderHeight), ImGuiChildFlags_NavFlattened);
-    // The seal sits left of the name, as a crest does on a banner.
-    const float emblemSize = S(66.0f);
-    const float headerIndent = kPad + emblemSize + S(16.0f);
-    {
-      const ImVec2 origin = ImGui::GetCursorScreenPos();
-      DrawEmblem(ImGui::GetWindowDrawList(), ImVec2(origin.x + kPad, origin.y + S(16.0f)),
-                 emblemSize, g_theme);
-    }
-    ImGui::Indent(headerIndent);
-    ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
-
-    if (g_fonts.title) ImGui::PushFont(g_fonts.title);
-    ImGui::TextColored(Rgb(g_colors.goldBright), "DLSS 5 Sidecar");
-    if (g_fonts.title) ImGui::PopFont();
-
-    if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-    ImGui::PushTextWrapPos(ImGui::GetWindowWidth() - S(300.0f));
-    Wrapped(Tr("Neural rendering for World of Warcraft, from outside the game process"));
-    ImGui::PopTextWrapPos();
-    if (g_fonts.caption) ImGui::PopFont();
-
-    // The primary action lives in the header and never moves, so it is in the
-    // same place no matter which section is open.
-    //
-    // Its width is measured, not chosen. "Start overlay" and "Запустить
-    // оверлей" are not the same length, and neither is either of them at a
-    // different interface scale; a constant here is a constant that is wrong
-    // for every case but the one it was measured against.
+    // One row. Identity at the left; the game client and the primary action at
+    // the right, where they are in the same place whichever page is open.
     const ImGuiStyle& style = ImGui::GetStyle();
     const auto widestOf = [](std::initializer_list<const char*> texts) {
       float widest = 0.0f;
@@ -965,44 +993,109 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       return widest;
     };
 
-    // Both labels, because the button swaps between them and must not resize
-    // under the cursor when the overlay starts. Measured in the face the button
-    // is drawn in.
-    if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
-    const float buttonWidth =
-        widestOf({Tr("Start overlay"), Tr("Stop overlay")}) + style.FramePadding.x * 2.0f + S(36.0f);
-    if (g_fonts.heading) ImGui::PopFont();
-
     // Each language names itself. "Russian" in an English list is no help to
     // someone who cannot read the list. Visual order, because Arabic names
     // itself right to left.
     std::array<std::string, kLanguageCount> languageNames;
-    float widestLanguage = 0.0f;
     for (size_t i = 0; i < kLanguageCount; ++i) {
       languageNames[i] = ArabicForDisplay(NativeLanguageName(static_cast<Language>(i)));
-      widestLanguage = std::max(widestLanguage, ImGui::CalcTextSize(languageNames[i].c_str()).x);
     }
-    // The arrow is a square the height of the frame, and it is drawn inside the
-    // width the combo is given rather than beside it.
-    const float languageWidth =
-        widestLanguage + ImGui::GetFrameHeight() + style.FramePadding.x * 2.0f + S(10.0f);
+    const auto chooseLanguage = [&](int index) {
+      const Language chosen = static_cast<Language>(index);
+      if (chosen == CurrentLanguage()) return;
+      SetLanguage(chosen);
+      restyle = true;   // the atlas has to carry the new language's glyphs
+      config.language = TagForLanguage(chosen);
+      // Saved immediately rather than left to the Save button: this is a
+      // preference about the tool, not a setting for the pipeline, and losing
+      // it on exit would make the switch look broken.
+      savePreferences();
+      // The board holds finished strings rather than keys -- a probe's detail
+      // is often a sentence with a driver version built into it, which no
+      // lookup could translate after the fact. So the probes run again.
+      results = runProbes();
+    };
+    const auto languageCombo = [&](float width) {
+      ImGui::SetNextItemWidth(width);
+      const int current = static_cast<int>(CurrentLanguage());
+      if (ImGui::BeginCombo("##language", languageNames[current].c_str())) {
+        for (int i = 0; i < static_cast<int>(kLanguageCount); ++i) {
+          if (ImGui::Selectable(languageNames[i].c_str(), i == current)) chooseLanguage(i);
+        }
+        ImGui::EndCombo();
+      }
+      if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Tr("Language"));
+    };
 
-    float widestTheme = 0.0f;
-    for (int i = 0; i < static_cast<int>(ThemeId::Count); ++i) {
-      widestTheme = std::max(
-          widestTheme, ImGui::CalcTextSize(Tr(ThemeDisplayName(static_cast<ThemeId>(i)))).x);
+    ImGui::BeginChild("header", ImVec2(0.0f, kHeaderHeight), ImGuiChildFlags_NavFlattened);
+    const float headerWidth = ImGui::GetWindowWidth();
+    const float emblemSize = S(52.0f);
+    {
+      const ImVec2 origin = ImGui::GetCursorScreenPos();
+      DrawEmblem(ImGui::GetWindowDrawList(),
+                 ImVec2(origin.x + kPad, origin.y + (kHeaderHeight - emblemSize) * 0.5f),
+                 emblemSize, g_theme);
     }
-    const float themeWidth =
-        widestTheme + ImGui::GetFrameHeight() + style.FramePadding.x * 2.0f + S(10.0f);
 
-    ImGui::SameLine();
-    ImGui::SetCursorPosX(ImGui::GetWindowWidth() - buttonWidth - kPad);
-    ImGui::SetCursorPosY(S(30.0f));
+    // The primary action, at the right edge. Its width is measured, not
+    // chosen, from both labels in the face it is drawn in: "Start overlay" and
+    // "Запустить оверлей" are not the same length, and the button must not
+    // resize under the cursor when the overlay starts.
+    if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
+    const float buttonWidth =
+        widestOf({Tr("Start overlay"), Tr("Stop overlay")}) + style.FramePadding.x * 2.0f + S(36.0f);
+    if (g_fonts.heading) ImGui::PopFont();
+    const float buttonHeight = S(44.0f);
+    const float buttonX = headerWidth - kPad - buttonWidth;
 
+    // The game client, left of it. Everything that differs between a modern
+    // client and 3.3.5a -- the folder, the window check, the instructions --
+    // follows this one control.
+    const char* clientLabels[] = {Tr("Retail & Classic"), Tr("3.3.5a Wrath")};
+    const Icon clientIcons[] = {Icon::Sword, Icon::Snowflake};
+    const float switchHeight = S(36.0f);
+    const float segmentWidth =
+        widestOf({clientLabels[0], clientLabels[1]}) + switchHeight * 0.42f + S(8.0f) + S(30.0f);
+    const float switchWidth = segmentWidth * 2.0f;
+    const float switchX = buttonX - S(16.0f) - switchWidth;
+    const float switchY = kHeaderHeight - switchHeight - S(14.0f);
+
+    if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
+    ImGui::SetCursorPos(ImVec2(switchX + S(2.0f), switchY - ImGui::GetTextLineHeight() - S(3.0f)));
+    ImGui::TextDisabled("%s", Tr("GAME CLIENT"));
+    if (g_fonts.caption) ImGui::PopFont();
+    ImGui::SetCursorPos(ImVec2(switchX, switchY));
+    int clientIndex = config.client == GameClient::Wotlk ? 1 : 0;
+    if (SegmentedControl("client", clientLabels, clientIcons, 2, clientIndex,
+                         ImVec2(switchWidth, switchHeight), g_theme, g_scale)) {
+      config.client = clientIndex == 1 ? GameClient::Wotlk : GameClient::Modern;
+      GlobalLog().Info(std::string("game client: ") + TagForGameClient(config.client));
+      savePreferences();
+      results = runProbes();
+    }
+
+    // The name, in whatever room is left. The tagline is dropped rather than
+    // wrapped when the window is too narrow for it: two lines would push it
+    // out of the band.
+    const float textX = kPad + emblemSize + S(14.0f);
+    const float textRoom = switchX - S(16.0f) - textX;
+    ImGui::SetCursorPos(ImVec2(textX, S(12.0f)));
+    if (g_fonts.title) ImGui::PushFont(g_fonts.title);
+    ImGui::TextColored(Rgb(g_colors.goldBright), "DLSS 5 Sidecar");
+    if (g_fonts.title) ImGui::PopFont();
+    if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
+    const char* tagline = Tr("Neural rendering for World of Warcraft, from outside the game process");
+    if (ImGui::CalcTextSize(tagline).x <= textRoom) {
+      ImGui::SetCursorPosX(textX);
+      ImGui::TextDisabled("%s", tagline);
+    }
+    if (g_fonts.caption) ImGui::PopFont();
+
+    ImGui::SetCursorPos(ImVec2(buttonX, (kHeaderHeight - buttonHeight) * 0.5f));
     if (!noticeAcknowledged) ImGui::BeginDisabled();
     if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
     if (live.overlayRunning) {
-      if (ThemedPrimaryButton(Tr("Stop overlay"), ImVec2(buttonWidth, S(46.0f)), g_theme, true,
+      if (ThemedPrimaryButton(Tr("Stop overlay"), ImVec2(buttonWidth, buttonHeight), g_theme, true,
                               g_scale)) {
         if (!control::Send(SidecarCommand::Stop)) {
           GlobalLog().Warn("the overlay did not answer; it may already be closing");
@@ -1011,39 +1104,129 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     } else {
       const bool canStart = !blocked && live.wowRunning;
       if (!canStart) ImGui::BeginDisabled();
-      if (ThemedPrimaryButton(Tr("Start overlay"), ImVec2(buttonWidth, S(46.0f)), g_theme, false,
-                              g_scale)) {
+      if (ThemedPrimaryButton(Tr("Start overlay"), ImVec2(buttonWidth, buttonHeight), g_theme,
+                              false, g_scale)) {
         startOverlay();
       }
       if (!canStart) ImGui::EndDisabled();
     }
     if (g_fonts.heading) ImGui::PopFont();
     if (!noticeAcknowledged) ImGui::EndDisabled();
+    ImGui::EndChild();
 
-    // Left of the primary action, and outside the notice's disabled block: a
-    // person who cannot read the notice has to be able to change the language
-    // before agreeing to it.
-    ImGui::SetCursorPosX(headerIndent + themeWidth + S(16.0f));
-    ImGui::SetCursorPosY(S(100.0f));
-    ImGui::SetNextItemWidth(languageWidth);
-    int languageIndex = static_cast<int>(CurrentLanguage());
-    bool languageChanged = false;
-    if (ImGui::BeginCombo("##language", languageNames[languageIndex].c_str())) {
-      for (int i = 0; i < static_cast<int>(kLanguageCount); ++i) {
-        if (ImGui::Selectable(languageNames[i].c_str(), i == languageIndex)) {
-          languageChanged = i != languageIndex;
-          languageIndex = i;
-        }
+    ImGui::Indent(kPad);
+    ImGui::PushItemWidth(-kPad);
+    GoldRule(0.55f, 6.0f);
+    ImGui::PopItemWidth();
+    ImGui::Unindent(kPad);
+
+    if (!noticeAcknowledged) ImGui::BeginDisabled();
+
+    // ---------------------------------------------------------------- nav rail
+    ImGui::Indent(kPad);
+    // Both panels pad their contents, so the theme's frame drawn round them has
+    // room to breathe and never sits on top of the first letter.
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(10.0f), S(12.0f)));
+    ImGui::BeginChild("nav", ImVec2(kNavWidth, -kPad), ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened);
+    ImGui::PopStyleVar();   // read at Begin; nested cards keep their own
+
+    // Easy or Advanced, as one control at the top of the rail.
+    {
+      const char* modes[] = {Tr("Easy"), Tr("Advanced")};
+      int mode = config.advancedMode ? 1 : 0;
+      // The small face: the rail is narrow, and "Тонкая настройка" is not.
+      if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
+      const bool modeChanged =
+          SegmentedControl("mode", modes, nullptr, 2, mode,
+                           ImVec2(ImGui::GetContentRegionAvail().x, S(30.0f)), g_theme, g_scale);
+      if (g_fonts.caption) ImGui::PopFont();
+      if (modeChanged) {
+        config.advancedMode = mode == 1;
+        if (!config.advancedMode && section == Section::Log) section = Section::Status;
+        savePreferences();
       }
-      ImGui::EndCombo();
+      if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", Tr(config.advancedMode ? "All controls and diagnostics."
+                                                       : "Everyday controls. Settings are preserved."));
+      }
     }
-    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Tr("Language"));
+    ImGui::Dummy(ImVec2(0.0f, S(6.0f)));
 
-    // The look, left of the language. A preference about the tool, saved at once
-    // like the language is.
-    ImGui::SetCursorPosX(headerIndent);
-    ImGui::SetCursorPosY(S(100.0f));
-    ImGui::SetNextItemWidth(themeWidth);
+    for (int i = 0; i < static_cast<int>(Section::Count); ++i) {
+      const auto candidate = static_cast<Section>(i);
+      if (candidate == Section::Log && !config.advancedMode) continue;
+      const bool selected = candidate == section;
+      ImGui::PushID(SectionId(candidate));
+      const ImVec2 rowAt = ImGui::GetCursorScreenPos();
+      const float rowHeight = S(32.0f);
+      if (ImGui::Selectable("##row", selected, ImGuiSelectableFlags_None, ImVec2(0.0f, rowHeight))) {
+        section = candidate;
+      }
+      const bool hovered = ImGui::IsItemHovered();
+      const ImVec2 rowMax = ImGui::GetItemRectMax();
+      ImDrawList* draw = ImGui::GetWindowDrawList();
+      const ImU32 ink = ImGui::GetColorU32(
+          selected ? Rgb(g_colors.goldBright) : hovered ? Rgb(g_colors.parchment) : Rgb(g_colors.muted));
+      const float midY = rowAt.y + rowHeight * 0.5f;
+      if (selected) {
+        // A gold bar down the left edge of the selected row. The tinted
+        // background alone is nearly invisible against these panels, and
+        // "which page am I on" should never need a second look.
+        draw->AddRectFilled(ImVec2(rowAt.x, rowAt.y + S(4.0f)),
+                            ImVec2(rowAt.x + S(3.0f), rowMax.y - S(4.0f)),
+                            ImGui::GetColorU32(Rgb(g_colors.goldBright)));
+      }
+      DrawIcon(draw, SectionIcon(candidate), ImVec2(rowAt.x + S(20.0f), midY), S(17.0f), ink);
+      const char* label = SectionLabel(candidate);
+      draw->AddText(ImVec2(rowAt.x + S(38.0f), midY - ImGui::GetTextLineHeight() * 0.5f),
+                    ImGui::GetColorU32(selected ? Rgb(g_colors.goldBright) : Rgb(g_colors.parchment)),
+                    label);
+
+      // A section that needs attention says so from the rail, so nobody has to
+      // go looking through every page to find the one thing that is wrong.
+      ImVec4 badgeColor = Rgb(g_colors.warn);
+      bool badge = false;
+      if ((candidate == Section::Setup && missingComponents > 0) ||
+          (candidate == Section::Checks && blocked)) {
+        badge = true;
+        badgeColor = Rgb(g_colors.fail);
+      } else if (candidate == Section::Tuning && dirty) {
+        badge = true;
+      }
+      if (badge) {
+        draw->AddCircleFilled(ImVec2(rowMax.x - S(10.0f), midY), S(4.0f),
+                              ImGui::GetColorU32(badgeColor));
+      }
+      ImGui::PopID();
+    }
+
+    // The rail's foot: the live state, which is true whichever page is open,
+    // then the two preferences about the tool itself.
+    // Pinned to the bottom by its own height as measured last frame. Estimating
+    // it from line heights was right for one theme's faces and short for the
+    // others, and the shortfall showed up as a scrollbar on the rail.
+    static float footerHeight = S(200.0f);
+    ImGui::SetCursorPosY(std::max(ImGui::GetCursorPosY() + S(12.0f),
+                                  ImGui::GetWindowHeight() - footerHeight - S(12.0f)));
+    const float footerTop = ImGui::GetCursorPosY();
+    GoldRule(0.30f, 8.0f);
+    if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
+    Dot(live.wowRunning && live.wowBorderless,
+        live.wowRunning ? (live.wowBorderless ? "WoW: borderless" : "WoW: not borderless")
+                        : "WoW: not running");
+    Dot(live.overlayRunning, live.overlayRunning ? "Overlay: running" : "Overlay: stopped");
+    if (live.wowRunning) {
+      ImGui::TextDisabled("   %ux%u%s", live.wowWidth, live.wowHeight,
+                          live.wowClient == GameClient::Wotlk ? "  \xC2\xB7  3.3.5a" : "");
+    } else {
+      ImGui::Dummy(ImVec2(0.0f, ImGui::GetTextLineHeight()));
+    }
+    if (g_fonts.caption) ImGui::PopFont();
+    ImGui::Dummy(ImVec2(0.0f, S(2.0f)));
+
+    // The look and the language. Preferences about the tool, saved at once.
+    const float fieldWidth = ImGui::GetContentRegionAvail().x;
+    ImGui::SetNextItemWidth(fieldWidth);
     if (ImGui::BeginCombo("##theme", Tr(ThemeDisplayName(g_theme)))) {
       for (int i = 0; i < static_cast<int>(ThemeId::Count); ++i) {
         const auto candidate = static_cast<ThemeId>(i);
@@ -1058,154 +1241,118 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       ImGui::EndCombo();
     }
     if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Tr("Interface theme"));
-
-    if (languageChanged) {
-      const Language chosen = static_cast<Language>(languageIndex);
-      SetLanguage(chosen);
-      restyle = true;   // the atlas has to carry the new language's glyphs
-      config.language = TagForLanguage(chosen);
-      // Saved immediately rather than left to the Save button on another page:
-      // this is a preference about the tool, not a setting for the pipeline,
-      // and losing it on exit would make the switch look broken.
-      savePreferences();
-      // The board holds finished strings rather than keys -- a probe's detail
-      // is often a sentence with a driver version built into it, which no
-      // lookup could translate after the fact. So the probes run again. They
-      // are cheap, and the alternative is half an interface in each language.
-      results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
-    }
-
-
-    ImGui::Unindent(headerIndent);
-    ImGui::EndChild();
-
-    ImGui::Indent(kPad);
-    ImGui::PushItemWidth(-kPad);
-    GoldRule(0.55f, 8.0f);
-    ImGui::PopItemWidth();
-    ImGui::Unindent(kPad);
-
-    if (!noticeAcknowledged) ImGui::BeginDisabled();
-
-    // ---------------------------------------------------------------- nav rail
-    ImGui::Indent(kPad);
-    // Both panels pad their contents, so the theme's frame drawn round them has
-    // room to breathe and never sits on top of the first letter.
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(10.0f), S(14.0f)));
-    ImGui::BeginChild("nav", ImVec2(kNavWidth, -kPad), ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened);
-    ImGui::PopStyleVar();   // read at Begin; nested cards keep their own
-
-    // A gutter the width of the marker, so the marker has somewhere to be that
-    // is not on top of the first letter. Applied to every row rather than only
-    // the selected one: text that shifts sideways when a row is chosen reads as
-    // a glitch.
-    SectionHeading("Interface mode");
-    for (int mode = 0; mode < 2; ++mode) {
-      const bool advanced = mode == 1;
-      if (ImGui::RadioButton(Tr(advanced ? "Advanced" : "Easy"), config.advancedMode == advanced)) {
-        config.advancedMode = advanced;
-        if (!advanced && section == Section::Log) section = Section::Status;
-        savePreferences();
-      }
-    }
-    const float modeHintY = ImGui::GetCursorPosY();
-    Hint(config.advancedMode ? "All controls and diagnostics." : "Everyday controls. Settings are preserved.");
-    ImGui::SetCursorPosY(std::max(ImGui::GetCursorPosY(), modeHintY + S(52)));
-    const float markerGutter = S(12.0f);
-    ImGui::Indent(markerGutter);
-
-    for (int i = 0; i < static_cast<int>(Section::Count); ++i) {
-      const auto candidate = static_cast<Section>(i);
-      if (candidate == Section::Log && !config.advancedMode) continue;
-      const bool selected = candidate == section;
-      if (selected) ImGui::PushStyleColor(ImGuiCol_Text, Rgb(g_colors.goldBright));
-      const ImVec2 rowAt = ImGui::GetCursorScreenPos();
-      ImGui::PushID(SectionId(candidate));
-      if (ImGui::Selectable(SectionLabel(candidate), selected,
-                            ImGuiSelectableFlags_None, ImVec2(0.0f, S(34.0f)))) {
-        section = candidate;
-      }
-      if (selected) {
-        ImGui::PopStyleColor();
-        // A gold bar down the left edge of the selected row. The tinted
-        // background alone is nearly invisible against these panels, and "which
-        // page am I on" should never need a second look.
-        //
-        // Drawn just inside the row, not just outside it: anything left of the
-        // child's content edge is clipped away and silently never appears.
-        ImGui::GetWindowDrawList()->AddRectFilled(
-            ImVec2(rowAt.x - markerGutter, ImGui::GetItemRectMin().y),
-            ImVec2(rowAt.x - markerGutter + S(3.0f), ImGui::GetItemRectMax().y),
-            ImGui::GetColorU32(Rgb(g_colors.goldBright)));
-      }
-
-      // A section that needs attention says so from the rail, so nobody has to
-      // go looking through every page to find the one thing that is wrong.
-      const char* badge = nullptr;
-      ImVec4 badgeColor = Rgb(g_colors.warn);
-      if (candidate == Section::Setup && missingComponents > 0) {
-        badge = "!";
-        badgeColor = Rgb(g_colors.fail);
-      } else if (candidate == Section::Checks && blocked) {
-        badge = "!";
-        badgeColor = Rgb(g_colors.fail);
-      } else if (candidate == Section::Tuning && dirty) {
-        badge = "*";
-      }
-      if (badge) {
-        ImGui::SameLine();
-        ImGui::SetCursorPosX(kNavWidth - 26.0f);
-        ImGui::TextColored(badgeColor, "%s", badge);
-      }
-      ImGui::PopID();
-    }
-
-    // The rail's foot is where the live state belongs: it is true regardless of
-    // which page is open.
-    ImGui::Unindent(markerGutter);
-    ImGui::SetCursorPosY(std::max(ImGui::GetCursorPosY() + S(18.0f),
-                                ImGui::GetWindowHeight() - S(124.0f)));
-    GoldRule(0.30f, 8.0f);
-    if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-    Dot(live.wowRunning && live.wowBorderless,
-        live.wowRunning ? (live.wowBorderless ? "WoW: borderless" : "WoW: not borderless")
-                        : "WoW: not running");
-    Dot(live.overlayRunning, live.overlayRunning ? "Overlay: running" : "Overlay: stopped");
-    if (live.wowRunning) ImGui::TextDisabled("   %ux%u", live.wowWidth, live.wowHeight);
+    languageCombo(fieldWidth);
     // Which build this is. At the foot of the rail rather than in a dialog,
-    // because the question is always "what am I looking at" and never "let me
-    // go and find out".
-    ImGui::TextDisabled("   v" SIDECAR_VERSION);
+    // because the question is always "what am I looking at".
+    if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
+    ImGui::TextDisabled("v" SIDECAR_VERSION);
     if (g_fonts.caption) ImGui::PopFont();
+    footerHeight = ImGui::GetCursorPosY() - footerTop;
     ImGui::EndChild();
 
     FrameLastItem();
     ImGui::SameLine(0.0f, kPad);
     ImGui::BeginGroup();
-    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(20.0f), S(16.0f)));
-    ImGui::BeginChild("content", ImVec2(-kPad, -kPad - S(90.0f)), ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(18.0f), S(14.0f)));
+    ImGui::BeginChild("content", ImVec2(-kPad, -kPad - kSaveBarHeight - style.ItemSpacing.y),
+                      ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened);
     ImGui::PopStyleVar();   // read at Begin; nested cards keep their own
 
     // ---------------------------------------------------------------- sections
     const Section drawnSection = section;
     if (drawnSection == Section::Status) {
+      const bool wotlk = config.client == GameClient::Wotlk;
       const ImVec2 heroAt = ImGui::GetCursorScreenPos();
       const float heroWidth = ImGui::GetContentRegionAvail().x;
+      // Grows to fit its text, measured last frame: a language that wraps the
+      // line into three would otherwise push the buttons out of the picture.
+      static float heroTextHeight = 0.0f;
+      const float heroHeight = std::max(S(132.0f), heroTextHeight + S(28.0f));
       DrawWelcomeArt(ImGui::GetWindowDrawList(), heroAt,
-                     ImVec2(heroAt.x + heroWidth, heroAt.y + S(154)), g_theme);
-      ImGui::SetCursorScreenPos(ImVec2(heroAt.x + S(20), heroAt.y + S(20)));
+                     ImVec2(heroAt.x + heroWidth, heroAt.y + heroHeight), g_theme, wotlk);
+      ImGui::SetCursorScreenPos(ImVec2(heroAt.x + S(18), heroAt.y + S(14)));
       ImGui::BeginGroup();
       if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
       ImGui::TextColored(Rgb(g_colors.goldBright), "%s", Tr("Your next adventure"));
       if (g_fonts.heading) ImGui::PopFont();
-      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + heroWidth * 0.65f);
-      Wrapped(Tr("Choose a look. Check your setup. Start playing."));
+      ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + heroWidth * 0.55f);
+      Wrapped(Tr(wotlk ? "Wrath of the Lich King 3.3.5a. Run it windowed and maximized, "
+                         "then start the overlay."
+                       : "Choose a look. Check your setup. Start playing."),
+              heroWidth * 0.55f);
       ImGui::PopTextWrapPos();
       if (ImGui::Button(Tr("Choose a look"))) section = Section::Tuning;
       ImGui::SameLine();
       if (ImGui::Button(Tr("Checks"))) section = Section::Checks;
       ImGui::EndGroup();
-      ImGui::SetCursorScreenPos(ImVec2(heroAt.x, heroAt.y + S(170)));
+      // Capped, so a layout fault can never feed itself into a page-tall panel.
+      heroTextHeight = std::min(ImGui::GetItemRectSize().y, S(260.0f));
+      ImGui::SetCursorScreenPos(ImVec2(heroAt.x, heroAt.y + heroHeight + S(14)));
+
+      // The way from here to a running overlay, as steps that tick themselves
+      // off. Each one is a real condition the Start button is gated on, so
+      // when all are green the button is live, and the one that is not says
+      // where to go.
+      if (!live.overlayRunning) {
+        SectionHeading("Ready to play");
+        const bool filesReady = missingComponents == 0;
+        const bool checksReady = !blocked;
+        const bool gameReady = live.wowRunning && live.wowBorderless;
+        struct Step {
+          bool done;
+          const char* text;
+          Section goTo;
+          bool hasPage;
+        };
+        const Step steps[] = {
+            {filesReady, "Install the required files", Section::Setup, true},
+            {checksReady, "Pass the system checks", Section::Checks, true},
+            {gameReady,
+             wotlk ? "Start WoW 3.3.5a with Windowed Mode and Maximized ticked"
+                   : "Start WoW in borderless windowed mode",
+             Section::Setup, !gameReady},
+            {false, "Press Start overlay.", Section::Status, false},
+        };
+        const bool allBefore = filesReady && checksReady && gameReady;
+        ImDrawList* draw = ImGui::GetWindowDrawList();
+        for (size_t i = 0; i < std::size(steps); ++i) {
+          const Step& step = steps[i];
+          const bool current = !step.done && (i == 3 ? allBefore : true);
+          ImGui::PushID(static_cast<int>(i));
+          const ImVec2 at = ImGui::GetCursorScreenPos();
+          const float rowHeight = ImGui::GetFrameHeight();
+          const float r = S(11.0f);
+          const ImVec2 centre(at.x + r + S(1.0f), at.y + rowHeight * 0.5f);
+          const ImU32 ring = ImGui::GetColorU32(step.done ? Rgb(g_colors.ok)
+                                                : current ? Rgb(g_colors.goldBright)
+                                                          : Rgb(g_colors.muted));
+          if (step.done) {
+            draw->AddCircleFilled(centre, r, ImGui::GetColorU32(Rgb(g_colors.ok, 0.22f)));
+          }
+          draw->AddCircle(centre, r, ring, 0, S(1.5f));
+          char number[4];
+          std::snprintf(number, sizeof(number), "%zu", i + 1);
+          const ImVec2 numberSize = ImGui::CalcTextSize(number);
+          draw->AddText(ImVec2(centre.x - numberSize.x * 0.5f, centre.y - numberSize.y * 0.5f),
+                        ring, number);
+          ImGui::Dummy(ImVec2(r * 2.0f + S(12.0f), rowHeight));
+          ImGui::SameLine(0.0f, 0.0f);
+          ImGui::AlignTextToFramePadding();
+          if (step.done) {
+            ImGui::TextDisabled("%s", Tr(step.text));
+          } else {
+            ImGui::TextUnformatted(Tr(step.text));
+          }
+          if (!step.done && step.hasPage) {
+            ImGui::SameLine();
+            if (ImGui::SmallButton(Tr(step.goTo == Section::Checks ? "Checks" : "Setup"))) {
+              section = step.goTo;
+            }
+          }
+          ImGui::PopID();
+        }
+        ImGui::Dummy(ImVec2(0.0f, S(6.0f)));
+      }
       SectionHeading("Live");
       if (live.status) {
         const auto& s = *live.status;
@@ -1219,7 +1366,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         std::snprintf(p99, sizeof(p99), "%.2f ms", s.p99Ms);
         std::snprintf(resolution, sizeof(resolution), "%ux%u", s.width, s.height);
 
-        const float cardWidth = (ImGui::GetContentRegionAvail().x - 30.0f) / 4.0f;
+        const float cardWidth =
+            (ImGui::GetContentRegionAvail().x - ImGui::GetStyle().ItemSpacing.x * 3.0f) / 4.0f;
         // Frame rate first. It is the number anyone actually asks about, and it
         // is not the same as 1/p50 -- the gap between them is idle time.
         StatCard("OVERLAY FPS", fps, cardWidth,
@@ -1423,19 +1571,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         ImGui::TextDisabled(Tr("The overlay is starting. Numbers appear after the first "
                             "few frames."));
       } else {
+        // The steps above already say what is missing; this only has to say
+        // that there is nothing to measure yet.
         ImGui::TextDisabled(Tr("Nothing running."));
-        Hint(blocked      ? "Some checks are failing. Open Checks to see what."
-             : missingComponents > 0
-                 ? "Files are missing. Open Setup to install them."
-             : !live.wowRunning
-                 ? "Start World of Warcraft in borderless windowed mode, then press "
-                   "Start overlay."
-                 : "Press Start overlay.");
-        if (blocked || missingComponents > 0) {
-          if (ImGui::Button(Tr(missingComponents > 0 ? "Setup" : "Checks"))) {
-            section = missingComponents > 0 ? Section::Setup : Section::Checks;
-          }
-        }
       }
 
       ImGui::Dummy(ImVec2(0.0f, S(20.0f)));
@@ -1475,6 +1613,85 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     }
 
     if (drawnSection == Section::Setup) {
+      const bool wotlk = config.client == GameClient::Wotlk;
+      SectionHeading(wotlk ? "Your game: 3.3.5a Wrath" : "Your game: Retail & Classic");
+
+      // The folder. Used for two things only: scanning its file names for
+      // injectors, and refusing to install the sidecar inside it.
+      ImGui::TextUnformatted(Tr("WoW folder (used only to scan filenames for injectors)"));
+      const float folderButtons = S(110.0f) + (wotlk ? 0.0f : S(90.0f) + ImGui::GetStyle().ItemSpacing.x);
+      ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - folderButtons -
+                              ImGui::GetStyle().ItemSpacing.x);
+      // Bound to the std::string itself, which grows as needed. The fixed
+      // buffer this replaced silently truncated anything past its length, and a
+      // path that has been cut short is a path that scans the wrong folder.
+      if (ImGui::InputText("##wowdir", &config.ActiveWowDir())) dirty = true;
+      if (ImGui::IsItemDeactivatedAfterEdit()) results = runProbes();
+      ImGui::SameLine();
+      if (ImGui::Button(Tr("Browse..."), ImVec2(S(110.0f), 0.0f))) {
+        const fs::path picked =
+            AskForFolder(hwnd, L"Select the folder that holds Wow.exe",
+                         PathFromUtf8(config.ActiveWowDir()));
+        if (!picked.empty()) {
+          config.ActiveWowDir() = Utf8FromPath(picked);
+          save();
+          results = runProbes();
+        }
+      }
+      if (!wotlk) {
+        ImGui::SameLine();
+        if (ImGui::Button(Tr("Detect"), ImVec2(S(90.0f), 0.0f))) {
+          if (const auto detected = DetectWowFolder()) {
+            config.wowDir = Utf8FromPath(*detected);
+            save();
+            results = runProbes();
+          } else {
+            // Saying nothing here would read as a dead button. The honest
+            // answer is that the registry has no entry, not that the game is
+            // absent.
+            GlobalLog().Warn(
+                "no WoW folder found in the registry -- point at it with Browse");
+          }
+        }
+      }
+      Hint(wotlk ? "A 3.3.5a client is not registered with Windows, so choose its folder "
+                   "yourself: the one with Wow.exe and the Data folder in it. Nothing inside "
+                   "is opened -- only the file names are read."
+                 : "Detected from Battle.net's own uninstall entry. Point this at the "
+                   "folder Wow.exe sits in, not its parent: an injector has to be next "
+                   "to the executable to be loaded by it. Nothing inside is opened -- "
+                   "only the file names are read.");
+
+      // How to put the game into a mode that can be captured. Shown as steps
+      // in the game's own words, because the menus are what the player has in
+      // front of them.
+      ImGui::Dummy(ImVec2(0.0f, S(6.0f)));
+      ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(14.0f), S(10.0f)));
+      ImGui::BeginChild("gamesetup", ImVec2(0.0f, 0.0f),
+                        ImGuiChildFlags_Border | ImGuiChildFlags_AutoResizeY |
+                            ImGuiChildFlags_AlwaysUseWindowPadding);
+      ImGui::PopStyleVar();
+      ImGui::TextColored(Rgb(g_colors.goldBright), "%s", Tr("Set up the game window"));
+      if (wotlk) {
+        Wrapped(Tr("1. In the game, open Video options and tick Windowed Mode and Maximized."));
+        Wrapped(Tr("2. Or, with the game closed, add these two lines to WTF/Config.wtf:"));
+        if (g_fonts.mono) ImGui::PushFont(g_fonts.mono);
+        ImGui::Indent(S(18.0f));
+        ImGui::TextColored(Rgb(g_colors.goldBright), "SET gxWindow \"1\"");
+        ImGui::TextColored(Rgb(g_colors.goldBright), "SET gxMaximize \"1\"");
+        ImGui::Unindent(S(18.0f));
+        if (g_fonts.mono) ImGui::PopFont();
+        Hint("This tool never edits that file itself. Exclusive fullscreen cannot be "
+             "captured, which is the only reason the game has to be windowed.");
+      } else {
+        Wrapped(Tr("In Options, under Graphics, set Display Mode to the borderless windowed "
+                   "mode -- Windowed (Fullscreen) on most clients -- not exclusive Fullscreen."));
+        Hint("Exclusive fullscreen has no compositor surface to capture, which is the "
+             "only reason the game has to be windowed.");
+      }
+      ImGui::EndChild();
+      ImGui::Dummy(ImVec2(0.0f, S(10.0f)));
+
       SectionHeading("Required files");
       Hint("Three files have to sit next to the sidecar. None of them is ours "
            "to redistribute and nothing here downloads anything -- neither "
@@ -1489,9 +1706,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         const bool present = fs::exists(installed, ec) && !ec;
 
         ImGui::PushID(static_cast<int>(i));
-        ImGui::BeginChild("row", ImVec2(0.0f, S(132.0f)), ImGuiChildFlags_Border);
-        ImGui::Dummy(ImVec2(0.0f, S(2.0f)));
-        ImGui::Indent(S(12.0f));
+        // Sized to what it holds rather than to a guessed height, so a long
+        // translation grows the card instead of being clipped by it.
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(12.0f), S(8.0f)));
+        ImGui::BeginChild("row", ImVec2(0.0f, 0.0f),
+                          ImGuiChildFlags_Border | ImGuiChildFlags_AutoResizeY |
+                              ImGuiChildFlags_AlwaysUseWindowPadding);
+        ImGui::PopStyleVar();
 
         Dot(present, std::string(component.title).c_str(), !component.required);
         ImGui::SameLine();
@@ -1527,12 +1748,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
               setupMessageIsError = !result.ok;
               if (result.ok) {
                 GlobalLog().Info(result.message);
-                results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
+                results = runProbes();
               }
             }
           }
         }
-        ImGui::Unindent(S(12.0f));
         ImGui::EndChild();
         ImGui::PopID();
       }
@@ -1558,7 +1778,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         setupMessageIsError = !result.ok;
         GlobalLog().Info(result.message);
         confirmUninstall = false;
-        results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
+        results = runProbes();
       }
       if (!canRemove) ImGui::EndDisabled();
       ImGui::SameLine();
@@ -1574,43 +1794,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       Hint("Nothing here opens, reads, writes or hooks the game process. The "
            "import table of every binary is checked against that claim at "
            "build time.");
-      ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
-      ImGui::TextUnformatted(Tr("WoW folder (used only to scan filenames for injectors)"));
-      ImGui::SetNextItemWidth(S(-260.0f));
-      // Bound to the std::string itself, which grows as needed. The fixed
-      // buffer this replaced silently truncated anything past its length, and a
-      // path that has been cut short is a path that scans the wrong folder.
-      if (ImGui::InputText("##wowdir", &config.wowDir)) dirty = true;
-      ImGui::SameLine();
-      if (ImGui::Button(Tr("Browse..."), ImVec2(S(110.0f), 0.0f))) {
-        const fs::path picked =
-            AskForFolder(hwnd, L"Select the folder that holds Wow.exe",
-                         PathFromUtf8(config.wowDir));
-        if (!picked.empty()) {
-          config.wowDir = Utf8FromPath(picked);
-          save();
-          results = RunAllProbes(sidecarDir, picked);
-        }
-      }
-      ImGui::SameLine();
-      if (ImGui::Button(Tr("Detect"), ImVec2(S(90.0f), 0.0f))) {
-        if (const auto detected = DetectWowFolder()) {
-          config.wowDir = Utf8FromPath(*detected);
-          save();
-          results = RunAllProbes(sidecarDir, *detected);
-        } else {
-          // Saying nothing here would read as a dead button. The honest answer
-          // is that the registry has no entry, not that the game is absent.
-          GlobalLog().Warn(
-              "no WoW folder found in the registry -- point at it with Browse");
-        }
-      }
-      Hint("Detected from Battle.net's own uninstall entry. Point this at the "
-           "folder Wow.exe sits in, not its parent: an injector has to be next "
-           "to the executable to be loaded by it. Nothing inside is opened -- "
-           "only the file names are read.");
+      ImGui::Dummy(ImVec2(0.0f, S(4.0f)));
       if (ImGui::Button(Tr("Re-run checks"), ImVec2(S(160.0f), 0.0f))) {
-        results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
+        results = runProbes();
         int failures = 0;
         for (const auto& r : results) {
           if (r.state == ProbeState::Fail) ++failures;
@@ -1621,7 +1807,17 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
           GlobalLog().Info("all checks green");
         }
       }
-      ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
+      ImGui::SameLine();
+      // The folder is chosen on Setup now; this is the way back to it.
+      if (ImGui::Button(Tr("WoW folder..."))) section = Section::Setup;
+      ImGui::SameLine();
+      if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
+      ImGui::AlignTextToFramePadding();
+      ImGui::TextDisabled("%s", Tr(config.client == GameClient::Wotlk
+                                       ? "Checking for: 3.3.5a Wrath"
+                                       : "Checking for: Retail & Classic"));
+      if (g_fonts.caption) ImGui::PopFont();
+      ImGui::Dummy(ImVec2(0.0f, S(6.0f)));
       DrawBoard(results);
     }
 
@@ -2002,29 +2198,50 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     ImGui::EndChild();
     FrameLastItem();
     ImGui::SetCursorPosX(kPad + kNavWidth + kPad);
-    ImGui::BeginChild("savebar", ImVec2(-kPad, S(82)), ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened);
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(S(2.0f), S(6.0f)));
+    ImGui::BeginChild("savebar", ImVec2(-kPad, kSaveBarHeight), ImGuiChildFlags_AlwaysUseWindowPadding | ImGuiChildFlags_NavFlattened);
+    ImGui::PopStyleVar();
     const bool wasDirty = dirty;
     ImGui::BeginDisabled(!wasDirty);
-    if (ImGui::Button(Tr("Save settings"), ImVec2(0, S(34)))) save();
+    if (ImGui::Button(Tr("Save settings"), ImVec2(0, S(32)))) save();
     ImGui::SameLine();
-    if (ImGui::Button(Tr("Discard changes"), ImVec2(0, S(34)))) {
+    if (ImGui::Button(Tr("Discard changes"), ImVec2(0, S(32)))) {
       config = savedConfig;
       ParseThemeTag(config.theme, g_theme);
       Language restoredLanguage;
       if (ParseLanguageTag(config.language, restoredLanguage)) SetLanguage(restoredLanguage);
       restyle = true;
       if (!config.advancedMode && section == Section::Log) section = Section::Status;
-      results = RunAllProbes(sidecarDir, PathFromUtf8(config.wowDir));
+      results = runProbes();
       dirty = false;
       saveFailed = false;
       saveMessage.clear();
     }
     ImGui::EndDisabled();
-    // Feedback gets its own line so long translations cannot cover actions.
-    ImGui::TextColored(Rgb(saveFailed ? g_colors.fail : dirty ? g_colors.warn : g_colors.ok),
-                       "%s", Tr(saveFailed ? saveMessage.c_str() : dirty ? "Changes are not saved yet."
-                               : live.overlayRunning ? "Restart the overlay to apply."
-                               : saveMessage.empty() ? "Settings saved." : saveMessage.c_str()));
+    // Feedback sits right of the actions, clipped to the room it has, so a long
+    // translation can be cut short but can never cover a button.
+    {
+      const char* feedback =
+          Tr(saveFailed ? saveMessage.c_str() : dirty ? "Changes are not saved yet."
+             : live.overlayRunning ? "Restart the overlay to apply."
+             : saveMessage.empty() ? "Settings saved." : saveMessage.c_str());
+      ImGui::SameLine(0.0f, S(16.0f));
+      const ImVec2 at = ImGui::GetCursorScreenPos();
+      const float room = ImGui::GetContentRegionAvail().x;
+      const float lineY = at.y + (S(32.0f) - ImGui::GetTextLineHeight()) * 0.5f;
+      const ImU32 colour = ImGui::GetColorU32(
+          Rgb(saveFailed ? g_colors.fail : dirty ? g_colors.warn : g_colors.ok));
+      ImDrawList* draw = ImGui::GetWindowDrawList();
+      draw->AddCircleFilled(ImVec2(at.x + S(4.0f), lineY + ImGui::GetTextLineHeight() * 0.5f),
+                            S(4.0f), colour);
+      draw->PushClipRect(at, ImVec2(at.x + room, at.y + S(32.0f)), true);
+      draw->AddText(ImVec2(at.x + S(16.0f), lineY), colour, feedback);
+      draw->PopClipRect();
+      if (ImGui::CalcTextSize(feedback).x + S(16.0f) > room) {
+        ImGui::Dummy(ImVec2(room, S(32.0f)));
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", feedback);
+      }
+    }
     ImGui::EndChild();
     ImGui::EndGroup();
     ImGui::Unindent(kPad);
@@ -2069,6 +2286,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         if (g_fonts.heading) ImGui::PushFont(g_fonts.heading);
         ImGui::TextColored(Rgb(g_colors.goldBright), "%s", Tr(kFirstRunTitle));
         if (g_fonts.heading) ImGui::PopFont();
+        // The language picker lives in here as well as on the rail. The modal
+        // blocks everything behind it, and a person who cannot read the notice
+        // has to be able to change its language before agreeing to it.
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(ImGui::GetWindowWidth() - S(24.0f) - S(150.0f));
+        languageCombo(S(150.0f));
         GoldRule(0.45f, 10.0f);
         Wrapped(Tr(kFirstRunBody));
         ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
