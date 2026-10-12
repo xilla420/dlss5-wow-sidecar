@@ -42,7 +42,7 @@
   "image": "https://xilla420.github.io/dlss5-wow-sidecar/og.png",
   "screenshot": "https://xilla420.github.io/dlss5-wow-sidecar/screenshots/dlss-face-comparison.png",
   "softwareRequirements": "NVIDIA GeForce RTX 40 or RTX 50 series GPU",
-  "softwareVersion": "0.4.0",
+  "softwareVersion": "0.5.0",
   "inLanguage": ["en", "ru", "es", "de", "fr", "tr", "ar", "zh", "ja", "ko"],
   "featureList": ["DLSS 5 Neural Rendering overlay", "1x, 2x or 3x neural passes", "Instant before/after hotkey", "Three WoW-style themes", "No injection into Wow.exe"]
 }
@@ -59,7 +59,9 @@
     {"@type": "Question", "name": "Which GPUs support DLSS 5 in WoW?",
      "acceptedAnswer": {"@type": "Answer", "text": "NVIDIA GeForce RTX 40 series (Ada) and RTX 50 series (Blackwell). Older NVIDIA cards, AMD and Intel GPUs cannot run DLSS 5."}},
     {"@type": "Question", "name": "Does it work with WoW Classic?",
-     "acceptedAnswer": {"@type": "Answer", "text": "It captures any game window in borderless windowed mode, so Classic clients work the same way. Retail is what it is measured against."}}
+     "acceptedAnswer": {"@type": "Answer", "text": "It captures any game window in borderless windowed mode, so Classic clients work the same way. Retail is what it is measured against."}},
+    {"@type": "Question", "name": "Does it work with WoW 3.3.5a (Wrath private servers)?",
+     "acceptedAnswer": {"@type": "Answer", "text": "Yes. Choose 3.3.5a Wrath at the top of the manager, then tick Windowed Mode and Maximized in the game's Video options. Cap the frame rate with the driver's Max Frame Rate, not the game's maxFPS."}}
   ]
 }
 </script>
@@ -221,7 +223,7 @@ footer{border-top:1px solid var(--line);padding:28px 0 48px;font-size:14px;color
   <div class="grid">
     <div class="card"><h3>GPU</h3><p>NVIDIA GeForce RTX 40 (Ada) or RTX 50 (Blackwell).</p></div>
     <div class="card"><h3>System</h3><p>Windows 11.</p></div>
-    <div class="card"><h3>Game</h3><p>World of Warcraft in borderless windowed mode. Retail and Classic clients both work.</p></div>
+    <div class="card"><h3>Game</h3><p>World of Warcraft in borderless windowed mode. Retail, Classic and 3.3.5a clients all work.</p></div>
     <div class="card"><h3>Install</h3><p>Unzip anywhere except your WoW folder and run <code>wowsidecar-manager.exe</code>.</p></div>
   </div>
 </div></section>

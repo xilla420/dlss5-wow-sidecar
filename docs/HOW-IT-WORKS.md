@@ -74,6 +74,29 @@ Foreground FPS** to roughly the captured figure on the Status page converts
 wasted frames into GPU time for the neural pass. The app says this in place when
 it detects the condition.
 
+### On 3.3.5a, cap in the driver, not the game
+
+The 3.3.5a client's own limiter, `maxFPS`, sleeps between frames, and on Windows
+11 a sleep rounds up to the system timer tick. Measured on 2026-10-12 with a live
+3.3.5a client in the foreground and the overlay running, frames the game
+delivered:
+
+| 3.3.5a setting | game frame rate |
+|---|---|
+| `maxFPS 60` | **35 fps** |
+| `maxFPS 120` | 60 fps |
+| uncapped | 60 fps |
+| vsync on | 60 fps |
+
+So the game's cap of 60 costs almost half the frames. Use the driver's **Max Frame
+Rate** for `Wow.exe` (NVIDIA Control Panel or NVIDIA app), which is exact. The
+manager says this on Setup and in the Status advisory while 3.3.5a is selected.
+
+Raising the overlay's own GPU priority does not help either: with the GPU
+saturated by another process, a high-priority D3D12 queue presented the same
+52-53 fps as a normal one over four alternating runs. Queue priority orders work
+inside one process; it does not win time from the game.
+
 ### Video memory is the thing that will actually ruin it
 
 Watch the **GPU MEMORY** bar on the Status page before you blame the neural
@@ -152,6 +175,16 @@ which two spikes established. So the sidecar creates and evaluates an ordinary
 DLSS/DLAA feature, and the RenoDX add-on — loaded by ReShade into *our* process,
 never the game's — detours our own NGX calls and substitutes neural-rendered
 output.
+
+### Which game clients
+
+The game window is found by its window class and nothing else: no process
+handle is opened (I2). Retail registers `waApplication Window` or `w`, modern
+Classic `GxWindowClass`, and 3.3.5a names the class after its graphics API:
+`GxWindowClassD3d`, `GxWindowClassD3d9Ex` or `GxWindowClassOpenGl`. The class also
+says which client family is running, so the manager can warn when it differs from
+the client selected at the top. That selection changes the folder that is scanned,
+the window check and the instructions, never the rendering.
 
 Design and spike write-ups live in [`docs/`](.).
 

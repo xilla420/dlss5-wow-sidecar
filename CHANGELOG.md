@@ -31,6 +31,11 @@ is what the reader is looking for.
 
 ## Unreleased
 
+## 0.5.0
+
+World of Warcraft 3.3.5a (Wrath of the Lich King, build 12340) is now supported,
+and the manager is redesigned to be more compact.
+
 ### Added
 
 - **A game client switch: Retail & Classic, or 3.3.5a Wrath.** It sits in the
@@ -63,6 +68,11 @@ is what the reader is looking for.
   **Windowed Mode** with **Maximized** ticked in Video options, which gives the
   same borderless window.
 - In Arabic, text set beside the welcome picture wrapped one letter per line.
+- **3.3.5a players were told to cap the frame rate in a way that halves it.** The
+  game's own `maxFPS` limiter is coarse on Windows 11: with the overlay running and
+  the game in the foreground, `maxFPS 60` delivered about 35 fps, while uncapped,
+  vsync and `maxFPS 120` all held 60. Setup and the Status advisory now point
+  3.3.5a players to the driver's **Max Frame Rate** for `Wow.exe` instead.
 
 ## 0.4.0
 

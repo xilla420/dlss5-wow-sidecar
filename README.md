@@ -23,8 +23,10 @@ and nothing goes in your WoW folder.
 ## Get started
 
 1. **[Download the latest release](https://github.com/xilla420/dlss5-wow-sidecar/releases/latest)** and unzip it anywhere *except* your WoW folder.
-2. Run **`wowsidecar-manager.exe`**.
-3. Start WoW in **borderless windowed** mode.
+2. Run **`wowsidecar-manager.exe`** and pick your client at the top:
+   **Retail & Classic** or **3.3.5a Wrath**.
+3. Start WoW in **borderless windowed** mode. On 3.3.5a, tick **Windowed Mode** and
+   **Maximized** in Video options instead.
 4. Press **Start overlay** (or **Ctrl+Alt+S**). Then just play.
 
 Everything you need is in the zip. The **Checks** page tells you if something is
@@ -44,7 +46,8 @@ saved separately, without committing unfinished tuning changes.
 The welcome page uses original generated artwork. Presets, strength controls and
 the primary action support keyboard navigation with visible focus.
 
-**You need:** Windows 11 · an NVIDIA **RTX 40** or **RTX 50** card · WoW in borderless windowed mode.
+**You need:** Windows 11 · an NVIDIA **RTX 40** or **RTX 50** card · WoW in borderless
+windowed mode (Windowed + Maximized on 3.3.5a).
 
 ## Hotkeys
 
@@ -87,6 +90,10 @@ client: its own folder, its own window check, and the steps it needs.
 **Maximized**, or add `SET gxWindow "1"` and `SET gxMaximize "1"` to `WTF/Config.wtf`
 while the game is closed. The manager shows both and never edits the file itself.
 
+On a slower PC, cap the game's frame rate with the driver's **Max Frame Rate** for
+`Wow.exe`, not with the game's `maxFPS`. That limiter is coarse on Windows 11: set to
+60, it delivered about 35 fps in testing.
+
 ![Setup for 3.3.5a](docs/screenshots/setup-wotlk.png)
 
 ## Is it safe for my account?
@@ -110,7 +117,9 @@ simply doesn't do any of the things people get banned for.
 - **Windows caps the overlay at your capture rate**, often 60 fps. The Status page
   shows you exactly where each millisecond goes.
 - **Cap WoW's frame rate** (Max Foreground FPS) to about the captured rate. That
-  frees the GPU for the neural pass, at no cost.
+  frees the GPU for the neural pass, at no cost. **On 3.3.5a, cap it in the driver**
+  (NVIDIA Control Panel or NVIDIA app, Max Frame Rate for `Wow.exe`): the game's own
+  `maxFPS` is coarse on Windows 11, and 60 lands near 35 fps.
 - **Low on video memory?** Close browsers and streaming tools, or lower texture quality.
   The app warns you when this happens.
 - It adds about 11 ms of latency. That's fine for questing and raiding, and you
