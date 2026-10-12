@@ -300,6 +300,10 @@ bool NgxSession::Evaluate(ID3D12GraphicsCommandList* cl, const DlssEvalDesc& des
   eval.InRenderSubrectDimensions.Height = renderHeight_;
   eval.InMVScaleX = desc.motionScaleX;
   eval.InMVScaleY = desc.motionScaleY;
+  // Where the estimated vectors failed their checks, ask DLSS to prefer this
+  // frame over history -- the disocclusion signal a real depth buffer would
+  // otherwise have provided. Subrect base stays zero: the mask is full-frame.
+  eval.pInBiasCurrentColorMask = desc.biasCurrentColor;
   eval.InReset = desc.reset ? 1 : 0;
 
   DWORD seh = 0;

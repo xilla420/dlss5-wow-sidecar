@@ -14,6 +14,7 @@ add_executable(sidecar_tests
   test_format_normalize.cpp
   test_luminance.cpp
   test_nvofa_flow.cpp
+  test_temporal_stability.cpp
   test_motion_vector_math.cpp
   test_config.cpp
   test_manager_settings.cpp

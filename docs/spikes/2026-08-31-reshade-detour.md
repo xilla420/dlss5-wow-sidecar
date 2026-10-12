@@ -166,6 +166,10 @@ a `R8` trust mask for vectors that failed validation as DLSS's **bias-current-co
 which means the UI mask of Tasks 7 and 8 has a second consumer, and optical-flow vectors over
 interface elements are exactly the vectors worth distrusting.
 
+> **Correction, 2026-10-12.** `prev_uv = uv + mv` contradicts the negation rather than
+> confirming it: NVOFA's −4.5 px for a bar moving +4 px already *is* `prev − curr`. The
+> negation shipped until 0.5.0 and was the reported temporal ghosting; it is now removed.
+
 **5. A performance warning.** An RTX 4090 running NR in-engine is reported dropping from ~135
 to ~82 FPS, roughly −39%. The M1 gate passed at p99 6.1 ms against an ~80 ms threshold, so
 there is headroom, but this is the first indication that the neural pass may dominate the

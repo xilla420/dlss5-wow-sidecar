@@ -187,6 +187,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   cfg.dlssPreset = config.dlssPreset;
   cfg.syntheticDepth = config.syntheticDepth;
   cfg.neuralPasses = config.neuralPasses;
+  cfg.disocclusionFallback = config.disocclusionFallback;
+  cfg.invertMotion = config.invertMotion;
+  if (config.invertMotion) {
+    GlobalLog().Warn("invert_motion is on: motion vectors are deliberately "
+                     "flipped, and moving things will smear. Diagnostic only.");
+  }
   cfg.uiMaskFeather = static_cast<int32_t>(config.uiMaskFeather);
   cfg.runtimeDir = ExecutableDirectory();
   ReportWarnings(warnings);

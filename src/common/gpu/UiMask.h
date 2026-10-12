@@ -48,10 +48,16 @@ class UiMask {
   // Empty until Rasterise runs.
   ID3D12Resource* Mask() const { return mask_.Get(); }
 
+  // distrust, when given, is FlowToMotionVec's R8 mask in a shader-readable
+  // state; the blend falls back to the original by up to distrustWeight
+  // wherever it is set, so pixels with no usable history show the present
+  // frame rather than a trail of the past. Null means the interface mask alone.
   void Record(ID3D12GraphicsCommandList* cl,
               ID3D12Resource* original,
               ID3D12Resource* neural,
-              ID3D12Resource* dst);
+              ID3D12Resource* dst,
+              ID3D12Resource* distrust = nullptr,
+              float distrustWeight = 0.0f);
 
  private:
   UiMask() = default;

@@ -143,6 +143,19 @@ struct Config {
   // extra pass costs another full evaluate.
   uint32_t neuralPasses = 1;
 
+  // How far the final blend falls back to the untouched frame where the motion
+  // field says the neural pass had no usable history: behind a moving
+  // character, along the edge a turning camera uncovers, across a spell effect
+  // the optical flow could not follow. Zero shows the neural output everywhere,
+  // trails included; one shows the present frame wherever the past would have
+  // been drawn instead.
+  float disocclusionFallback = 1.0f;
+
+  // Flips the motion vectors. A diagnostic for checking the convention on
+  // hardware without a rebuild; it is wrong in normal use and makes moving
+  // things smear (the 0.4.0/0.5.0 ghosting was this, built in).
+  bool invertMotion = false;
+
   std::vector<UiRect> uiMaskRects;
   uint32_t uiMaskFeather = 0;
 
