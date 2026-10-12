@@ -291,8 +291,13 @@ bool ReshadeHostedPass::Evaluate(ID3D12GraphicsCommandList* cl,
   // holds the same arithmetic for the CPU side and is unit-tested.
   eval.motionScaleX = static_cast<float>(width_);
   eval.motionScaleY = static_cast<float>(height_);
-  eval.reset = justCreated_;
+  eval.reset = justCreated_ || hints_.resetHistory;
   justCreated_ = false;
+  if (hints_.resetHistory) {
+    GlobalLog().Info("temporal history reset: the frame does not follow the last one");
+  }
+  eval.biasCurrentColor = hints_.distrust;
+  hints_ = FrameHints{};
 
   // More than one pass needs somewhere for the middle of the run to live: a
   // neural evaluate cannot read and write the same texture. The scratch is a
@@ -313,12 +318,32 @@ bool ReshadeHostedPass::Evaluate(ID3D12GraphicsCommandList* cl,
       device->Release();
     }
   }
+  if (passes_ > 1 && scratch_ && !zeroMotion_ && motion) {
+    ID3D12Device* device = nullptr;
+    if (SUCCEEDED(motion->GetDevice(IID_PPV_ARGS(&device))) && device) {
+      const D3D12_RESOURCE_DESC desc = motion->GetDesc();
+      const D3D12_HEAP_PROPERTIES heap{D3D12_HEAP_TYPE_DEFAULT};
+      // Born in the state NGX reads it in, and never transitioned.
+      if (FAILED(device->CreateCommittedResource(
+              &heap, D3D12_HEAP_FLAG_NONE, &desc,
+              D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, nullptr,
+              IID_PPV_ARGS(&zeroMotion_)))) {
+        zeroMotion_.Reset();
+      }
+      device->Release();
+    }
+    if (!zeroMotion_) {
+      scratch_.Reset();
+      GlobalLog().Warn("could not allocate the multi-pass motion field; "
+                       "the neural pass runs once per frame");
+    }
+  }
 
   // One pass over a composited frame barely moves it -- the model is given a
   // finished image and a constant depth plane, not the engine's buffers. The
   // public demonstrations run three passes for that reason, and are accused of
   // smeared textures for the same reason. One stays the default.
-  const uint32_t passes = (passes_ > 1 && scratch_) ? passes_ : 1;
+  const uint32_t passes = (passes_ > 1 && scratch_ && zeroMotion_) ? passes_ : 1;
 
   bool ok = motion != nullptr;
   ID3D12Resource* source = color;   // in NON_PIXEL_SHADER_RESOURCE
@@ -330,6 +355,13 @@ bool ReshadeHostedPass::Evaluate(ID3D12GraphicsCommandList* cl,
     // Only the first pass resets. Reset discards temporal history, and doing it
     // again mid-frame would throw away what the previous pass just produced.
     eval.reset = eval.reset && pass == 0;
+    // Only the first pass spans a frame. The later ones re-filter the same
+    // instant: history is the pass before, perfectly aligned, so their motion
+    // is zero and nothing in it is distrusted.
+    if (pass > 0) {
+      eval.motion = zeroMotion_.Get();
+      eval.biasCurrentColor = nullptr;
+    }
     ok = session_->Evaluate(cl, eval);
     if (!ok || pass + 1 == passes) break;
 

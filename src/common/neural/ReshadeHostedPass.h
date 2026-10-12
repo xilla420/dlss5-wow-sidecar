@@ -64,6 +64,8 @@ class ReshadeHostedPass : public INeuralPass {
                                                    const Options& options,
                                                    std::string& reason);
 
+  void SetFrameHints(const FrameHints& hints) override { hints_ = hints; }
+
   bool Evaluate(ID3D12GraphicsCommandList* cl,
                 ID3D12Resource* color,
                 ID3D12Resource* motion,
@@ -114,6 +116,13 @@ class ReshadeHostedPass : public INeuralPass {
   // first use and only when more than one pass is asked for, because it
   // is the size of a full frame and most runs never need it.
   Microsoft::WRL::ComPtr<ID3D12Resource> scratch_;
+  // An all-zero motion field for the second and later passes of a frame. They
+  // re-filter the same instant, so nothing has moved between them; handing
+  // them the frame's motion makes the feature shift its history by a whole
+  // frame on every pass, which is how extra passes multiplied the ghosting.
+  // Committed resources start zeroed and this one is never written.
+  Microsoft::WRL::ComPtr<ID3D12Resource> zeroMotion_;
+  FrameHints hints_;
   RuntimeVariant variant_ = RuntimeVariant::None;
   bool depthUploaded_ = false;
   bool featureFailed_ = false;

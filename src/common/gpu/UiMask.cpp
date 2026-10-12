@@ -28,22 +28,22 @@ std::unique_ptr<UiMask> UiMask::Create(ID3D12Device* device,
   m->height_ = height;
   m->rowPitch_ = AlignUp(width, kUploadAlignment);
 
-  // Three SRVs -- original, neural, mask -- and one UAV.
+  // Four SRVs -- original, neural, mask, distrust -- and one UAV.
   D3D12_DESCRIPTOR_RANGE ranges[2]{};
   ranges[0].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
-  ranges[0].NumDescriptors = 3;
+  ranges[0].NumDescriptors = 4;
   ranges[0].BaseShaderRegister = 0;
   ranges[1].RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_UAV;
   ranges[1].NumDescriptors = 1;
   ranges[1].BaseShaderRegister = 0;
-  ranges[1].OffsetInDescriptorsFromTableStart = 3;
+  ranges[1].OffsetInDescriptorsFromTableStart = 4;
 
   D3D12_ROOT_PARAMETER params[2]{};
   params[0].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
   params[0].DescriptorTable.NumDescriptorRanges = 2;
   params[0].DescriptorTable.pDescriptorRanges = ranges;
   params[1].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-  params[1].Constants.Num32BitValues = 2;
+  params[1].Constants.Num32BitValues = 3;   // size.xy, distrust weight
   params[1].Constants.ShaderRegister = 0;
 
   D3D12_ROOT_SIGNATURE_DESC rsd{};
@@ -71,7 +71,7 @@ std::unique_ptr<UiMask> UiMask::Create(ID3D12Device* device,
 
   D3D12_DESCRIPTOR_HEAP_DESC hd{};
   hd.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-  hd.NumDescriptors = 4;
+  hd.NumDescriptors = 5;
   hd.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
   if (FAILED(device->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&m->heap_)))) {
     return nullptr;
@@ -192,7 +192,9 @@ void UiMask::Rasterise(ID3D12GraphicsCommandList* cl,
 void UiMask::Record(ID3D12GraphicsCommandList* cl,
                     ID3D12Resource* original,
                     ID3D12Resource* neural,
-                    ID3D12Resource* dst) {
+                    ID3D12Resource* dst,
+                    ID3D12Resource* distrust,
+                    float distrustWeight) {
   if (!cl || !original || !neural || !dst || !hasMask_) return;
 
   auto cpu = heap_->GetCPUDescriptorHandleForHeapStart();
@@ -216,6 +218,12 @@ void UiMask::Record(ID3D12GraphicsCommandList* cl,
   srv.Format = DXGI_FORMAT_R8_UNORM;
   device_->CreateShaderResourceView(mask_.Get(), &srv, cpu);
 
+  // A null resource with a typed description is a null descriptor, which reads
+  // as zero: no distrust, so the blend is exactly the interface mask again.
+  cpu.ptr += descriptorSize_;
+  device_->CreateShaderResourceView(distrust, &srv, cpu);
+  if (!distrust) distrustWeight = 0.0f;
+
   cpu.ptr += descriptorSize_;
   D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
   uav.Format = dst->GetDesc().Format;
@@ -227,8 +235,10 @@ void UiMask::Record(ID3D12GraphicsCommandList* cl,
   cl->SetComputeRootSignature(rootSignature_.Get());
   cl->SetPipelineState(pipeline_.Get());
   cl->SetComputeRootDescriptorTable(0, heap_->GetGPUDescriptorHandleForHeapStart());
-  const uint32_t dims[2] = {width_, height_};
-  cl->SetComputeRoot32BitConstants(1, 2, dims, 0);
+  uint32_t weightBits = 0;
+  std::memcpy(&weightBits, &distrustWeight, sizeof(weightBits));
+  const uint32_t constants[3] = {width_, height_, weightBits};
+  cl->SetComputeRoot32BitConstants(1, 3, constants, 0);
   cl->Dispatch((width_ + 7) / 8, (height_ + 7) / 8, 1);
 }
 
