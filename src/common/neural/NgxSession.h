@@ -72,6 +72,9 @@ struct DlssEvalDesc {
   float jitterY = 0.0f;
   float motionScaleX = 1.0f;
   float motionScaleY = 1.0f;
+  // Optional R8 mask, 1 = trust the current colour over history here. Must be
+  // readable as a shader resource for the duration of the evaluate.
+  ID3D12Resource* biasCurrentColor = nullptr;
   bool reset = false;
 };
 

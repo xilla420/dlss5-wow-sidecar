@@ -155,8 +155,9 @@ std::unique_ptr<Pipeline> Pipeline::Create(const GpuInfo& gpu,
   p->dev_.previousLuma = Luminance::CreateR8Target(dev, w, h, D3D12_RESOURCE_STATE_COMMON);
   p->dev_.currentLuma = Luminance::CreateR8Target(dev, w, h, D3D12_RESOURCE_STATE_COMMON);
   p->dev_.flow = NvofaFlow::Create(dev, p->dev_.bridge->Queue(), w, h, config.flowGridSize);
-  p->dev_.flowToMv = FlowToMotionVec::Create(dev, w, h);
+  p->dev_.flowToMv = FlowToMotionVec::Create(dev, w, h, config.invertMotion);
   p->dev_.motionTarget = FlowToMotionVec::CreateMotionTarget(dev, w, h);
+  p->dev_.distrustTarget = FlowToMotionVec::CreateDistrustTarget(dev, w, h);
 
   // Build the configured pass now that there is a device for it to hold. Any
   // failure inside MakeNeuralPass degrades to passthrough and explains itself,
@@ -573,11 +574,60 @@ void Pipeline::RenderLoop() {
     dev_.alloc2->Reset();
     dev_.cmdList2->Reset(dev_.alloc2.Get(), nullptr);
 
-    if (haveFlow && dev_.flowToMv && dev_.motionTarget) {
+    // The distrust mask is written beside the motion field and read by the
+    // pass and the blend, so it is in NON_PIXEL_SHADER_RESOURCE between here
+    // and the end of the blend, and back in UNORDERED_ACCESS at rest.
+    ID3D12Resource* distrust = nullptr;
+    if (haveFlow && dev_.flowToMv && dev_.motionTarget && dev_.distrustTarget) {
       dev_.bridge->Queue()->Wait(dev_.flow->OutputFence(), flowOut.readyFenceValue);
-      dev_.flowToMv->Record(dev_.cmdList2.Get(), flowOut, dev_.motionTarget.Get());
+
+      // Both luminance textures rest in COMMON for NVOFA's queue; the
+      // photometric check reads them here, after NVOFA is done with them.
+      D3D12_RESOURCE_BARRIER lumaRead[2]{};
+      for (int i = 0; i < 2; ++i) {
+        lumaRead[i].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+        lumaRead[i].Transition.pResource =
+            i == 0 ? dev_.currentLuma.Get() : dev_.previousLuma.Get();
+        lumaRead[i].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+        lumaRead[i].Transition.StateBefore = D3D12_RESOURCE_STATE_COMMON;
+        lumaRead[i].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+      }
+      dev_.cmdList2->ResourceBarrier(2, lumaRead);
+
+      dev_.flowToMv->Record(dev_.cmdList2.Get(), flowOut, dev_.currentLuma.Get(),
+                            dev_.previousLuma.Get(), dev_.motionTarget.Get(),
+                            dev_.distrustTarget.Get());
       motion = dev_.motionTarget.Get();
+      distrust = dev_.distrustTarget.Get();
+
+      D3D12_RESOURCE_BARRIER after[3]{};
+      after[0] = lumaRead[0];
+      after[0].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+      after[0].Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+      after[1] = lumaRead[1];
+      after[1].Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+      after[1].Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
+      after[2] = lumaRead[0];
+      after[2].Transition.pResource = distrust;
+      after[2].Transition.StateBefore = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+      after[2].Transition.StateAfter = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+      dev_.cmdList2->ResourceBarrier(3, after);
     }
+
+    // A frame that does not continue the last one -- the capture stalled
+    // (alt-tab, a loading screen, the game minimised) or there is no previous
+    // frame at all -- must not be blended with history from before the gap.
+    // Half a second is far past any frame time this runs at and well short of
+    // anything a player would read as continuous.
+    const auto frameAt = Clock::now();
+    const bool gap =
+        dev_.lastFrameAt == Clock::time_point{} ||
+        frameAt - dev_.lastFrameAt > std::chrono::milliseconds(500);
+    dev_.lastFrameAt = frameAt;
+    FrameHints hints;
+    hints.distrust = distrust;
+    hints.resetHistory = gap;
+    dev_.pass->SetFrameHints(hints);
 
     // With no mask configured this is exactly the path it always was: the pass
     // writes dev_.workTarget and the overlay presents it. The masked path adds
@@ -663,7 +713,8 @@ void Pipeline::RenderLoop() {
       dev_.cmdList2->ResourceBarrier(1, &toBlend);
 
       dev_.uiMask->Record(dev_.cmdList2.Get(), frame->texture,
-                          dev_.neuralTarget.Get(), dev_.workTarget.Get());
+                          dev_.neuralTarget.Get(), dev_.workTarget.Get(),
+                          distrust, config_.disocclusionFallback);
 
       D3D12_RESOURCE_BARRIER after[2]{};
       after[0] = toBlend;
@@ -675,6 +726,16 @@ void Pipeline::RenderLoop() {
       // writes it -- not unconditionally COPY_SOURCE.
       after[1].Transition.StateAfter = restState;
       dev_.cmdList2->ResourceBarrier(2, after);
+    }
+
+    if (distrust) {
+      D3D12_RESOURCE_BARRIER rest{};
+      rest.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+      rest.Transition.pResource = distrust;
+      rest.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+      rest.Transition.StateBefore = D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE;
+      rest.Transition.StateAfter = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+      dev_.cmdList2->ResourceBarrier(1, &rest);
     }
 
     dev_.cmdList2->Close();

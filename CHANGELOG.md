@@ -31,6 +31,34 @@ is what the reader is looking for.
 
 ## Unreleased
 
+### Fixed
+
+- **Moving things left translucent trails, and turning the camera smeared the
+  picture.** The motion vectors handed to the neural pass pointed the wrong
+  way, so every frame blended in history from twice the real motion away. This
+  had been there since the first release and was misread as the cost of
+  estimated motion. They now point the right way, which a camera-pan test
+  confirms on hardware: DLAA's error against the true frame drops to a third of
+  what 0.5.0 produced.
+- **More neural passes made the ghosting worse.** Every extra pass was told the
+  scene had moved by a whole frame, so passes compounded the smear. Passes after
+  the first now see the scene as still, which it is.
+- History is dropped after a gap in the capture (alt-tab, loading screens, the
+  game minimised), instead of being blended into the first frames back.
+
+### Added
+
+- **Disocclusion handling.** Each motion vector is now checked against the
+  previous frame. Where a turning camera uncovers new ground, or a character
+  uncovers what was behind them, or a spell effect moves in a way optical flow
+  can't follow, the pixel is shown from the present frame instead of the
+  neural pass's stale history. DLSS is told the same thing through its
+  bias-current-colour mask. `disocclusion_fallback` in `sidecar.toml` sets how
+  far to fall back (0 to 1, default 1).
+- `invert_motion = true` in `sidecar.toml` flips the motion vectors back. It is
+  a diagnostic for comparing the old and new behaviour, not a setting to play
+  with.
+
 ## 0.5.0
 
 World of Warcraft 3.3.5a (Wrath of the Lich King, build 12340) is now supported,

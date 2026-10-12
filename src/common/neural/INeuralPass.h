@@ -9,9 +9,23 @@ namespace sidecar {
 //
 // motion and depth may be null. An implementation that requires them returns
 // false rather than dereferencing, so the pipeline can fall back cleanly.
+// Per-frame facts about the motion field that a temporal pass can use and a
+// stateless one ignores.
+struct FrameHints {
+  // FlowToMotionVec's R8 distrust mask, in NON_PIXEL_SHADER_RESOURCE for the
+  // duration of Evaluate, or null when there is no motion field this frame.
+  ID3D12Resource* distrust = nullptr;
+  // The frame is not a continuation of the last one -- a capture gap, a
+  // rebuild, the overlay coming back -- so any temporal history is stale.
+  bool resetHistory = false;
+};
+
 class INeuralPass {
  public:
   virtual ~INeuralPass() = default;
+
+  // Called once per frame, before Evaluate. Applies to that Evaluate only.
+  virtual void SetFrameHints(const FrameHints& hints) { (void)hints; }
 
   virtual bool Evaluate(ID3D12GraphicsCommandList* cl,
                         ID3D12Resource* color,

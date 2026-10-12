@@ -50,6 +50,32 @@ TEST_CASE("UI mask rectangles round-trip", "[unit]") {
   REQUIRE(warnings.empty());
 }
 
+TEST_CASE("temporal-stability settings default safe and round-trip", "[unit]") {
+  std::vector<std::string> warnings;
+  const auto defaults = ParseConfig("", warnings);
+  // Falling back to the present frame where history is unusable is the fix
+  // for ghosting, so it is on; the inversion is the bug, so it is off.
+  REQUIRE(defaults.disocclusionFallback == 1.0f);
+  REQUIRE(defaults.invertMotion == false);
+  // A diagnostic does not appear in a file nobody asked it to.
+  REQUIRE(SerializeConfig(defaults).find("invert_motion") == std::string::npos);
+
+  const auto cfg = ParseConfig("disocclusion_fallback = 0.25\ninvert_motion = true",
+                               warnings);
+  REQUIRE(warnings.empty());
+  REQUIRE(cfg.disocclusionFallback == 0.25f);
+  REQUIRE(cfg.invertMotion == true);
+  const auto again = ParseConfig(SerializeConfig(cfg), warnings);
+  REQUIRE(warnings.empty());
+  REQUIRE(again.disocclusionFallback == 0.25f);
+  REQUIRE(again.invertMotion == true);
+
+  Config reset = cfg;
+  ResetRenderingSettings(reset);
+  REQUIRE(reset.disocclusionFallback == 1.0f);
+  REQUIRE(reset.invertMotion == false);
+}
+
 TEST_CASE("an invalid grid size warns and falls back", "[unit]") {
   std::vector<std::string> warnings;
   const auto cfg = ParseConfig("flow_grid_size = 7", warnings);
