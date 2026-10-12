@@ -43,6 +43,10 @@ std::unique_ptr<DeviceBridge> DeviceBridge::Create(LUID adapterLuid,
   }
   D3D12_COMMAND_QUEUE_DESC qd{};
   qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+  // Normal priority, measured rather than assumed: with the GPU saturated by
+  // another process, D3D12_COMMAND_QUEUE_PRIORITY_HIGH presented the same
+  // 52-53 fps as normal over four alternating runs (2026-10-12). Queue priority
+  // orders work inside this process; it does not win time from the game.
   if (FAILED(b->d3d12_->CreateCommandQueue(&qd, IID_PPV_ARGS(&b->queue_)))) return nullptr;
 
   // Shared fence: signalled on the D3D11 context, waited on the D3D12 queue.

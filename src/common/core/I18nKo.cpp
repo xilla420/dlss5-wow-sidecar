@@ -729,6 +729,12 @@ const TranslationPair kKoreanTable[] = {
      "점검 대상: 3.3.5a 리치 왕"},
     {"Checking for: Retail & Classic",
      "점검 대상: 리테일 & 클래식"},
+    {"On 3.3.5a, cap it with Max Frame Rate for Wow.exe in the NVIDIA Control Panel or NVIDIA app, not with the game's maxFPS. That limiter is coarse on Windows 11: set to 60, it delivered about 35 fps in testing.",
+     "3.3.5a에서는 게임의 maxFPS가 아니라 NVIDIA 제어판이나 NVIDIA 앱에서 Wow.exe의 Max Frame Rate로 제한하세요. 이 제한기는 Windows 11에서 정밀하지 않아, 60으로 설정하면 테스트에서 약 35fps가 나왔습니다."},
+    {"3. On a slower PC, cap the game's frame rate with Max Frame Rate for Wow.exe in the NVIDIA Control Panel or NVIDIA app.",
+     "3. 사양이 낮은 PC에서는 NVIDIA 제어판이나 NVIDIA 앱에서 Wow.exe의 Max Frame Rate로 게임 프레임 속도를 제한하세요."},
+    {"Not with the game's own maxFPS: on Windows 11 that limiter is coarse, and set to 60 it delivered about 35 fps in testing. A capped game leaves the GPU to the neural pass, and the overlay can never show more frames than it captures anyway.",
+     "게임 자체의 maxFPS는 쓰지 마세요. Windows 11에서는 이 제한기가 정밀하지 않아 60으로 설정하면 테스트에서 약 35fps가 나왔습니다. 프레임을 제한하면 GPU가 뉴럴 패스에 돌아가며, 오버레이는 어차피 캡처한 것보다 많은 프레임을 보여줄 수 없습니다."},
 };
 
 const size_t kKoreanTableSize = sizeof(kKoreanTable) / sizeof(kKoreanTable[0]);

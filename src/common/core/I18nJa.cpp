@@ -735,6 +735,12 @@ const TranslationPair kJapaneseTable[] = {
      "対象：3.3.5a WotLK"},
     {"Checking for: Retail & Classic",
      "対象：Retail・Classic"},
+    {"On 3.3.5a, cap it with Max Frame Rate for Wow.exe in the NVIDIA Control Panel or NVIDIA app, not with the game's maxFPS. That limiter is coarse on Windows 11: set to 60, it delivered about 35 fps in testing.",
+     "3.3.5a では、ゲームの maxFPS ではなく、NVIDIA コントロールパネルまたは NVIDIA アプリで Wow.exe の Max Frame Rate を使って制限してください。このリミッターは Windows 11 では粗く、60 に設定するとテストでは約 35 fps でした。"},
+    {"3. On a slower PC, cap the game's frame rate with Max Frame Rate for Wow.exe in the NVIDIA Control Panel or NVIDIA app.",
+     "3. 性能の低い PC では、NVIDIA コントロールパネルまたは NVIDIA アプリで Wow.exe の Max Frame Rate を設定し、ゲームのフレームレートを制限します。"},
+    {"Not with the game's own maxFPS: on Windows 11 that limiter is coarse, and set to 60 it delivered about 35 fps in testing. A capped game leaves the GPU to the neural pass, and the overlay can never show more frames than it captures anyway.",
+     "ゲーム自体の maxFPS は使わないでください。Windows 11 ではこのリミッターが粗く、60 に設定するとテストでは約 35 fps でした。ゲームを制限すると GPU がニューラル処理に回り、オーバーレイはそもそもキャプチャした以上のフレームを表示できません。"},
 };
 
 const size_t kJapaneseTableSize = sizeof(kJapaneseTable) / sizeof(kJapaneseTable[0]);

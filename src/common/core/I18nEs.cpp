@@ -804,6 +804,12 @@ const TranslationPair kSpanishTable[] = {
      "Comprobando para: 3.3.5a WotLK"},
     {"Checking for: Retail & Classic",
      "Comprobando para: Retail y Classic"},
+    {"On 3.3.5a, cap it with Max Frame Rate for Wow.exe in the NVIDIA Control Panel or NVIDIA app, not with the game's maxFPS. That limiter is coarse on Windows 11: set to 60, it delivered about 35 fps in testing.",
+     "En 3.3.5a, limítalo con Max Frame Rate para Wow.exe en el Panel de control de NVIDIA o la app de NVIDIA, no con el maxFPS del juego. Ese limitador es impreciso en Windows 11: con 60, en las pruebas dio unos 35 fps."},
+    {"3. On a slower PC, cap the game's frame rate with Max Frame Rate for Wow.exe in the NVIDIA Control Panel or NVIDIA app.",
+     "3. En un PC más lento, limita la tasa de fotogramas del juego con Max Frame Rate para Wow.exe en el Panel de control de NVIDIA o la app de NVIDIA."},
+    {"Not with the game's own maxFPS: on Windows 11 that limiter is coarse, and set to 60 it delivered about 35 fps in testing. A capped game leaves the GPU to the neural pass, and the overlay can never show more frames than it captures anyway.",
+     "No con el maxFPS del propio juego: en Windows 11 ese limitador es impreciso y, con 60, en las pruebas dio unos 35 fps. Un juego limitado deja la GPU al pase neuronal, y el overlay nunca puede mostrar más fotogramas de los que captura."},
 };
 
 const size_t kSpanishTableSize = sizeof(kSpanishTable) / sizeof(kSpanishTable[0]);

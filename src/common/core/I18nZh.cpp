@@ -712,6 +712,12 @@ const TranslationPair kChineseTable[] = {
      "检查对象：3.3.5a 巫妖王"},
     {"Checking for: Retail & Classic",
      "检查对象：正式服与经典服"},
+    {"On 3.3.5a, cap it with Max Frame Rate for Wow.exe in the NVIDIA Control Panel or NVIDIA app, not with the game's maxFPS. That limiter is coarse on Windows 11: set to 60, it delivered about 35 fps in testing.",
+     "在 3.3.5a 中，请在 NVIDIA 控制面板或 NVIDIA App 中为 Wow.exe 设置 Max Frame Rate 来限制帧率，而不要用游戏的 maxFPS。该限制器在 Windows 11 上很粗糙：设为 60 时，测试中只有约 35 fps。"},
+    {"3. On a slower PC, cap the game's frame rate with Max Frame Rate for Wow.exe in the NVIDIA Control Panel or NVIDIA app.",
+     "3. 在较慢的电脑上，请在 NVIDIA 控制面板或 NVIDIA App 中为 Wow.exe 设置 Max Frame Rate，限制游戏帧率。"},
+    {"Not with the game's own maxFPS: on Windows 11 that limiter is coarse, and set to 60 it delivered about 35 fps in testing. A capped game leaves the GPU to the neural pass, and the overlay can never show more frames than it captures anyway.",
+     "不要用游戏自带的 maxFPS：它在 Windows 11 上很粗糙，设为 60 时测试中只有约 35 fps。限制帧率后，游戏会把 GPU 让给神经渲染，而叠加层显示的帧数本来就不会超过捕获的帧数。"},
 };
 
 const size_t kChineseTableSize = sizeof(kChineseTable) / sizeof(kChineseTable[0]);

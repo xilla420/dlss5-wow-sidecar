@@ -799,6 +799,12 @@ const TranslationPair kTurkishTable[] = {
      "Denetlenen: 3.3.5a WotLK"},
     {"Checking for: Retail & Classic",
      "Denetlenen: Retail ve Classic"},
+    {"On 3.3.5a, cap it with Max Frame Rate for Wow.exe in the NVIDIA Control Panel or NVIDIA app, not with the game's maxFPS. That limiter is coarse on Windows 11: set to 60, it delivered about 35 fps in testing.",
+     "3.3.5a'da bunu oyunun maxFPS ayarıyla değil, NVIDIA Denetim Masası veya NVIDIA uygulamasında Wow.exe için Max Frame Rate ile sınırlayın. Bu sınırlayıcı Windows 11'de kabadır: 60'a ayarlandığında testte yaklaşık 35 fps verdi."},
+    {"3. On a slower PC, cap the game's frame rate with Max Frame Rate for Wow.exe in the NVIDIA Control Panel or NVIDIA app.",
+     "3. Daha yavaş bir bilgisayarda, NVIDIA Denetim Masası veya NVIDIA uygulamasında Wow.exe için Max Frame Rate ile oyunun kare hızını sınırlayın."},
+    {"Not with the game's own maxFPS: on Windows 11 that limiter is coarse, and set to 60 it delivered about 35 fps in testing. A capped game leaves the GPU to the neural pass, and the overlay can never show more frames than it captures anyway.",
+     "Oyunun kendi maxFPS ayarıyla değil: Windows 11'de bu sınırlayıcı kabadır ve 60'a ayarlandığında testte yaklaşık 35 fps verdi. Sınırlanmış bir oyun GPU'yu nöral geçişe bırakır; katman zaten yakaladığından fazla kare gösteremez."},
 };
 
 const size_t kTurkishTableSize = sizeof(kTurkishTable) / sizeof(kTurkishTable[0]);

@@ -1420,7 +1420,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         const bool overBudget = s.vramBudgetMb > 0 && s.vramUsedMb > s.vramBudgetMb;
 
         ImGui::Dummy(ImVec2(0.0f, S(8.0f)));
-        ImGui::BeginChild("advice", ImVec2(0.0f, S(132.0f)), ImGuiChildFlags_Border);
+        // Still a fixed height, so the controls above never move -- only taller
+        // for 3.3.5a, whose frame-cap advice runs a paragraph longer.
+        ImGui::BeginChild("advice",
+                          ImVec2(0.0f, S(config.client == GameClient::Wotlk ? 196.0f : 132.0f)),
+                          ImGuiChildFlags_Border);
         ImGui::Dummy(ImVec2(0.0f, S(2.0f)));
         ImGui::Indent(S(10.0f));
         if (spilling || overBudget) {
@@ -1456,6 +1460,16 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                "Cap the game's frame rate. This costs nothing: the overlay can "
                "never show more than the capture rate above, so every frame the "
                "game renders beyond that is discarded before it reaches here.");
+          if (config.client == GameClient::Wotlk) {
+            // Measured 2026-10-12 on a live 3.3.5a client in the foreground,
+            // overlay running: maxFPS 60 delivered 35 fps, uncapped and
+            // maxFPS 120 both about 60. The limiter sleeps, and on Windows 11
+            // a sleep rounds up to the system timer tick.
+            Hint("On 3.3.5a, cap it with Max Frame Rate for Wow.exe in the NVIDIA "
+                 "Control Panel or NVIDIA app, not with the game's maxFPS. That "
+                 "limiter is coarse on Windows 11: set to 60, it delivered about "
+                 "35 fps in testing.");
+          }
         } else {
           ImGui::TextColored(Rgb(g_colors.ok), "Keeping up with capture.");
           Hint("The overlay is presenting close to every frame Windows hands it, "
@@ -1683,6 +1697,12 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         if (g_fonts.mono) ImGui::PopFont();
         Hint("This tool never edits that file itself. Exclusive fullscreen cannot be "
              "captured, which is the only reason the game has to be windowed.");
+        Wrapped(Tr("3. On a slower PC, cap the game's frame rate with Max Frame Rate for "
+                   "Wow.exe in the NVIDIA Control Panel or NVIDIA app."));
+        Hint("Not with the game's own maxFPS: on Windows 11 that limiter is coarse, and "
+             "set to 60 it delivered about 35 fps in testing. A capped game leaves the "
+             "GPU to the neural pass, and the overlay can never show more frames than "
+             "it captures anyway.");
       } else {
         Wrapped(Tr("In Options, under Graphics, set Display Mode to the borderless windowed "
                    "mode -- Windowed (Fullscreen) on most clients -- not exclusive Fullscreen."));
