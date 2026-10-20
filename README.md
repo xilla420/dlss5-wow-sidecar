@@ -68,6 +68,24 @@ DLSS 5 can run more than once on every frame. **1×** is subtle and closest to t
 game. **2×** and **3×** push the picture further, closer to the heavily processed
 look you see in demo videos. Each extra pass costs roughly one more pass of GPU time.
 
+## Two DLSS 5 runtimes: latest 310.9.16 and compatible 310.8
+
+![The neural runtime setting](docs/screenshots/runtime.png)
+
+The zip carries two builds of NVIDIA's DLSS 5 runtime (`nvngx_dlssnr.dll`), and
+**Tuning → Neural runtime** picks between them:
+
+| Option | Build | Runs on | |
+|---|---|---|---|
+| **Automatic** (default) | the right one for your card | RTX 40 and RTX 50 | Latest on RTX 50, Compatible on RTX 40 |
+| **Latest** | **DLSS 5 310.9.16**, signed by NVIDIA | RTX 50 only | about **40% less GPU time** per frame than 310.8, and less video memory |
+| **Compatible** | DLSS 5 310.8.0, patched for Ada | RTX 40 and RTX 50 | the build earlier releases shipped |
+
+Measured on an RTX 50 card: the neural pass dropped from 2.85 ms to 1.7 ms a frame.
+That doesn't raise WoW's frame rate, but it leaves the GPU more room. If the new build
+looks worse to you on an RTX 50, pick **Compatible** to go back. The change applies
+the next time the overlay starts.
+
 ## Three looks, ten languages
 
 | Stormwind | Quest log | Dragonflight |
@@ -137,6 +155,14 @@ the top of the manager, then in the game's Video options tick **Windowed Mode** 
 
 **Which GPUs?** GeForce RTX 40 (e.g. 4060–4090) and RTX 50 (e.g. 5060–5090). Older
 cards, AMD and Intel can't run DLSS 5.
+
+**Which DLSS 5 version does it use?** Two: the newest signed **310.9.16** on RTX 50
+cards, and the Ada-patched **310.8** on RTX 40. It picks automatically; see
+[Two DLSS 5 runtimes](#two-dlss-5-runtimes-latest-310916-and-compatible-3108).
+
+**Characters smear or leave trails when the camera turns?** That was a bug, now
+fixed after 0.5.0: the motion vectors pointed the wrong way, which also made 2× and 3×
+worse. The fix ships in the next release.
 
 **Where are the technical details?** In [How it works](docs/HOW-IT-WORKS.md):
 the safety checks, frame-rate measurements, the pipeline, and how to build it.
