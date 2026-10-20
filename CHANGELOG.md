@@ -31,6 +31,48 @@ is what the reader is looking for.
 
 ## Unreleased
 
+### Added
+
+- **A choice of neural runtime.** The release now carries two builds of
+  `nvngx_dlssnr.dll`, under `runtimes\latest` and `runtimes\compatible`, and
+  **Tuning → Neural runtime** picks between them. *Latest* is NVIDIA's signed
+  310.9.16: on an RTX 50 card it cut the neural pass's GPU time from 2.85 to
+  1.7 ms per frame at 1280x720, and the overlay's own video memory by about
+  60 MB. It runs only on RTX 50. *Compatible* is the Ada-patched 310.8.0 the
+  previous releases shipped, which runs on RTX 40 and RTX 50. *Automatic*, the
+  default, takes Latest on RTX 50 and Compatible on RTX 40. The overlay copies
+  the chosen build next to itself at each launch; `neural_runtime` in
+  `sidecar.toml` holds the choice. Installs without a `runtimes` folder keep
+  using their loose `nvngx_dlssnr.dll` as before.
+
+### Fixed
+
+- **Moving things left translucent trails, and turning the camera smeared the
+  picture.** The motion vectors handed to the neural pass pointed the wrong
+  way, so every frame blended in history from twice the real motion away. This
+  had been there since the first release and was misread as the cost of
+  estimated motion. They now point the right way, which a camera-pan test
+  confirms on hardware: DLAA's error against the true frame drops to a third of
+  what 0.5.0 produced.
+- **More neural passes made the ghosting worse.** Every extra pass was told the
+  scene had moved by a whole frame, so passes compounded the smear. Passes after
+  the first now see the scene as still, which it is.
+- History is dropped after a gap in the capture (alt-tab, loading screens, the
+  game minimised), instead of being blended into the first frames back.
+
+### Added
+
+- **Disocclusion handling.** Each motion vector is now checked against the
+  previous frame. Where a turning camera uncovers new ground, or a character
+  uncovers what was behind them, or a spell effect moves in a way optical flow
+  can't follow, the pixel is shown from the present frame instead of the
+  neural pass's stale history. DLSS is told the same thing through its
+  bias-current-colour mask. `disocclusion_fallback` in `sidecar.toml` sets how
+  far to fall back (0 to 1, default 1).
+- `invert_motion = true` in `sidecar.toml` flips the motion vectors back. It is
+  a diagnostic for comparing the old and new behaviour, not a setting to play
+  with.
+
 ## 0.5.0
 
 World of Warcraft 3.3.5a (Wrath of the Lich King, build 12340) is now supported,

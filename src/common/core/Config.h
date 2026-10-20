@@ -62,6 +62,20 @@ enum class GameClient { Modern, Wotlk };
 const char* TagForGameClient(GameClient client);
 bool ParseGameClientTag(std::string_view tag, GameClient& out);
 
+// Which build of nvngx_dlssnr.dll the overlay runs. Both live under
+// runtimes\ next to the sidecar, and the chosen one is copied into place at
+// every launch -- the add-on only ever looks for the one next to the exe.
+//
+//   Auto        Latest on RTX 50, Compatible on RTX 40.
+//   Latest      the newest signed NVIDIA build (310.9.16): cheaper per frame,
+//               but stock, so Blackwell only.
+//   Compatible  the Ada-patched 310.8.0, which runs on RTX 40 and RTX 50 alike.
+enum class RuntimeMode { Auto, Latest, Compatible };
+
+// The tag stored in sidecar.toml: "auto", "latest" or "compatible".
+const char* TagForRuntimeMode(RuntimeMode mode);
+bool ParseRuntimeModeTag(std::string_view tag, RuntimeMode& out);
+
 struct Config {
   // Interface language, as a tag the translator understands ("en", "ru").
   // English by default, and deliberately not taken from the Windows locale:
@@ -125,6 +139,10 @@ struct Config {
   // overlay rather than an error.
   std::string neuralPass = "reshade";
 
+  // Which runtime build the pass runs; see RuntimeMode. Automatic unless the
+  // operator picks one, because the card decides which builds can run at all.
+  RuntimeMode neuralRuntime = RuntimeMode::Auto;
+
   // Which DLSS render preset the feature is created with. Named rather than
   // numbered because the numbers are an SDK detail; DlssPresetFromName maps it.
   std::string dlssPreset = "cnn-f";
@@ -142,6 +160,19 @@ struct Config {
   // which is also why the same threads accuse them of smeared textures. Each
   // extra pass costs another full evaluate.
   uint32_t neuralPasses = 1;
+
+  // How far the final blend falls back to the untouched frame where the motion
+  // field says the neural pass had no usable history: behind a moving
+  // character, along the edge a turning camera uncovers, across a spell effect
+  // the optical flow could not follow. Zero shows the neural output everywhere,
+  // trails included; one shows the present frame wherever the past would have
+  // been drawn instead.
+  float disocclusionFallback = 1.0f;
+
+  // Flips the motion vectors. A diagnostic for checking the convention on
+  // hardware without a rebuild; it is wrong in normal use and makes moving
+  // things smear (the 0.4.0/0.5.0 ghosting was this, built in).
+  bool invertMotion = false;
 
   std::vector<UiRect> uiMaskRects;
   uint32_t uiMaskFeather = 0;

@@ -168,10 +168,11 @@ jobs:
           ### Before publishing this draft
 
           This archive holds the two executables built from this tag, and nothing
-          else. Four third-party files belong beside them and are not ours to
+          else. These third-party files belong beside them and are not ours to
           redistribute from a workflow:
 
-          - ``nvngx_dlssnr.dll`` — the neural rendering runtime
+          - ``runtimes\latest\nvngx_dlssnr.dll`` — the neural rendering runtime for RTX 50 (310.9.16)
+          - ``runtimes\compatible\nvngx_dlssnr.dll`` — the Ada-patched runtime for RTX 40 (310.8.0)
           - ``nvngx_dlss.dll`` — the upscaling runtime, optional
           - ``dxgi.dll`` — ReShade, the add-on-enabled build
           - ``renodx-dlss5.addon64`` — the RenoDX DLSS 5 add-on

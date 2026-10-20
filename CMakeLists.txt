@@ -72,7 +72,7 @@ compile_compute_shader(UiMaskBlend)
 add_library(sidecar_common STATIC)
 target_include_directories(sidecar_common PUBLIC src/common)
 target_link_libraries(sidecar_common PUBLIC
-  d3d11 d3d12 dxgi dxguid dcomp windowsapp bcrypt tomlplusplus::tomlplusplus)
+  d3d11 d3d12 dxgi dxguid dcomp windowsapp bcrypt version tomlplusplus::tomlplusplus)
 target_sources(sidecar_common PRIVATE
   src/common/core/GpuProfile.cpp
   src/common/core/LatencyStats.cpp
@@ -107,6 +107,7 @@ target_sources(sidecar_common PRIVATE
   src/common/neural/AddonSettings.cpp
   src/common/neural/PassthroughPass.cpp
   src/common/neural/RuntimeManifest.cpp
+  src/common/neural/RuntimeSelect.cpp
   src/common/neural/NgxSession.cpp
   src/common/neural/ReshadeHostedPass.cpp
   src/common/neural/NeuralPassFactory.cpp)

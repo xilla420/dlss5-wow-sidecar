@@ -4,6 +4,7 @@
 #include <wrl/client.h>
 
 #include <atomic>
+#include <chrono>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -58,6 +59,11 @@ struct PipelineConfig {
   // How many times the neural filter runs over each frame. One by default;
   // each extra pass is another full evaluate.
   uint32_t neuralPasses = 1;
+  // How far the final blend falls back to the captured frame where the motion
+  // field is distrusted. See Config::disocclusionFallback.
+  float disocclusionFallback = 1.0f;
+  // Diagnostic flip of the motion vectors. See Config::invertMotion.
+  bool invertMotion = false;
   // Where nvngx_*.dll live. Defaults to the executable's own directory.
   std::filesystem::path runtimeDir;
 };
@@ -214,6 +220,12 @@ class Pipeline {
     std::unique_ptr<UiMask> uiMask;
     Microsoft::WRL::ComPtr<ID3D12Resource> neuralTarget;
     bool maskUploaded = false;
+
+    // FlowToMotionVec's verdict on each vector, rests in UNORDERED_ACCESS.
+    Microsoft::WRL::ComPtr<ID3D12Resource> distrustTarget;
+    // When the last frame was processed, so a gap in the capture can be told
+    // apart from a continuous scene and temporal history dropped across it.
+    std::chrono::steady_clock::time_point lastFrameAt{};
   };
   DeviceState dev_;
 

@@ -17,11 +17,13 @@ namespace {
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
-constexpr std::array<std::string_view, 18> kKnownKeys = {
+constexpr std::array<std::string_view, 21> kKnownKeys = {
+    "neural_runtime",
     "show_hud",     "show_overlay",   "flow_grid_size", "neural_pass",
     "dlss_preset",  "synthetic_depth", "ui_mask",       "ui_mask_feather",
     "neural",       "wow_dir",       "language",      "ui_scale",
-    "neural_passes", "hotkeys", "theme", "advanced_mode", "client", "wotlk_dir"};
+    "neural_passes", "hotkeys", "theme", "advanced_mode", "client", "wotlk_dir",
+    "disocclusion_fallback", "invert_motion"};
 
 bool IsKnown(std::string_view key) {
   return std::find(kKnownKeys.begin(), kKnownKeys.end(), key) != kKnownKeys.end();
@@ -141,6 +143,7 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
   ReadBool(root, "show_hud", config.showHud, warnings);
   ReadBool(root, "advanced_mode", config.advancedMode, warnings);
   ReadBool(root, "show_overlay", config.showOverlay, warnings);
+  ReadBool(root, "invert_motion", config.invertMotion, warnings);
 
   if (const auto node = root.get("flow_grid_size")) {
     const auto value = node->value<int64_t>();
@@ -197,6 +200,14 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
     const auto value = node->value<std::string>();
     if (!value || !ParseGameClientTag(*value, config.client)) {
       warnings.emplace_back("client: expected \"retail\" or \"wotlk\"; using \"retail\"");
+    }
+  }
+
+  if (const auto node = root.get("neural_runtime")) {
+    const auto value = node->value<std::string>();
+    if (!value || !ParseRuntimeModeTag(*value, config.neuralRuntime)) {
+      warnings.emplace_back(
+          "neural_runtime: expected \"auto\", \"latest\" or \"compatible\"; using \"auto\"");
     }
   }
 
@@ -264,6 +275,8 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
   }
 
   ReadFloat(root, "synthetic_depth", config.syntheticDepth, 0.0f, 1.0f, warnings);
+  ReadFloat(root, "disocclusion_fallback", config.disocclusionFallback, 0.0f, 1.0f,
+            warnings);
 
   // Capped at four. Each pass is a full evaluate, and at the resolutions
   // this runs at the fourth already costs more than the frame is worth.
@@ -350,12 +363,16 @@ std::string SerializeConfig(const Config& config) {
   out << "advanced_mode = " << Boolean(config.advancedMode) << "\n";
   out << "client = " << TomlString(TagForGameClient(config.client)) << "\n";
   out << "neural_pass = \"" << config.neuralPass << "\"\n";
+  out << "neural_runtime = " << TomlString(TagForRuntimeMode(config.neuralRuntime)) << "\n";
   out << "dlss_preset = \"" << config.dlssPreset << "\"\n";
   out << "show_hud = " << Boolean(config.showHud) << "\n";
   out << "show_overlay = " << Boolean(config.showOverlay) << "\n";
   out << "flow_grid_size = " << config.flowGridSize << "\n";
   out << "synthetic_depth = " << Number(config.syntheticDepth) << "\n";
   out << "neural_passes = " << config.neuralPasses << "\n";
+  out << "disocclusion_fallback = " << Number(config.disocclusionFallback) << "\n";
+  // A diagnostic, so it only appears in the file while someone is using it.
+  if (config.invertMotion) out << "invert_motion = true\n";
   // Omitted while it is still automatic, so the file does not claim a choice
   // nobody made.
   if (config.uiScale > 0.0f) {
@@ -427,8 +444,24 @@ bool ParseGameClientTag(std::string_view tag, GameClient& out) {
   return false;
 }
 
+const char* TagForRuntimeMode(RuntimeMode mode) {
+  switch (mode) {
+    case RuntimeMode::Latest:     return "latest";
+    case RuntimeMode::Compatible: return "compatible";
+    default:                      return "auto";
+  }
+}
+
+bool ParseRuntimeModeTag(std::string_view tag, RuntimeMode& out) {
+  if (tag == "auto") { out = RuntimeMode::Auto; return true; }
+  if (tag == "latest") { out = RuntimeMode::Latest; return true; }
+  if (tag == "compatible") { out = RuntimeMode::Compatible; return true; }
+  return false;
+}
+
 void ResetRenderingSettings(Config& config) {
   const Config defaults;
+  config.neuralRuntime = defaults.neuralRuntime;
   config.showHud = defaults.showHud;
   config.showOverlay = defaults.showOverlay;
   config.flowGridSize = defaults.flowGridSize;
@@ -436,6 +469,8 @@ void ResetRenderingSettings(Config& config) {
   config.dlssPreset = defaults.dlssPreset;
   config.syntheticDepth = defaults.syntheticDepth;
   config.neuralPasses = defaults.neuralPasses;
+  config.disocclusionFallback = defaults.disocclusionFallback;
+  config.invertMotion = defaults.invertMotion;
   config.neural = defaults.neural;
 }
 

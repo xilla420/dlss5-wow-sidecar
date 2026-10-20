@@ -15,6 +15,7 @@
 #include "core/Utf8.h"
 #include "neural/AddonSettings.h"
 #include "neural/NeuralPassFactory.h"
+#include "neural/RuntimeSelect.h"
 #include "present/WindowTracker.h"
 #include "runtime/Pipeline.h"
 
@@ -164,6 +165,26 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   // operator moved can still reach it, and it has to happen every launch --
   // sidecar.toml is the source of truth, and ReShade.ini is a projection of it.
   if (config.neuralPass != "passthrough") {
+    // Same deadline, same reason: the add-on maps nvngx_dlssnr.dll at that
+    // first device creation, so the build has to be in place before it.
+    const RuntimeChoice runtime =
+        ChooseRuntime(config.neuralRuntime, gpu->arch, ExecutableDirectory());
+    if (runtime.managed) {
+      const std::string slot = TagForRuntimeMode(runtime.slot);
+      if (runtime.note) GlobalLog().Warn(std::string("neural runtime: ") + runtime.note);
+      const StageResult staged =
+          StageRuntime(RuntimeSlotPath(ExecutableDirectory(), runtime.slot),
+                       ExecutableDirectory());
+      if (staged.ok) {
+        GlobalLog().Info("neural runtime: " + slot + " (" +
+                         TagForRuntimeMode(config.neuralRuntime) + " asked), " +
+                         staged.message);
+      } else {
+        GlobalLog().Warn("neural runtime: could not put the " + slot +
+                         " build in place; using whatever is there. " + staged.message);
+      }
+    }
+
     if (!WriteNeuralSettings(ExecutableDirectory() / "ReShade.ini", config.neural)) {
       GlobalLog().Warn("could not write ReShade.ini; the neural settings in "
                        "sidecar.toml will not reach the add-on this run");
@@ -187,6 +208,12 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
   cfg.dlssPreset = config.dlssPreset;
   cfg.syntheticDepth = config.syntheticDepth;
   cfg.neuralPasses = config.neuralPasses;
+  cfg.disocclusionFallback = config.disocclusionFallback;
+  cfg.invertMotion = config.invertMotion;
+  if (config.invertMotion) {
+    GlobalLog().Warn("invert_motion is on: motion vectors are deliberately "
+                     "flipped, and moving things will smear. Diagnostic only.");
+  }
   cfg.uiMaskFeather = static_cast<int32_t>(config.uiMaskFeather);
   cfg.runtimeDir = ExecutableDirectory();
   ReportWarnings(warnings);
