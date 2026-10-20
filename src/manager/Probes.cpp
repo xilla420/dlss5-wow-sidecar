@@ -3,6 +3,7 @@
 #include "core/I18n.h"
 #include "core/Sha256.h"
 #include "neural/RuntimeManifest.h"
+#include "neural/RuntimeSelect.h"
 
 #include <windows.h>
 #include <dxgi1_6.h>
@@ -214,9 +215,21 @@ ProbeResult ProbeRefreshRate() {
   return r;
 }
 
-ProbeResult ProbeNeuralRuntime(const fs::path& sidecarDir) {
+ProbeResult ProbeNeuralRuntime(const fs::path& sidecarDir, RuntimeMode mode) {
   ProbeResult r;
   r.title = Tr("Neural runtime");
+
+  const auto gpu = DetectPrimaryGpu();
+  const GpuArch arch = gpu ? gpu->arch : GpuArch::Unsupported;
+  const RuntimeChoice choice = ChooseRuntime(mode, arch, sidecarDir);
+  if (choice.managed) {
+    const fs::path dll = RuntimeSlotPath(sidecarDir, choice.slot);
+    const std::string shown =
+        "runtimes\\" + std::string(TagForRuntimeMode(choice.slot)) + "\\nvngx_dlssnr.dll";
+    r = NeuralRuntimeVerdict(shown, Sha256File(dll), arch);
+    if (choice.note) r.detail += std::string(" ") + Tr(choice.note);
+    return r;
+  }
 
   std::error_code ec;
   const fs::path dll = sidecarDir / "nvngx_dlssnr.dll";
@@ -231,9 +244,7 @@ ProbeResult ProbeNeuralRuntime(const fs::path& sidecarDir) {
   // Hash it rather than trust the filename. A wrong or truncated binary here
   // becomes an access violation inside NGX at feature creation (spec §10), and
   // a digest is the only thing that distinguishes it from a good one beforehand.
-  const auto gpu = DetectPrimaryGpu();
-  return NeuralRuntimeVerdict(dll.filename().string(), Sha256File(dll),
-                              gpu ? gpu->arch : GpuArch::Unsupported);
+  return NeuralRuntimeVerdict(dll.filename().string(), Sha256File(dll), arch);
 }
 
 ProbeResult NeuralRuntimeVerdict(std::string_view fileName,
@@ -471,7 +482,7 @@ ProbeResult ProbeSidecarPath(const fs::path& sidecarDir, const fs::path& wowDir)
 }
 
 std::vector<ProbeResult> RunAllProbes(const fs::path& sidecarDir, const fs::path& wowDir,
-                                      GameClient client) {
+                                      GameClient client, RuntimeMode runtime) {
   return {
       ProbeGpu(),
       ProbeDriver(),
@@ -481,7 +492,7 @@ std::vector<ProbeResult> RunAllProbes(const fs::path& sidecarDir, const fs::path
       ProbeWowFolder(wowDir, client),
       ProbeSidecarPath(sidecarDir, wowDir),
       ProbeInjectorScan(wowDir, client),
-      ProbeNeuralRuntime(sidecarDir),
+      ProbeNeuralRuntime(sidecarDir, runtime),
       ProbeReshade(sidecarDir),
   };
 }

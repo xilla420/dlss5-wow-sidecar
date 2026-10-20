@@ -31,6 +31,20 @@ is what the reader is looking for.
 
 ## Unreleased
 
+### Added
+
+- **A choice of neural runtime.** The release now carries two builds of
+  `nvngx_dlssnr.dll`, under `runtimes\latest` and `runtimes\compatible`, and
+  **Tuning → Neural runtime** picks between them. *Latest* is NVIDIA's signed
+  310.9.16: on an RTX 50 card it cut the neural pass's GPU time from 2.85 to
+  1.7 ms per frame at 1280x720, and the overlay's own video memory by about
+  60 MB. It runs only on RTX 50. *Compatible* is the Ada-patched 310.8.0 the
+  previous releases shipped, which runs on RTX 40 and RTX 50. *Automatic*, the
+  default, takes Latest on RTX 50 and Compatible on RTX 40. The overlay copies
+  the chosen build next to itself at each launch; `neural_runtime` in
+  `sidecar.toml` holds the choice. Installs without a `runtimes` folder keep
+  using their loose `nvngx_dlssnr.dll` as before.
+
 ### Fixed
 
 - **Moving things left translucent trails, and turning the camera smeared the

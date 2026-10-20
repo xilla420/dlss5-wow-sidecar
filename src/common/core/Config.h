@@ -62,6 +62,20 @@ enum class GameClient { Modern, Wotlk };
 const char* TagForGameClient(GameClient client);
 bool ParseGameClientTag(std::string_view tag, GameClient& out);
 
+// Which build of nvngx_dlssnr.dll the overlay runs. Both live under
+// runtimes\ next to the sidecar, and the chosen one is copied into place at
+// every launch -- the add-on only ever looks for the one next to the exe.
+//
+//   Auto        Latest on RTX 50, Compatible on RTX 40.
+//   Latest      the newest signed NVIDIA build (310.9.16): cheaper per frame,
+//               but stock, so Blackwell only.
+//   Compatible  the Ada-patched 310.8.0, which runs on RTX 40 and RTX 50 alike.
+enum class RuntimeMode { Auto, Latest, Compatible };
+
+// The tag stored in sidecar.toml: "auto", "latest" or "compatible".
+const char* TagForRuntimeMode(RuntimeMode mode);
+bool ParseRuntimeModeTag(std::string_view tag, RuntimeMode& out);
+
 struct Config {
   // Interface language, as a tag the translator understands ("en", "ru").
   // English by default, and deliberately not taken from the Windows locale:
@@ -124,6 +138,10 @@ struct Config {
   // machine with none of the operator-supplied files still produces a working
   // overlay rather than an error.
   std::string neuralPass = "reshade";
+
+  // Which runtime build the pass runs; see RuntimeMode. Automatic unless the
+  // operator picks one, because the card decides which builds can run at all.
+  RuntimeMode neuralRuntime = RuntimeMode::Auto;
 
   // Which DLSS render preset the feature is created with. Named rather than
   // numbered because the numbers are an SDK detail; DlssPresetFromName maps it.
