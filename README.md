@@ -20,6 +20,18 @@ and nothing goes in your WoW folder.
 
 ---
 
+## What's new in 0.6.0
+
+- **No more ghosting.** Trails behind moving characters and smearing when the camera
+  turns are fixed, and 2× and 3× no longer make it worse.
+- **DLSS 5 310.9.16 on RTX 50.** NVIDIA's newest signed runtime, about 40% less GPU
+  time per frame. RTX 40 cards keep 310.8, which runs on them. The app picks for you;
+  see [Two DLSS 5 runtimes](#two-dlss-5-runtimes-latest-310916-and-compatible-3108).
+
+**Updating from 0.5.0?** Unzip 0.6.0 into a new folder and run its
+`wowsidecar-manager.exe`. Don't copy the new files over the old folder: the runtimes
+now live in a `runtimes` folder. [All changes →](CHANGELOG.md)
+
 ## Get started
 
 1. **[Download the latest release](https://github.com/xilla420/dlss5-wow-sidecar/releases/latest)** and unzip it anywhere *except* your WoW folder.
@@ -161,8 +173,8 @@ cards, and the Ada-patched **310.8** on RTX 40. It picks automatically; see
 [Two DLSS 5 runtimes](#two-dlss-5-runtimes-latest-310916-and-compatible-3108).
 
 **Characters smear or leave trails when the camera turns?** That was a bug, now
-fixed after 0.5.0: the motion vectors pointed the wrong way, which also made 2× and 3×
-worse. The fix ships in the next release.
+fixed in 0.6.0: the motion vectors pointed the wrong way, which also made 2× and 3×
+worse. [Download the latest release](https://github.com/xilla420/dlss5-wow-sidecar/releases/latest).
 
 **Where are the technical details?** In [How it works](docs/HOW-IT-WORKS.md):
 the safety checks, frame-rate measurements, the pipeline, and how to build it.

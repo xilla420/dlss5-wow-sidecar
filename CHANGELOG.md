@@ -31,6 +31,12 @@ is what the reader is looking for.
 
 ## Unreleased
 
+## 0.6.0
+
+The ghosting behind characters and on camera turns is fixed, and RTX 50 cards now
+run NVIDIA's newer DLSS 5 310.9.16, which costs about 40% less GPU time per frame.
+RTX 40 cards keep the 310.8 build that runs on them.
+
 ### Added
 
 - **A choice of neural runtime.** The release now carries two builds of
