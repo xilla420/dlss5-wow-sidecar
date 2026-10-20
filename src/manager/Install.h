@@ -36,6 +36,10 @@ struct Component {
 
 const std::vector<Component>& Components();
 
+// Whether the operator has supplied it. The neural runtime counts when either
+// runtimes\ slot holds a build, not only when the loose copy exists.
+bool ComponentPresent(const Component& component, const std::filesystem::path& sidecarDir);
+
 // Pure. Case-insensitive, and matches the whole filename rather than a
 // substring, so `nvngx_dlss.dll` is never mistaken for `nvngx_dlssnr.dll` --
 // the two differ by two characters and only one of them does neural rendering.
@@ -50,9 +54,10 @@ struct InstallResult {
   std::string message;
 };
 
-// Copies `source` to `sidecarDir/component.installedAs`, overwriting. Refuses a
-// source inside the sidecar directory itself, which would otherwise be a
-// self-copy that silently truncates the file.
+// Copies `source` to `sidecarDir/component.installedAs`, overwriting -- except
+// the neural runtime, which goes to runtimes\latest or runtimes\compatible by
+// its digest. Refuses a source that is already the destination, which would
+// otherwise be a self-copy that silently truncates the file.
 InstallResult InstallComponent(const Component& component,
                                const std::filesystem::path& source,
                                const std::filesystem::path& sidecarDir);

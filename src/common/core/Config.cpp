@@ -17,7 +17,8 @@ namespace {
 
 // Every key the document may contain. Anything else earns a warning so a
 // typo is visible rather than silently ignored.
-constexpr std::array<std::string_view, 20> kKnownKeys = {
+constexpr std::array<std::string_view, 21> kKnownKeys = {
+    "neural_runtime",
     "show_hud",     "show_overlay",   "flow_grid_size", "neural_pass",
     "dlss_preset",  "synthetic_depth", "ui_mask",       "ui_mask_feather",
     "neural",       "wow_dir",       "language",      "ui_scale",
@@ -202,6 +203,14 @@ Config ParseConfig(std::string_view text, std::vector<std::string>& warnings) {
     }
   }
 
+  if (const auto node = root.get("neural_runtime")) {
+    const auto value = node->value<std::string>();
+    if (!value || !ParseRuntimeModeTag(*value, config.neuralRuntime)) {
+      warnings.emplace_back(
+          "neural_runtime: expected \"auto\", \"latest\" or \"compatible\"; using \"auto\"");
+    }
+  }
+
   if (const auto node = root.get("wotlk_dir")) {
     if (auto value = node->value<std::string>()) {
       config.wotlkDir = *value;
@@ -354,6 +363,7 @@ std::string SerializeConfig(const Config& config) {
   out << "advanced_mode = " << Boolean(config.advancedMode) << "\n";
   out << "client = " << TomlString(TagForGameClient(config.client)) << "\n";
   out << "neural_pass = \"" << config.neuralPass << "\"\n";
+  out << "neural_runtime = " << TomlString(TagForRuntimeMode(config.neuralRuntime)) << "\n";
   out << "dlss_preset = \"" << config.dlssPreset << "\"\n";
   out << "show_hud = " << Boolean(config.showHud) << "\n";
   out << "show_overlay = " << Boolean(config.showOverlay) << "\n";
@@ -434,8 +444,24 @@ bool ParseGameClientTag(std::string_view tag, GameClient& out) {
   return false;
 }
 
+const char* TagForRuntimeMode(RuntimeMode mode) {
+  switch (mode) {
+    case RuntimeMode::Latest:     return "latest";
+    case RuntimeMode::Compatible: return "compatible";
+    default:                      return "auto";
+  }
+}
+
+bool ParseRuntimeModeTag(std::string_view tag, RuntimeMode& out) {
+  if (tag == "auto") { out = RuntimeMode::Auto; return true; }
+  if (tag == "latest") { out = RuntimeMode::Latest; return true; }
+  if (tag == "compatible") { out = RuntimeMode::Compatible; return true; }
+  return false;
+}
+
 void ResetRenderingSettings(Config& config) {
   const Config defaults;
+  config.neuralRuntime = defaults.neuralRuntime;
   config.showHud = defaults.showHud;
   config.showOverlay = defaults.showOverlay;
   config.flowGridSize = defaults.flowGridSize;

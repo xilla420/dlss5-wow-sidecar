@@ -21,9 +21,16 @@ struct ManifestRow {
 // confirmed twice over during the M3 Task 4 spike: renodx-dlss5.addon64 reported
 // it as a reference match, and the file carries a valid NVIDIA Authenticode
 // signature.
-constexpr std::array<ManifestRow, 2> kManifest{{
+constexpr std::array<ManifestRow, 3> kManifest{{
     {"e16bcf15e16e13f527491cdf7845b2fe6521a738d8f7c9c721866a8496e1fc8e",
      "310.8.0", RuntimeVariant::Stock},
+    // Valid NVIDIA Authenticode signature, 266 MB, "DVS PRODUCTION". Verified on
+    // an RTX PRO 6000 Blackwell against testpattern at 1280x720: feature 18
+    // creates and evaluates, and the GPU wait drops from 2.85 to 1.7 ms against
+    // the Ada-patched 310.8.0 on the same card. No Ada build exists yet, so on
+    // RTX 40 this is still the stock-on-Ada 0xbad00001 case.
+    {"2bc19bc09a7b89dd44f73e2ac0108fcc586e2154bdd0830f242f4f040e28789f",
+     "310.9.16", RuntimeVariant::Stock},
     // Same version and byte count as the stock build, and it still carries
     // NVIDIA's signature block -- but Authenticode reports HashMismatch,
     // because the Blackwell-built CUDA binaries inside were replaced with

@@ -1,6 +1,9 @@
 #include "manager/Install.h"
 
 #include "core/I18n.h"
+#include "core/Sha256.h"
+#include "neural/RuntimeManifest.h"
+#include "neural/RuntimeSelect.h"
 
 #include <algorithm>
 #include <cctype>
@@ -10,6 +13,10 @@ namespace fs = std::filesystem;
 
 namespace sidecar {
 namespace {
+
+bool IsNeuralRuntime(const Component& component) {
+  return component.installedAs == "nvngx_dlssnr.dll";
+}
 
 std::string Lower(std::string_view text) {
   std::string out(text);
@@ -64,6 +71,13 @@ const std::vector<Component>& Components() {
   return components;
 }
 
+bool ComponentPresent(const Component& component, const fs::path& sidecarDir) {
+  std::error_code ec;
+  if (fs::exists(sidecarDir / std::string(component.installedAs), ec) && !ec) return true;
+  if (!IsNeuralRuntime(component)) return false;
+  return ChooseRuntime(RuntimeMode::Auto, GpuArch::Blackwell, sidecarDir).managed;
+}
+
 bool FileMatchesComponent(const Component& component, std::string_view fileName) {
   const std::string needle = Lower(fileName);
   const std::string accepts = Lower(component.accepts);
@@ -100,7 +114,24 @@ InstallResult InstallComponent(const Component& component, const fs::path& sourc
     return {false, Tr("That is not a file.")};
   }
 
-  const fs::path destination = sidecarDir / std::string(component.installedAs);
+  fs::path destination = sidecarDir / std::string(component.installedAs);
+
+  // The neural runtime goes into the slot its build belongs in, not next to the
+  // exe: the overlay copies the chosen slot over the loose file at every launch,
+  // so a runtime installed there would be gone the next time it started. An
+  // unrecognised build goes to Latest, because a newer signed NVIDIA runtime is
+  // by far the likeliest thing for it to be.
+  const char* slotName = nullptr;
+  if (IsNeuralRuntime(component)) {
+    const auto entry = LookupRuntime(Sha256File(source));
+    const bool patched = entry && entry->variant == RuntimeVariant::AdaPatched;
+    destination = RuntimeSlotPath(sidecarDir,
+                                  patched ? RuntimeMode::Compatible : RuntimeMode::Latest);
+    slotName = patched ? "Installed as the compatible runtime (RTX 40 and RTX 50)."
+                       : "Installed as the latest runtime (RTX 50).";
+    fs::create_directories(destination.parent_path(), ec);
+    if (ec) return {false, Tr("Could not copy it in: ") + ec.message()};
+  }
 
   // A source that is already the destination is not an error worth a copy: the
   // filesystem would happily truncate the file to zero on the way through.
@@ -112,6 +143,7 @@ InstallResult InstallComponent(const Component& component, const fs::path& sourc
   if (ec) {
     return {false, Tr("Could not copy it in: ") + ec.message()};
   }
+  if (slotName) return {true, Tr(slotName)};
   return {true, Tr("Installed ") + std::string(component.installedAs) + "."};
 }
 
@@ -125,6 +157,12 @@ std::vector<fs::path> UninstallPlan(const fs::path& sidecarDir, bool includeGene
   };
 
   for (const auto& component : Components()) add(component.installedAs);
+  for (const auto slot : {RuntimeMode::Latest, RuntimeMode::Compatible}) {
+    const fs::path path = RuntimeSlotPath(sidecarDir, slot);
+    if (fs::exists(path, ec) && !ec) plan.push_back(path);
+  }
+  // Left behind only by a stage that was interrupted.
+  add("nvngx_dlssnr.dll.staging");
   if (includeGeneratedFiles) {
     for (const auto& name : kGeneratedFiles) add(name);
   }
