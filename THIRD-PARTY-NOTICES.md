@@ -10,15 +10,16 @@ software — neither executable in this project can reach the network at all.
 
 | Component | Publisher | What it does | Terms |
 |---|---|---|---|
-| `nvngx_dlssnr.dll` | NVIDIA | The DLSS 5 neural rendering runtime. **This is a third-party build patched to run on Ada (RTX 40); the stock runtime is Blackwell-only.** | NVIDIA proprietary. Redistribution of a patched build is not covered by NVIDIA's own terms — see the warning below. |
+| `runtimes\latest\nvngx_dlssnr.dll` | NVIDIA | The DLSS 5 neural rendering runtime, 310.9.16, unmodified and carrying NVIDIA's signature. Blackwell (RTX 50) only. | NVIDIA proprietary. |
+| `runtimes\compatible\nvngx_dlssnr.dll` | NVIDIA | The DLSS 5 neural rendering runtime, 310.8.0. **This is a third-party build patched to run on Ada (RTX 40); the stock runtime is Blackwell-only.** | NVIDIA proprietary. Redistribution of a patched build is not covered by NVIDIA's own terms — see the warning below. |
 | `nvngx_dlss.dll` | NVIDIA | The DLSS upscaling runtime. Optional; only used if the add-on's work-in-progress upscaling path is enabled. | NVIDIA proprietary, per the NVIDIA DLSS SDK licence. |
 | `dxgi.dll` | crosire | ReShade 6.8, the add-on-enabled build. Hosts the add-on inside the sidecar's own process. | ReShade is BSD 3-Clause. Redistribution is permitted with its copyright notice. |
 | `renodx-dlss5.addon64` | RenoDX | The DLSS 5 Generic add-on. Detours the sidecar's own NGX calls and substitutes neural-rendered output. | RenoDX is MIT-licensed. |
 
 ## A note on the NVIDIA runtimes
 
-`nvngx_dlssnr.dll` shipped in the release is a **third-party build patched to run
-on Ada**. NVIDIA's own runtime is Blackwell-only. Redistributing a modified
+`runtimes\compatible\nvngx_dlssnr.dll` shipped in the release is a **third-party
+build patched to run on Ada**. NVIDIA's own runtime is Blackwell-only. Redistributing a modified
 proprietary binary is not covered by NVIDIA's licence terms, and it is bundled
 here for convenience with that understood.
 

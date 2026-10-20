@@ -46,6 +46,7 @@
 #include "manager/WowInstall.h"
 #include "neural/AddonSettings.h"
 #include "neural/NgxSession.h"
+#include "neural/RuntimeSelect.h"
 #include "present/Hud.h"
 #include "present/WindowTracker.h"
 
@@ -795,9 +796,35 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
   // Always against the folder and client the operator has selected now, so a
   // switch of client re-scans the right install rather than the last one.
   const auto runProbes = [&]() {
-    return RunAllProbes(sidecarDir, PathFromUtf8(config.ActiveWowDir()), config.client);
+    return RunAllProbes(sidecarDir, PathFromUtf8(config.ActiveWowDir()), config.client,
+                        config.neuralRuntime);
   };
   auto results = runProbes();
+  // Asked once: the card does not change under a running manager, and the
+  // runtime picker below needs it every frame.
+  const GpuArch gpuArch = [] {
+    const auto gpu = DetectPrimaryGpu();
+    return gpu ? gpu->arch : GpuArch::Unsupported;
+  }();
+  // The build in each runtimes\ slot, as "310.9.16", or empty when the slot is
+  // empty. Re-read only when the file's write time moves, because reading the
+  // version resource maps the DLL and the latest one is 266 MB.
+  struct SlotVersion { fs::file_time_type stamp{}; std::string version; };
+  SlotVersion slotVersions[2];
+  const auto slotVersion = [&](RuntimeMode slot) -> const std::string& {
+    SlotVersion& cached = slotVersions[slot == RuntimeMode::Compatible ? 1 : 0];
+    const fs::path dll = RuntimeSlotPath(sidecarDir, slot);
+    std::error_code stampEc;
+    const auto stamp = fs::last_write_time(dll, stampEc);
+    if (stampEc) {
+      cached = {};
+    } else if (stamp != cached.stamp) {
+      cached.stamp = stamp;
+      cached.version = RuntimeFileVersion(dll);
+      if (cached.version.empty()) cached.version = "?";
+    }
+    return cached.version;
+  };
 
   // Which page opens first. An optional command-line argument names it, which
   // exists so the README's screenshots can be captured without driving the
@@ -1722,8 +1749,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
       const auto& components = Components();
       for (size_t i = 0; i < components.size(); ++i) {
         const auto& component = components[i];
-        const fs::path installed = sidecarDir / std::string(component.installedAs);
-        const bool present = fs::exists(installed, ec) && !ec;
+        const bool present = ComponentPresent(component, sidecarDir);
 
         ImGui::PushID(static_cast<int>(i));
         // Sized to what it holds rather than to a guessed height, so a long
@@ -1747,9 +1773,28 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
         Hint(std::string(component.purpose).c_str());
         if (g_fonts.caption) ImGui::PushFont(g_fonts.caption);
-        ImGui::TextDisabled(Tr("Wanted as %s   |   Source: %s"),
-                            std::string(component.installedAs).c_str(),
-                            std::string(component.source).c_str());
+        if (component.installedAs == "nvngx_dlssnr.dll") {
+          // Two builds, two folders. Choosing a file sorts it into the right
+          // one by its digest, so the operator never has to know which.
+          for (const auto slot : {RuntimeMode::Latest, RuntimeMode::Compatible}) {
+            const std::string& version = slotVersion(slot);
+            const bool latest = slot == RuntimeMode::Latest;
+            const char* label = latest ? "Latest" : "Compatible";
+            const char* cards = latest ? "RTX 50 only, less GPU time" : "RTX 40 and RTX 50";
+            if (version.empty()) {
+              ImGui::TextColored(Rgb(g_colors.warn), "%s  --  %s  (%s)", Tr(label), Tr("MISSING"),
+                                 Tr(cards));
+            } else {
+              ImGui::TextColored(Rgb(g_colors.ok), "%s  %s  (%s)", Tr(label), version.c_str(),
+                                 Tr(cards));
+            }
+          }
+          ImGui::TextDisabled(Tr("Source: %s"), std::string(component.source).c_str());
+        } else {
+          ImGui::TextDisabled(Tr("Wanted as %s   |   Source: %s"),
+                              std::string(component.installedAs).c_str(),
+                              std::string(component.source).c_str());
+        }
         if (g_fonts.caption) ImGui::PopFont();
 
         if (ImGui::Button(present ? Tr("Replace...") : Tr("Choose file..."), ImVec2(S(150.0f), 0.0f))) {
@@ -1931,6 +1976,67 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         if (config.neuralPass == "passthrough") {
           Hint("The Off preset runs no neural pass, so this has no effect until you pick "
                "another look.");
+        }
+      }
+      ImGui::Dummy(ImVec2(0.0f, S(12.0f)));
+
+      SectionHeading("Neural runtime");
+      Hint("Which build of DLSS 5 the overlay runs. The latest costs less GPU time "
+           "per frame but runs only on RTX 50 cards; the compatible one runs on RTX 40 "
+           "and RTX 50. A change takes effect at the overlay's next start.");
+      ImGui::Dummy(ImVec2(0.0f, S(4.0f)));
+      {
+        struct RuntimeCard { RuntimeMode mode; const char* name; const char* note; };
+        const RuntimeCard cards[] = {
+            {RuntimeMode::Auto, "Automatic", "The right one for this card"},
+            {RuntimeMode::Latest, "Latest", "RTX 50 only, less GPU time"},
+            {RuntimeMode::Compatible, "Compatible", "RTX 40 and RTX 50"},
+        };
+        const float cardWidth = (ImGui::GetContentRegionAvail().x - S(20.0f)) / 3.0f;
+        for (size_t i = 0; i < std::size(cards); ++i) {
+          const RuntimeCard& card = cards[i];
+          const bool selected = config.neuralRuntime == card.mode;
+          // Offered only where it can run. An RTX 40 card would load it and
+          // then fail at feature creation with a bare error code.
+          const bool unavailable = card.mode == RuntimeMode::Latest &&
+                                   gpuArch != GpuArch::Blackwell && !selected;
+          if (i > 0) ImGui::SameLine();
+          ImGui::PushID(static_cast<int>(i));
+          if (selected) {
+            ImGui::PushStyleColor(ImGuiCol_Border, Rgb(g_colors.goldBright, 0.95f));
+            ImGui::PushStyleColor(ImGuiCol_Button, Rgb(g_colors.accent, 0.35f));
+          }
+          ImGui::BeginGroup();
+          if (unavailable) ImGui::BeginDisabled();
+          std::string label = Tr(card.name);
+          if (card.mode != RuntimeMode::Auto) {
+            const std::string& version = slotVersion(card.mode);
+            label += "   " + (version.empty() ? std::string("--") : version);
+          }
+          if (ImGui::Button(label.c_str(), ImVec2(cardWidth, S(44)))) {
+            config.neuralRuntime = card.mode;
+            dirty = true;
+            results = runProbes();
+          }
+          if (unavailable) ImGui::EndDisabled();
+          ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + cardWidth);
+          Hint(card.note);
+          ImGui::PopTextWrapPos();
+          ImGui::EndGroup();
+          if (selected) ImGui::PopStyleColor(2);
+          ImGui::PopID();
+        }
+
+        const RuntimeChoice choice = ChooseRuntime(config.neuralRuntime, gpuArch, sidecarDir);
+        if (!choice.managed) {
+          Hint("No runtime is installed under runtimes\\, so the overlay uses "
+               "nvngx_dlssnr.dll next to it as it is.");
+        } else {
+          char inUse[160];
+          snprintf(inUse, sizeof(inUse), Tr("In use: %s"),
+                   Tr(choice.slot == RuntimeMode::Latest ? "Latest" : "Compatible"));
+          ImGui::TextColored(Rgb(g_colors.ok), "%s   %s", inUse, slotVersion(choice.slot).c_str());
+          if (choice.note) ImGui::TextColored(Rgb(g_colors.warn), "%s", Tr(choice.note));
         }
       }
       ImGui::Dummy(ImVec2(0.0f, S(12.0f)));

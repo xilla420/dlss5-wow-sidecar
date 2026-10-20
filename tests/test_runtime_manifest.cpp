@@ -30,6 +30,21 @@ TEST_CASE("The Ada-patched runtime resolves to its own variant", "[unit]") {
   CHECK(entry->variant == RuntimeVariant::AdaPatched);
 }
 
+// Signed NVIDIA build, verified creating and evaluating feature 18 on an RTX
+// PRO 6000 Blackwell. Stock, so on Ada it must still be reported as the wrong
+// variant.
+TEST_CASE("The signed 310.9.16 runtime resolves as a stock build", "[unit]") {
+  const auto entry = LookupRuntime(
+      "2bc19bc09a7b89dd44f73e2ac0108fcc586e2154bdd0830f242f4f040e28789f");
+  REQUIRE(entry.has_value());
+  CHECK(entry->version == "310.9.16");
+  CHECK(entry->variant == RuntimeVariant::Stock);
+  CHECK(CheckRuntimeCompatibility(GpuArch::Blackwell, entry->variant) ==
+        RuntimeCompatibility::Ok);
+  CHECK(CheckRuntimeCompatibility(GpuArch::Ada, entry->variant) ==
+        RuntimeCompatibility::WrongVariant);
+}
+
 // The two builds share a version string and a byte count, so nothing but the
 // digest tells them apart. If these ever collide the manifest is useless.
 TEST_CASE("The stock and Ada-patched builds are distinguished", "[unit]") {

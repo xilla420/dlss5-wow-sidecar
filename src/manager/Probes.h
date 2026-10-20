@@ -64,7 +64,10 @@ ProbeResult ProbeGpu();
 ProbeResult ProbeDriver();
 ProbeResult ProbeWindows();
 ProbeResult ProbeRefreshRate();
-ProbeResult ProbeNeuralRuntime(const std::filesystem::path& sidecarDir);
+// With runtimes\ slots filled, checks the build `mode` resolves to on this
+// card rather than the loose copy, which is only whatever the last launch staged.
+ProbeResult ProbeNeuralRuntime(const std::filesystem::path& sidecarDir,
+                               RuntimeMode mode = RuntimeMode::Auto);
 ProbeResult ProbeReshade(const std::filesystem::path& sidecarDir);
 ProbeResult ProbeWowWindow(GameClient client);
 ProbeResult ProbeWowFolder(const std::filesystem::path& wowDir, GameClient client);
@@ -74,6 +77,7 @@ ProbeResult ProbeSidecarPath(const std::filesystem::path& sidecarDir,
 
 std::vector<ProbeResult> RunAllProbes(const std::filesystem::path& sidecarDir,
                                       const std::filesystem::path& wowDir,
-                                      GameClient client = GameClient::Modern);
+                                      GameClient client = GameClient::Modern,
+                                      RuntimeMode runtime = RuntimeMode::Auto);
 
 }  // namespace sidecar
