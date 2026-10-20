@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>DLSS 5 for World of Warcraft: neural rendering without injection | DLSS 5 Sidecar</title>
 <meta name="description" content="Free, open-source DLSS 5 Neural Rendering overlay for World of Warcraft on NVIDIA RTX 40 and RTX 50 GPUs. No DLL injection, no ReShade next to Wow.exe, no hooks. Windows 11.">
-<meta name="keywords" content="DLSS 5 WoW, DLSS 5 World of Warcraft, WoW neural rendering, World of Warcraft DLSS, WoW ReShade alternative, RTX 5090 WoW, RTX 4090 WoW, WoW graphics mod, DLSS 5 overlay">
+<meta name="keywords" content="DLSS 5 WoW, DLSS 5 World of Warcraft, WoW neural rendering, World of Warcraft DLSS, WoW ReShade alternative, RTX 5090 WoW, RTX 4090 WoW, WoW graphics mod, DLSS 5 overlay, DLSS 5 310.9.16, nvngx_dlssnr.dll, DLSS 5 RTX 40, DLSS 5 RTX 50, DLSS 5 Ada">
 <link rel="canonical" href="https://xilla420.github.io/dlss5-wow-sidecar/">
 <meta name="theme-color" content="#0b0a08">
 <meta name="color-scheme" content="dark">
@@ -44,7 +44,7 @@
   "softwareRequirements": "NVIDIA GeForce RTX 40 or RTX 50 series GPU",
   "softwareVersion": "0.5.0",
   "inLanguage": ["en", "ru", "es", "de", "fr", "tr", "ar", "zh", "ja", "ko"],
-  "featureList": ["DLSS 5 Neural Rendering overlay", "1x, 2x or 3x neural passes", "Instant before/after hotkey", "Three WoW-style themes", "No injection into Wow.exe"]
+  "featureList": ["DLSS 5 Neural Rendering overlay", "DLSS 5 310.9.16 runtime on RTX 50, 310.8 on RTX 40, chosen automatically", "1x, 2x or 3x neural passes", "Motion-corrected history without ghosting", "Instant before/after hotkey", "Three WoW-style themes", "No injection into Wow.exe"]
 }
 </script>
 <script type="application/ld+json">
@@ -58,6 +58,10 @@
      "acceptedAnswer": {"@type": "Answer", "text": "No. DLSS 5 Neural Rendering is a filter that changes how the image looks, not Super Resolution or Frame Generation. It costs frames rather than gaining them."}},
     {"@type": "Question", "name": "Which GPUs support DLSS 5 in WoW?",
      "acceptedAnswer": {"@type": "Answer", "text": "NVIDIA GeForce RTX 40 series (Ada) and RTX 50 series (Blackwell). Older NVIDIA cards, AMD and Intel GPUs cannot run DLSS 5."}},
+    {"@type": "Question", "name": "Which DLSS 5 version does it use?",
+     "acceptedAnswer": {"@type": "Answer", "text": "Two builds ship together. RTX 50 cards get the newest signed NVIDIA runtime, DLSS 5 310.9.16, which takes about 40% less GPU time per frame. RTX 40 cards get 310.8, patched to run on Ada. The app picks automatically, and Tuning, Neural runtime lets you choose."}},
+    {"@type": "Question", "name": "Why did characters smear or leave trails when the camera turned?",
+     "acceptedAnswer": {"@type": "Answer", "text": "The motion vectors handed to DLSS 5 pointed the wrong way, so each frame blended in history from the wrong place, and 2x and 3x made it worse. It is fixed after 0.5.0 and ships in the next release."}},
     {"@type": "Question", "name": "Does it work with WoW Classic?",
      "acceptedAnswer": {"@type": "Answer", "text": "It captures any game window in borderless windowed mode, so Classic clients work the same way. Retail is what it is measured against."}},
     {"@type": "Question", "name": "Does it work with WoW 3.3.5a (Wrath private servers)?",
@@ -125,7 +129,7 @@ footer{border-top:1px solid var(--line);padding:28px 0 48px;font-size:14px;color
 <body>
 <header class="top"><div class="wrap">
   <a class="brand" href="./">DLSS 5 Sidecar</a>
-  <nav><a href="#compare">Before / after</a><a href="#how">How it works</a><a href="#safety">Safety</a><a href="#hotkeys">Hotkeys</a><a href="#faq">FAQ</a><a href="https://github.com/xilla420/dlss5-wow-sidecar">GitHub</a></nav>
+  <nav><a href="#compare">Before / after</a><a href="#runtime">DLSS 5 310.9.16</a><a href="#how">How it works</a><a href="#safety">Safety</a><a href="#hotkeys">Hotkeys</a><a href="#faq">FAQ</a><a href="https://github.com/xilla420/dlss5-wow-sidecar">GitHub</a></nav>
 </div></header>
 
 <main>
@@ -163,6 +167,18 @@ footer{border-top:1px solid var(--line);padding:28px 0 48px;font-size:14px;color
   <h2>Choose the strength: 1×, 2× or 3×</h2>
   <p>DLSS 5 can run more than once over every frame. One pass is subtle and closest to the game. Two or three push the picture further, towards the heavily processed look of the demo videos. Each extra pass costs roughly one more pass of GPU time.</p>
   <figure><img src="screenshots/strength.png" alt="The neural strength setting with 1x, 2x and 3x options" width="1264" height="334" loading="lazy"></figure>
+</div></section>
+
+<section id="runtime"><div class="wrap">
+  <h2>DLSS 5 310.9.16 on RTX 50, 310.8 on RTX 40</h2>
+  <p>The download carries two builds of NVIDIA's DLSS 5 runtime, and the app picks the right one for your card. RTX 50 cards run the newest signed build, <strong>DLSS 5 310.9.16</strong>. RTX 40 cards run 310.8, patched to run on Ada, since NVIDIA's own runtime is Blackwell-only. You can override the choice under <strong>Tuning → Neural runtime</strong>.</p>
+  <figure><img src="screenshots/runtime.png" alt="The neural runtime setting with Automatic, Latest 310.9.16 and Compatible 310.8.0 options" width="1020" height="200" loading="lazy"></figure>
+  <table>
+    <tr><th>Build</th><th>Runs on</th><th>Neural pass, per frame</th></tr>
+    <tr><td>DLSS 5 310.9.16 (Latest)</td><td>RTX 50</td><td>1.7 ms</td></tr>
+    <tr><td>DLSS 5 310.8 (Compatible)</td><td>RTX 40 and RTX 50</td><td>2.85 ms</td></tr>
+  </table>
+  <p class="small">Measured on an RTX 50 card at 1280×720, same scene. 310.9.16 also used about 60 MB less video memory. Neither raises WoW's frame rate; the newer build leaves the GPU more room.</p>
 </div></section>
 
 <section id="themes"><div class="wrap">
@@ -233,6 +249,8 @@ footer{border-top:1px solid var(--line);padding:28px 0 48px;font-size:14px;color
   <details open><summary>Can I get banned for using DLSS 5 in WoW?</summary><p>No third-party tool can promise that. This one never loads into Wow.exe, never places ReShade or a DLL in the WoW folder, and never reads the game's memory. It reads the finished frame from Windows, like OBS or Discord screen share.</p></details>
   <details><summary>Does DLSS 5 increase FPS in World of Warcraft?</summary><p>No. DLSS 5 Neural Rendering is a filter that changes how the image looks, not Super Resolution or Frame Generation. It costs frames rather than gaining them, and the app shows you exactly where each millisecond goes.</p></details>
   <details><summary>Which graphics cards are supported?</summary><p>NVIDIA GeForce RTX 40 series and RTX 50 series. Older NVIDIA cards, AMD and Intel GPUs cannot run DLSS 5.</p></details>
+  <details><summary>Which DLSS 5 version does it use?</summary><p>Two builds ship together. RTX 50 cards get the newest signed NVIDIA runtime, DLSS 5 310.9.16, which takes about 40% less GPU time per frame. RTX 40 cards get 310.8, patched to run on Ada. The app picks automatically, and <strong>Tuning → Neural runtime</strong> lets you choose.</p></details>
+  <details><summary>Why did characters smear or leave trails when the camera turned?</summary><p>The motion vectors handed to DLSS 5 pointed the wrong way, so each frame blended in history from the wrong place, and 2× and 3× made it worse. It is fixed after 0.5.0 and ships in the next release.</p></details>
   <details><summary>Is it a WoW addon?</summary><p>No. Addons are Lua inside the game's interface. This is a separate Windows program that sits over the game window.</p></details>
   <details><summary>Why not use ReShade with a DLSS 5 addon?</summary><p>Because ReShade next to Wow.exe is what gets accounts banned. Here ReShade loads into the sidecar's own process, never the game's.</p></details>
 </div></section>
