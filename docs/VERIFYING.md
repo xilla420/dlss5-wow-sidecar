@@ -69,9 +69,13 @@ either way.
 
 ### Toolchains used
 
-| Release | Commit | MSVC toolset | Windows SDK | dxc | DLSS SDK | Optical Flow SDK |
+| Release | Source | MSVC toolset | Windows SDK | dxc | DLSS SDK | Optical Flow SDK |
 |---|---|---|---|---|---|---|
-| 0.6.0 | `c09bea5` | 14.44.35207 (`cl` 19.44.35228) | 10.0.28000.0 | 1.8.2502.11, from SDK 10.0.26100.0 | v310.7.0 (`a291cc7`) | 5.0.7 |
+| 0.6.0 | `v0.6.0` (`c09bea5`) | 14.44.35207 (`cl` 19.44.35228) | 10.0.28000.0 | 1.8.2502.11, from SDK 10.0.26100.0 | v310.7.0 (`a291cc7`) | 5.0.7 |
+| 0.6.1 | `v0.6.1` | 14.44.35207 (`cl` 19.44.35228) | 10.0.28000.0 | 1.8.2502.11, from SDK 10.0.26100.0 | v310.7.0 (`a291cc7`) | 5.0.7 |
+
+Only the manager has the version compiled in, so 0.6.1's `wowsidecar.exe` is
+byte-identical to 0.6.0's.
 
 All of them used CMake 3.31.6 (the copy that comes with Visual Studio), the
 generator `Visual Studio 17 2022`, x64 Release, and `SIDECAR_REQUIRE_SDKS=ON`.
@@ -85,7 +89,7 @@ toolchain above matched both shipped executables, apart from the 6 timestamp byt
 
 None of these is built here, so they can only be checked by origin, signature
 and hash. [THIRD-PARTY-NOTICES.md](../THIRD-PARTY-NOTICES.md) has the licences.
-These are the 0.6.0 files:
+0.6.0 and 0.6.1 ship the same files:
 
 | File | SHA-256 | Origin | Authenticode |
 |---|---|---|---|
