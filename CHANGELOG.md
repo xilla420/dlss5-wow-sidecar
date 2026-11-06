@@ -31,6 +31,28 @@ is what the reader is looking for.
 
 ## Unreleased
 
+### Added
+
+- **A guide to verifying a release.** [docs/VERIFYING.md](docs/VERIFYING.md)
+  covers checking the download, rebuilding both executables from the tag and
+  comparing them byte for byte, and the origin, signature and hash of each
+  third-party binary. A clean rebuild of `v0.6.0` matches the shipped
+  executables apart from the 6 bytes of the link timestamp.
+- **Releases record what built them.** `BUILD-MANIFEST.json` now names the CMake,
+  MSVC, Windows SDK, `dxc` and NVIDIA SDK versions, and `SHA256SUMS` lists every
+  file in the zip, not just the zip. Packaging refuses a working tree with
+  uncommitted changes.
+- Configuring prints the shader compiler's version, and warns on an SDK build
+  when it is not the `dxc` releases use. The shaders are embedded in
+  `wowsidecar.exe`, so a different `dxc` cannot reproduce a release.
+
+### Fixed
+
+- **THIRD-PARTY-NOTICES.md credited the DLSS 5 add-on to RenoDX without saying
+  where the file came from.** It is a RenoDX development build repackaged on
+  Nexus Mods, not an official RenoDX release, and no upstream checksum exists
+  for it. The notice now says so and links the source.
+
 ## 0.6.0
 
 The ghosting behind characters and on camera turns is fixed, and RTX 50 cards now

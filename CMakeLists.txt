@@ -48,6 +48,22 @@ if(NOT DXC_EXECUTABLE)
   message(FATAL_ERROR "dxc not found. Install the Windows SDK.")
 endif()
 
+# The shaders are embedded in wowsidecar.exe, so the dxc version decides the
+# exe's bytes. Releases are built with the dxc below; a different one still
+# works but cannot reproduce a release byte for byte (docs/VERIFYING.md).
+set(SIDECAR_RELEASE_DXC_VERSION "1.8.2502.11")
+execute_process(COMMAND ${DXC_EXECUTABLE} --version
+  OUTPUT_VARIABLE DXC_VERSION_OUTPUT ERROR_VARIABLE DXC_VERSION_OUTPUT
+  OUTPUT_STRIP_TRAILING_WHITESPACE)
+message(STATUS "Shader compiler: ${DXC_EXECUTABLE} (${DXC_VERSION_OUTPUT})")
+if(SIDECAR_REQUIRE_SDKS AND NOT DXC_VERSION_OUTPUT MATCHES "${SIDECAR_RELEASE_DXC_VERSION}")
+  message(WARNING
+    "Releases are built with dxc ${SIDECAR_RELEASE_DXC_VERSION} (Windows SDK 10.0.26100.0). "
+    "This dxc compiles the shaders to different bytes, so wowsidecar.exe will not "
+    "match a release. To reproduce one, pass "
+    "-DDXC_EXECUTABLE=\"C:/Program Files (x86)/Windows Kits/10/bin/10.0.26100.0/x64/dxc.exe\".")
+endif()
+
 set(SHADER_OUT_DIR ${CMAKE_BINARY_DIR}/generated/gpu/Shaders)
 file(MAKE_DIRECTORY ${SHADER_OUT_DIR})
 

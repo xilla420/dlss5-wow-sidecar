@@ -182,5 +182,7 @@ the safety checks, frame-rate measurements, the pipeline, and how to build it.
 ---
 
 MIT licensed. The third-party runtimes in the release zip belong to their authors;
-see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Not affiliated with NVIDIA or
+see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). To check a download, or to
+rebuild the executables and compare them with a release, see
+[Verifying a release](docs/VERIFYING.md). Not affiliated with NVIDIA or
 Blizzard Entertainment.
