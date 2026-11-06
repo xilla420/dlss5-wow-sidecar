@@ -31,6 +31,13 @@ is what the reader is looking for.
 
 ## Unreleased
 
+## 0.6.1
+
+Nothing changes in how the overlay runs. This release makes the download
+checkable: it says where every file in the zip comes from, and shows how to
+rebuild the two executables and confirm they match. If 0.6.0 works for you,
+there is no need to update.
+
 ### Added
 
 - **A guide to verifying a release.** [docs/VERIFYING.md](docs/VERIFYING.md)
