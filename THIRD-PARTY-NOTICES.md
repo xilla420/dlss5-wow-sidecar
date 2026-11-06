@@ -1,7 +1,7 @@
 # Third-party components
 
 The source in this repository is MIT-licensed (see [LICENSE](LICENSE)). The
-release bundle additionally contains four binaries that are **not** ours, are
+release bundle additionally contains five binaries that are **not** ours, are
 not covered by that licence, and are redistributed only for convenience. Each
 remains the property of its author and is governed by its own terms.
 
@@ -14,7 +14,26 @@ software — neither executable in this project can reach the network at all.
 | `runtimes\compatible\nvngx_dlssnr.dll` | NVIDIA | The DLSS 5 neural rendering runtime, 310.8.0. **This is a third-party build patched to run on Ada (RTX 40); the stock runtime is Blackwell-only.** | NVIDIA proprietary. Redistribution of a patched build is not covered by NVIDIA's own terms — see the warning below. |
 | `nvngx_dlss.dll` | NVIDIA | The DLSS upscaling runtime. Optional; only used if the add-on's work-in-progress upscaling path is enabled. | NVIDIA proprietary, per the NVIDIA DLSS SDK licence. |
 | `dxgi.dll` | crosire | ReShade 6.8, the add-on-enabled build. Hosts the add-on inside the sidecar's own process. | ReShade is BSD 3-Clause. Redistribution is permitted with its copyright notice. |
-| `renodx-dlss5.addon64` | RenoDX | The DLSS 5 Generic add-on. Detours the sidecar's own NGX calls and substitutes neural-rendered output. | RenoDX is MIT-licensed. |
+| `renodx-dlss5.addon64` | A RenoDX development build, repackaged on Nexus Mods (see below) | The DLSS 5 Generic add-on. Detours the sidecar's own NGX calls and substitutes neural-rendered output. | RenoDX is MIT-licensed. |
+
+Hashes and Authenticode status for every file in a release are in
+[docs/VERIFYING.md](docs/VERIFYING.md), along with how to check that the two
+executables were built from the tagged source.
+
+## Where the add-on comes from
+
+`renodx-dlss5.addon64` is **not** an official RenoDX release. RenoDX's own
+releases on GitHub (`clshortfuse/renodx`, nightly and snapshot) do not carry a
+file by that name. The copy in the release is byte-identical to the file
+"Renodx Dlss5 for 30-40-50" (uploaded 2026-08-31 00:11 UTC) from the Nexus Mods
+page [Applying RR and DLSS 5 RenoDX for the games](https://www.nexusmods.com/site/mods/2224)
+by velasquez3589. Its version resource reads `0.2026.0828.2110`, it calls itself
+"DLSS 5 Neural Rendering", and it is tagged as a `renodx-dev` build. It cannot be
+traced to a specific RenoDX commit, and neither RenoDX nor Nexus Mods publishes a
+checksum for it. It is not code-signed.
+
+If you would rather not run it, delete it from the sidecar folder and supply your
+own through the manager's **Setup** tab.
 
 ## A note on the NVIDIA runtimes
 
@@ -23,7 +42,7 @@ build patched to run on Ada**. NVIDIA's own runtime is Blackwell-only. Redistrib
 proprietary binary is not covered by NVIDIA's licence terms, and it is bundled
 here for convenience with that understood.
 
-If NVIDIA objects, the fix is to pull the two `nvngx_*.dll` files from the
+If NVIDIA objects, the fix is to pull the `nvngx_*.dll` files from the
 release assets. Nothing in the application depends on them being bundled: the
 **Setup** tab was built for the supply-your-own arrangement, names each missing
 file, says what it is for, points at where it comes from, and copies in whatever
