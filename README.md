@@ -28,7 +28,11 @@ and nothing goes in your WoW folder.
   time per frame. RTX 40 cards keep 310.8, which runs on them. The app picks for you;
   see [Two DLSS 5 runtimes](#two-dlss-5-runtimes-latest-310916-and-compatible-3108).
 
-**Updating from 0.5.0?** Unzip 0.6.0 into a new folder and run its
+**0.6.1** runs exactly like 0.6.0. It adds a guide to
+[checking the download](docs/VERIFYING.md): where every file comes from, and how to
+rebuild the program and confirm it matches.
+
+**Updating from 0.5.0?** Unzip the new release into a new folder and run its
 `wowsidecar-manager.exe`. Don't copy the new files over the old folder: the runtimes
 now live in a `runtimes` folder. [All changes →](CHANGELOG.md)
 
