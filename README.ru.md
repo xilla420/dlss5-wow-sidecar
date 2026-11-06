@@ -163,4 +163,6 @@ Discord. **Ни одна сторонняя программа не может �
 ---
 
 Лицензия MIT. Сторонние компоненты в архиве принадлежат их авторам — см.
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Проект не связан с NVIDIA и Blizzard Entertainment.
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md). Как проверить загруженный архив или
+пересобрать программы и сравнить их с релизом — в [docs/VERIFYING.md](docs/VERIFYING.md)
+(на английском). Проект не связан с NVIDIA и Blizzard Entertainment.
