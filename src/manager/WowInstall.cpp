@@ -21,7 +21,8 @@ constexpr const wchar_t* kUninstallKey =
 // The branches Battle.net installs under the parent folder. Retail first
 // because it is what this sidecar is aimed at; the others are here so a
 // classic-only install is still found rather than reported missing.
-constexpr const char* kBranchFolders[] = {"_retail_", "_classic_", "_classic_era_"};
+constexpr const char* kBranchFolders[] = {"_retail_", "_classic_", "_classic_era_",
+                                          "_forever_"};
 
 std::optional<std::wstring> ReadRegistryString(HKEY root, const wchar_t* subKey,
                                                const wchar_t* value, REGSAM view) {

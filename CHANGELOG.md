@@ -31,6 +31,19 @@ is what the reader is looking for.
 
 ## Unreleased
 
+## 0.7.0
+
+WoW: Forever is supported. The overlay runs over it the same way it runs over
+Retail. Nothing changes for Retail, Classic or 3.3.5a.
+
+### Added
+
+- **WoW: Forever support.** Keep **Retail & Classic** selected and run the game in
+  borderless windowed mode. **Detect** now looks for a `_forever_` folder beside
+  the other game folders, and the sidecar refuses to install inside one. An install
+  Windows has no record of, such as one in its own separate folder, has to be
+  chosen with **Browse...** on the Setup page.
+
 ## 0.6.1
 
 Nothing changes in how the overlay runs. This release makes the download

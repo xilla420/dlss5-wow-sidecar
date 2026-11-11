@@ -38,7 +38,7 @@ constexpr const char* kInjectorLoaders[] = {
 constexpr const char* kInjectorConfigs[] = {"reshade.ini", "reshade.log"};
 
 constexpr const char* kWowSignatures[] = {
-    "wow.exe", "_retail_", "_classic_", "_classic_era_", "world of warcraft",
+    "wow.exe", "_retail_", "_classic_", "_classic_era_", "_forever_", "world of warcraft",
 };
 
 // True when child sits inside parent, compared case-insensitively on the

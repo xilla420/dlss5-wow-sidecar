@@ -21,6 +21,7 @@ struct TargetWindow {
 // WoW's top-level window classes, observed rather than documented, which is why
 // this list has grown three times. Retail has registered "waApplication Window"
 // and, as of the 2026-08 client, plain "w"; modern Classic uses "GxWindowClass".
+// WoW: Forever (1.60.1.70862) registers "waApplication Window", like Retail.
 // Wrath 3.3.5a (build 12340) names the class after its graphics API --
 // "GxWindowClassD3d", "GxWindowClassD3d9Ex" or "GxWindowClassOpenGl" -- and an
 // exact match on "GxWindowClass" misses all three. Matching by class rather than
