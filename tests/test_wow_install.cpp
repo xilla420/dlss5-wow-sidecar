@@ -53,6 +53,7 @@ TEST_CASE("every branch folder is offered, retail first", "[unit]") {
   CHECK(Contains(candidates, R"(D:\World of Warcraft\_retail_)"));
   CHECK(Contains(candidates, R"(D:\World of Warcraft\_classic_)"));
   CHECK(Contains(candidates, R"(D:\World of Warcraft\_classic_era_)"));
+  CHECK(Contains(candidates, R"(D:\World of Warcraft\_forever_)"));
   CHECK(IndexOf(candidates, R"(D:\World of Warcraft\_retail_)") <
         IndexOf(candidates, R"(D:\World of Warcraft\_classic_)"));
   // The parent is the last resort: it holds no Wow.exe, so scanning it proves
