@@ -13,6 +13,7 @@ TEST_CASE("I7: WoW install paths are recognised and refused", "[unit]") {
   REQUIRE(PathLooksLikeWowInstall("C:/Program Files/World of Warcraft/_retail_"));
   REQUIRE(PathLooksLikeWowInstall("D:/Games/WoW/_classic_"));
   REQUIRE(PathLooksLikeWowInstall("D:/Games/WoW/_classic_era_"));
+  REQUIRE(PathLooksLikeWowInstall("D:/Games/WoW/_forever_"));
   REQUIRE(PathLooksLikeWowInstall("E:/wow/Wow.exe"));
 }
 
@@ -44,6 +45,15 @@ TEST_CASE("I8: all seven loader filenames are covered", "[unit]") {
 
 TEST_CASE("I8: a clean install directory yields nothing", "[unit]") {
   const auto found = FindInjectorLoaders({"Wow.exe", "Data", "Logs", "WTF", "Interface"});
+  REQUIRE(found.empty());
+}
+
+// The top level of a real WoW: Forever install. Its own DLLs must not read as
+// injectors, or the scan would refuse a clean client.
+TEST_CASE("I8: a clean WoW: Forever folder yields nothing", "[unit]") {
+  const auto found = FindInjectorLoaders({
+      "Wow.exe", "wow_loader.dll", "libxell.dll", "GFSDK_Aftermath_Lib.x64.dll",
+      "BlizzardError.exe", "icudt78l.dat", ".flavor.info", "D3D12", "Utils"});
   REQUIRE(found.empty());
 }
 
