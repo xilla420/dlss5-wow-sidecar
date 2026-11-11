@@ -8,10 +8,14 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Windows 11](https://img.shields.io/badge/Windows-11-0078D4)
 ![NVIDIA RTX 40 / 50](https://img.shields.io/badge/NVIDIA-RTX%2040%20%2F%2050-76B900)
+[![WoW: Forever supported](https://img.shields.io/badge/WoW%3A%20Forever-supported-c8aa6e)](#wow-forever)
 
 **NVIDIA DLSS 5 Neural Rendering for World of Warcraft, without touching the game.**
 A free overlay for RTX 40 and RTX 50 cards. Nothing is injected into `Wow.exe`,
 and nothing goes in your WoW folder.
+
+**Now with WoW: Forever support**, alongside Retail, Classic and 3.3.5a.
+[Set it up →](#wow-forever)
 
 ![DLSS 5 off and on, on a WoW character](docs/screenshots/dlss-face-comparison.png)
 
@@ -20,17 +24,17 @@ and nothing goes in your WoW folder.
 
 ---
 
-## What's new in 0.6.0
+## What's new in 0.7.0
 
-- **No more ghosting.** Trails behind moving characters and smearing when the camera
-  turns are fixed, and 2× and 3× no longer make it worse.
-- **DLSS 5 310.9.16 on RTX 50.** NVIDIA's newest signed runtime, about 40% less GPU
-  time per frame. RTX 40 cards keep 310.8, which runs on them. The app picks for you;
-  see [Two DLSS 5 runtimes](#two-dlss-5-runtimes-latest-310916-and-compatible-3108).
+- **WoW: Forever is supported.** DLSS 5 runs over the Forever client the same way it
+  runs over Retail. [Set it up →](#wow-forever)
+- **The manager knows Forever's folder.** **Detect** looks for `_forever_`, and the
+  safety checks cover it: the sidecar refuses to install there, and the injector scan
+  accepts a clean Forever client.
 
-**0.6.1** runs exactly like 0.6.0. It adds a guide to
-[checking the download](docs/VERIFYING.md): where every file comes from, and how to
-rebuild the program and confirm it matches.
+**Also recent:** 0.6.0 fixed ghosting on camera turns and added DLSS 5 310.9.16 on
+RTX 50 (see [Two DLSS 5 runtimes](#two-dlss-5-runtimes-latest-310916-and-compatible-3108)).
+0.6.1 added a guide to [checking the download](docs/VERIFYING.md).
 
 **Updating from 0.5.0?** Unzip the new release into a new folder and run its
 `wowsidecar-manager.exe`. Don't copy the new files over the old folder: the runtimes
@@ -40,7 +44,7 @@ now live in a `runtimes` folder. [All changes →](CHANGELOG.md)
 
 1. **[Download the latest release](https://github.com/xilla420/dlss5-wow-sidecar/releases/latest)** and unzip it anywhere *except* your WoW folder.
 2. Run **`wowsidecar-manager.exe`** and pick your client at the top:
-   **Retail & Classic** or **3.3.5a Wrath**.
+   **Retail & Classic** (this includes WoW: Forever) or **3.3.5a Wrath**.
 3. Start WoW in **borderless windowed** mode. On 3.3.5a, tick **Windowed Mode** and
    **Maximized** in Video options instead.
 4. Press **Start overlay** (or **Ctrl+Alt+S**). Then just play.
@@ -113,6 +117,20 @@ English, Русский, Español, Deutsch, Français, Türkçe, العربية,
 
 ![The manager in Japanese, Arabic, Chinese and Korean](docs/screenshots/languages.png)
 
+## WoW: Forever
+
+Forever works like Retail, with nothing extra to install.
+
+1. Keep **Retail & Classic** selected at the top of the manager.
+2. Run the game in **borderless windowed** mode.
+3. On **Setup**, set the WoW folder to `_forever_`, the folder that holds `Wow.exe`, so
+   the injector scan checks the right place. **Detect** finds it when Forever is
+   installed beside your other WoW folders. If it has a folder of its own, use **Browse...**.
+4. Press **Start overlay** (or **Ctrl+Alt+S**).
+
+Tested on Forever 1.60.1 with an NVIDIA Blackwell card at 2560×1440. The same rules apply as on
+every other client: nothing is injected into `Wow.exe`, and nothing goes in `_forever_`.
+
 ## WoW 3.3.5a (Wrath private servers)
 
 Pick **3.3.5a Wrath** at the top of the window. Setup and Checks switch to that
@@ -162,6 +180,9 @@ simply doesn't do any of the things people get banned for.
 ## FAQ
 
 **Does it work with WoW Classic?** Yes. Any client in borderless windowed mode works.
+
+**Does it work with WoW: Forever?** Yes. Keep **Retail & Classic** selected and run the
+game in borderless windowed mode. See [WoW: Forever](#wow-forever).
 
 **Does it work with 3.3.5a (Wrath private servers)?** Yes. Choose **3.3.5a Wrath** at
 the top of the manager, then in the game's Video options tick **Windowed Mode** and
